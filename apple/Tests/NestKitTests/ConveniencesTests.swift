@@ -415,73 +415,18 @@ import Testing
         #expect(SentDraft.remainder(of: "", after: "First part") == "")
     }
 
-    @MainActor @Test func upArrowRecallsTheLastSentOrTheTranscriptsLastMessage() {
+    @MainActor @Test func upArrowRecallsTheLastSentOrTheChatsLastMessage() {
         let sent = SentMessages()
-        let transcript = [
-            TranscriptItem(id: "1", content: .user(text: "First", attachments: [])),
-            TranscriptItem(id: "2", content: .user(text: "", attachments: [])),
-            TranscriptItem(id: "3", content: .assistant("Reply", streaming: false)),
-        ]
-        #expect(sent.last(chat: "c1", transcript: transcript) == "First")
-        #expect(sent.last(chat: "c1", transcript: []) == nil)
+        let history = ChatHistory(events: [
+            Fixture.event(
+                EventType.sessionUserMessage, #"{"text": "First", "attachments": []}"#, id: 1,
+                session: "c1")
+        ])
+        #expect(sent.last(chat: "c1", history: history) == "First")
+        #expect(sent.last(chat: "c1", history: ChatHistory()) == nil)
         sent.record("Second", chat: "c1")
-        #expect(sent.last(chat: "c1", transcript: transcript) == "Second")
-        #expect(sent.last(chat: "c2", transcript: []) == nil)
-    }
-}
-
-@Suite struct ShellCommandTests {
-    @Test func shellBlocksAreCommands() {
-        #expect(ShellCommand.command(language: "bash", code: "npm run dev") == "npm run dev")
-        #expect(ShellCommand.command(language: "ZSH", code: "a\n\nb\n") == "a\nb")
-        #expect(
-            ShellCommand.command(language: "sh", code: "$ make\n$ make test") == "make\nmake test")
-        #expect(ShellCommand.command(language: "shell", code: "  \n") == nil)
-    }
-
-    @Test func anUnmarkedBlockIsOneOnlyAsOneLineStartingWithACommonCommand() {
-        #expect(ShellCommand.command(language: nil, code: "git status") == "git status")
-        #expect(ShellCommand.command(language: nil, code: "$ uv run pytest") == "uv run pytest")
-        #expect(ShellCommand.command(language: nil, code: "./scripts/run.sh") == "./scripts/run.sh")
-        #expect(ShellCommand.command(language: nil, code: "git add\ngit commit") == nil)
-        #expect(ShellCommand.command(language: nil, code: "let x = 1") == nil)
-        #expect(ShellCommand.command(language: "ts", code: "npm test") == nil)
-    }
-
-    @Test func messagesSplitAroundTheirCommands() {
-        let message = """
-            Start it:
-
-            ```bash
-            npm run dev
-            ```
-            Then the code:
-            ```ts
-            const x = 1
-            ```
-            ```
-            git status
-            ```
-            """
-        #expect(
-            ShellCommand.segments(message) == [
-                .markdown("Start it:\n"),
-                .command("npm run dev"),
-                .markdown("Then the code:\n```ts\nconst x = 1\n```"),
-                .command("git status"),
-            ])
-    }
-
-    @Test func plainAndStreamingMessagesStayMarkdown() {
-        #expect(ShellCommand.segments("Just text") == [.markdown("Just text")])
-        // Under a list item it stays in the list, which a split would end.
-        let list = "1. Install:\n\n   ```sh\n   npm i\n   ```\n2. Run"
-        #expect(ShellCommand.segments(list) == [.markdown(list)])
-        #expect(
-            ShellCommand.segments("~~~sh\nnpm i\n```\n~~~") == [.command("npm i\n```")])
-        #expect(ShellCommand.segments("") == [])
-        #expect(
-            ShellCommand.segments("Run:\n```bash\nnpm i") == [.markdown("Run:\n```bash\nnpm i")])
+        #expect(sent.last(chat: "c1", history: history) == "Second")
+        #expect(sent.last(chat: "c2", history: ChatHistory()) == nil)
     }
 }
 

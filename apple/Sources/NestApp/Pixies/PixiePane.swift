@@ -16,13 +16,18 @@ struct PixiePane: View {
                 Group {
                     if let chat = pixie.chatSessionID {
                         // A new chat (after a reset or a fresh run) is a fresh transcript.
-                        TranscriptView(chat: chat).id(chat)
+                        ChatTranscript(chat: chat).id(chat)
                     } else {
                         SayHi(pixie: pixie)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if let chat = pixie.chatSessionID {
+                    if let down = shell.model.local.serverDown[chat] {
+                        ServerDownCard(chat: chat, down: down)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 6)
+                    }
                     PendingReviewBar(chat: chat)
                     LimitPauseBar(chat: chat)
                     AutopilotBar(chat: chat)

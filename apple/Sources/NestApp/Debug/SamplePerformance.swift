@@ -115,8 +115,7 @@
                     PerfSection(
                         id: "mac", title: "Mac app", advanced: true, runner: .mac,
                         metrics: [
-                            metric("layout_ms", "Lay out the biggest chat", nil, nil, .ms, "-"),
-                            metric("scroll_ms", "Scroll it through", nil, nil, .ms, "-"),
+                            metric("layout_ms", "Open the biggest chat", nil, nil, .ms, "-")
                         ]),
                     PerfSection(
                         id: "daemon", title: "Daemon", advanced: true, ranAt: ran,

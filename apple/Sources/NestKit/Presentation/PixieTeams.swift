@@ -122,12 +122,24 @@ public enum PixieMentions {
     /// `@slug`, in the daemon's words; nil when it does not.
     public static func memberCall(in text: String, mentions: [PixieMention]) -> String? {
         let pairs = memberPairs(mentions)
-        for name in MentionHighlights.tokens(in: text).map(\.name) {
+        for name in names(in: text) {
             if let pair = pairs.first(where: { $0.pixie.slug == name }) {
                 return "\(pair.pixie.name) is in @\(pair.team.handle); call the team or a solo copy"
             }
         }
         return nil
+    }
+
+    /// "@name" as a whole token, as the daemon reads mentions: at the start or after
+    /// whitespace, the name running to the first character that is not a word character
+    /// or a hyphen.
+    private static let token = try! NSRegularExpression(pattern: #"(?<!\S)@([\w-]+)"#)
+
+    private static func names(in text: String) -> [String] {
+        let whole = NSRange(text.startIndex..., in: text)
+        return token.matches(in: text, range: whole).map {
+            (text as NSString).substring(with: $0.range(at: 1))
+        }
     }
 
     private static func memberPairs(_ mentions: [PixieMention]) -> [(
@@ -235,103 +247,5 @@ public enum PixieConfirm {
 
     public static func deleteTeam(_ name: String) -> PixieConfirmation {
         PixieConfirmation(title: "Delete \(name)?", message: "Its pixies stay, without a team.")
-    }
-}
-
-/// Agent calls of pixies in a chat's transcript (B40).
-public enum PixieCalls {
-    /// The slugs the transcript shows as pixie calls.
-    public static func slugs(_ pixies: [Pixie]) -> Set<String> {
-        Set(pixies.map(\.slug))
-    }
-
-    /// The pixie an agent call ran, matched by its subagent name.
-    public static func pixie(of call: ToolCall, among pixies: [Pixie]) -> Pixie? {
-        guard let slug = call.subagentType else { return nil }
-        return pixies.first { $0.slug == slug }
-    }
-
-    /// The team whose call this is: in a project chat the main agent calls only a team's
-    /// leader, who calls the members inside its own call (B70). Nil for a pixie that leads
-    /// no team, and in a pixie's own chat, whose calls are its own.
-    public static func team(
-        of slug: String, pixies: [Pixie], teams: [PixieTeam], pixieChat: Bool
-    ) -> TeamCall? {
-        guard !pixieChat, let leader = pixies.first(where: { $0.slug == slug }),
-            let team = teams.first(where: { $0.leaderID == leader.id })
-        else { return nil }
-        let others = pixies.filter { $0.teamID == team.id && $0.id != leader.id }
-        return TeamCall(team: team, members: [leader] + others)
-    }
-}
-
-/// A project chat's call of a team, through its leader (B70): its row shows the team.
-public struct TeamCall: Sendable, Hashable {
-    public let team: PixieTeam
-    /// The leader first, then the other members in pixie order.
-    public let members: [Pixie]
-
-    /// The leader's colour, `#RRGGBB`, as team names are drawn.
-    public var color: String { members[0].color }
-
-    /// "QA working" while the call runs, then the team's name.
-    public func label(running: Bool) -> String {
-        running ? "\(team.name) working" : team.name
-    }
-
-    /// The team's grid of four, every sprite hopping while the call runs.
-    public func icon(working: Bool) -> [TeamIconCell] {
-        TeamIcon.fill(members).enumerated().map {
-            TeamIconCell(pixie: $1, working: working, index: $0)
-        }
-    }
-
-    /// What a click on its mark or name opens: the team's work in the chat, as the chat
-    /// tree's team row opens it, with the members of the chat's entry for the team.
-    public func work(session: String, group: [ChatPixieEntry]) -> WorkTarget {
-        let entry = group.first { $0.kind == .team && $0.teamID == team.id }
-        return .team(
-            session: session, teamID: team.id,
-            members: entry?.members.map(\.pixieID) ?? members.map(\.id))
-    }
-}
-
-/// A pixie or team mention in a sent message, drawn in the pixie's colour.
-public struct MentionHighlight: Sendable, Hashable {
-    /// In UTF-16 units, as text views count.
-    public let range: NSRange
-    /// `#RRGGBB`.
-    public let color: String
-}
-
-public enum MentionHighlights {
-    /// "@name" as a whole token, as the daemon reads mentions: at the start or after
-    /// whitespace, the name running to the first character that is not a word character
-    /// or a hyphen.
-    private static let token = try! NSRegularExpression(pattern: #"(?<!\S)@([\w-]+)"#)
-
-    /// The mentions of current pixies (in their colour) and teams (in their leader's;
-    /// a team with no leader stays plain). Unknown names stay plain, and so do the slugs in
-    /// `plain`: pixies called only through their team (B46).
-    public static func find(
-        in text: String, pixies: [Pixie], teams: [PixieTeam], plain: Set<String> = []
-    ) -> [MentionHighlight] {
-        func color(of name: String) -> String? {
-            if let pixie = pixies.first(where: { $0.slug == name }) {
-                return plain.contains(name) ? nil : pixie.color
-            }
-            return teams.first { $0.handle == name }?.leaderColor(among: pixies)
-        }
-        return tokens(in: text).compactMap { token in
-            color(of: token.name).map { MentionHighlight(range: token.range, color: $0) }
-        }
-    }
-
-    /// Each "@name" token: its whole range and the name.
-    static func tokens(in text: String) -> [(range: NSRange, name: String)] {
-        let whole = NSRange(text.startIndex..., in: text)
-        return token.matches(in: text, range: whole).map { match in
-            (match.range, (text as NSString).substring(with: match.range(at: 1)))
-        }
     }
 }

@@ -9,7 +9,6 @@ import { workRoot } from "../../screens/approvals/hooks.ts";
 import { useStore } from "../../store/context.ts";
 import { outsideEngineName } from "../../store/selectors.ts";
 import { NO_BACKGROUND } from "../../store/state.ts";
-import { buildTranscript } from "../../transcript/build.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
@@ -23,6 +22,7 @@ import { Glyph } from "./glyphs.tsx";
 import { ChatHeaderParts, HeaderFrame, HeaderTitle } from "./PaneHeader.tsx";
 import { RunControlView } from "./RunControl.tsx";
 import { ReadOnlyRows, Transcript } from "./Transcript.tsx";
+import { useClaudeChat } from "./useClaudeChat.ts";
 import { PixieWork, SubagentWork, type WorkOf } from "./WorkViews.tsx";
 
 export interface PaneChrome {
@@ -195,15 +195,9 @@ export function ClaudePane({
   onContinued: (session: string) => void;
 }) {
   const { state, actions } = useStore();
-  const chat = state.claudeChats[id];
-  const [events, setEvents] = useState<Parameters<typeof buildTranscript>[0] | null>(null);
+  const { chat, loaded, items } = useClaudeChat(id);
   const [adopting, setAdopting] = useState(false);
   const { onClose } = chrome;
-  useEffect(() => {
-    void actions.claudeChatEvents(id).then((loaded) => {
-      setEvents(loaded ?? []);
-    });
-  }, [actions, id, chat?.last_activity_at]);
   useEffect(() => {
     if (chat !== undefined) return;
     // Continued in Nest, here or on another device, or gone from its engine.
@@ -212,16 +206,6 @@ export function ClaudePane({
     else onContinued(adopted.id);
   }, [chat, state.sessions, id, onClose, onContinued]);
   const title = chat?.title ?? "Claude Code chat";
-  const items =
-    chat === undefined
-      ? []
-      : buildTranscript(events ?? [], {}, chat.cwd).filter(
-          (item) =>
-            item.kind !== "approval" &&
-            item.kind !== "pixie" &&
-            item.kind !== "card" &&
-            item.kind !== "artifact",
-        );
   const engine = chat === undefined ? "Claude Code" : outsideEngineName(chat);
   return (
     <PaneFrame
@@ -242,13 +226,13 @@ export function ClaudePane({
       <div className="dc-txw">
         <div className="dc-tx from-end">
           <div className="dc-txin">
-            {events === null && (
+            {!loaded && (
               <p className="dc-empty">
                 <Fireflies size={11} />
               </p>
             )}
             <ReadOnlyRows chat={`claude:${id}`} items={items} terminalPane={claudePane(id)} />
-            {events !== null && items.length === 0 && <p className="dc-empty">No messages yet</p>}
+            {loaded && items.length === 0 && <p className="dc-empty">No messages yet</p>}
           </div>
         </div>
       </div>

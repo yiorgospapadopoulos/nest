@@ -936,14 +936,6 @@ public struct APIClient: NestAPI {
         try await call("POST", ["sessions", id, "pixies", "send-away"], body: request)
     }
 
-    public func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork] {
-        try await get("sessions", id, "pixies", pixie, "calls")
-    }
-
-    public func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork {
-        try await get("sessions", id, "agents", toolUseID, "transcript")
-    }
-
     // MARK: Artifacts (B79)
 
     public func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws

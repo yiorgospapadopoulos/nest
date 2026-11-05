@@ -604,3 +604,12 @@ text = "Agents say in a sentence what they are doing as they go, and tool calls 
 where = "Chat"
 added = 2026-11-04
 block = "B120"
+
+[[features]]
+id = "smooth-chats"
+group = "chats"
+name = "Smooth with many chats open"
+text = "Each chat draws only what is on screen, so scrolling stays smooth with four panes streaming and long chats open. Moving a pane or switching views keeps your place."
+where = "Chat"
+added = 2026-11-05
+block = "B124"

@@ -18,7 +18,7 @@ function isAtEnd({ offset, viewport, content }: ScrollMetrics): boolean {
 }
 
 /**
- * Whether the transcript follows new content, as the Mac's ScrollFollow (D099): only the
+ * Whether the transcript follows new content (D099): only the
  * user's own scrolling starts or stops it. Any move up stops it and only a move down into
  * the bottom zone, or Jump to latest, resumes it. Content that grows or a view that
  * resizes (the keyboard) never does.

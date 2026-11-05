@@ -104,16 +104,8 @@ public final class SentMessages {
         last[chat] = text
     }
 
-    /// The message sent from here, or else the newest user message of the transcript.
-    public func last(chat: String, transcript: [TranscriptItem]) -> String? {
-        if let sent = last[chat] {
-            return sent
-        }
-        for item in transcript.reversed() {
-            if case .user(let text, _) = item.content, !text.isEmpty {
-                return text
-            }
-        }
-        return nil
+    /// The message sent from here, or else the newest user message of the chat.
+    public func last(chat: String, history: ChatHistory) -> String? {
+        last[chat] ?? history.lastText
     }
 }

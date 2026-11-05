@@ -200,11 +200,6 @@ public protocol NestAPI: Sendable {
     /// The pixie, or the team with its members, leaves the chat's group and its next call
     /// starts fresh; answers the group.
     func sendAway(_ id: String, _ request: SendAwayRequest) async throws -> [ChatPixieEntry]
-    /// Every call of the pixie in the chat, newest first, with its work.
-    func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork]
-    /// A subagent's own transcript so far, by its Agent call; `notFound` for a call the
-    /// chat did not make.
-    func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork
 
     /// Artifacts newest first, at most 500; the filters combine (B79).
     func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws

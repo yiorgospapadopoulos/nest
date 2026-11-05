@@ -139,8 +139,6 @@ extension EnvironmentValues {
     /// The pane sits under a maximized one: its AppKit content (a web view or terminal)
     /// must hide, since transparency alone neither hides it reliably nor stops its clicks.
     @Entry var paneHidden = false
-    /// Opens the files the messages inside name; nil where they stay text.
-    @Entry var fileOpener: FileOpener?
     /// Another pane has the focus (B93): the pane's fill darkens, its content below the
     /// header fades and its title turns grey.
     @Entry var paneDimmed = false

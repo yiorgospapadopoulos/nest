@@ -698,68 +698,6 @@ import Testing
 
     // MARK: Transcript
 
-    @Test func aSavedArtifactIsACardAndItsCallHides() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        let input = ##"{"title": "Plan", "kind": "markdown", "content": "# A long document"}"##
-        let events = [
-            Fixture.event(
-                EventType.sessionMessage,
-                #"{"blocks": [{"type": "tool_use", "id": "t1", "name": "mcp__nest__create_artifact", "input": \#(input)}]}"#,
-                id: 1),
-            Fixture.event(
-                EventType.sessionArtifact,
-                #"{"artifact_id": "a1", "version": 1, "title": "Plan", "kind": "markdown", "action": "created"}"#,
-                id: 2),
-            Fixture.event(
-                EventType.sessionMessage,
-                #"{"blocks": [{"type": "tool_use", "id": "t2", "name": "mcp__nest__update_artifact", "input": {"artifact_id": "x", "content": "y"}}]}"#,
-                id: 3),
-        ]
-        for event in events {
-            transcript.receive(event)
-        }
-        // While it runs, the call shows, by its title and never its content.
-        #expect(transcript.visibleItems.map(\.id) == ["t1", "e2", "t2"])
-        guard case .tool(let call) = transcript.visibleItems[0].content,
-            case .artifact(let card) = transcript.visibleItems[1].content
-        else {
-            Issue.record("not a call and a card")
-            return
-        }
-        #expect(card.artifactID == "a1")
-        #expect(ToolSummary.kind(of: call.name) == .artifact)
-        #expect(ToolSummary.name(of: call.name) == "Save artifact")
-        #expect(ToolSummary.name(of: ArtifactTools.update) == "Update artifact")
-        #expect(ToolSummary.name(of: "Read") == "Read")
-        #expect(ToolSummary.argument(of: call) == "Plan")
-        #expect(ToolSummary.argument(tool: ArtifactTools.update, input: .object([:])) == "")
-        #expect(ArtifactTools.contains(ArtifactTools.create))
-        #expect(!ArtifactTools.contains("Write"))
-
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionMessage,
-                #"{"blocks": [{"type": "tool_result", "tool_use_id": "t1", "content": "Saved artifact a1 (version 1): Plan."}, {"type": "tool_result", "tool_use_id": "t2", "content": "unknown artifact 'x'", "is_error": true}]}"#,
-                id: 4))
-        // Saved: the card says it. Refused: the call stays to read why.
-        #expect(transcript.visibleItems.map(\.id) == ["e2", "t2"])
-    }
-
-    @Test func artifactCallsReadAsSavesInSummaries() {
-        let input = JSONValue.object(["title": .string("Plan")])
-        let calls = [
-            ToolCall(
-                id: "1", name: ArtifactTools.create, input: input, result: nil, isError: false),
-            ToolCall(
-                id: "2", name: ArtifactTools.update, input: input, result: "ok", isError: false),
-        ]
-        #expect(ToolActivity.summary(calls, running: true) == "Saving 2 artifacts")
-        #expect(ToolActivity.summary(Array(calls.prefix(1)), running: false) == "Saved 1 artifact")
-        let step = CallStep(id: "s", kind: .tool(name: ArtifactTools.create, input: input))
-        #expect(step.line == "Save artifact Plan")
-    }
-
     @Test func thePaletteOffersTheArtifactsView() {
         let app = AppStore(api: api, store: MemoryStore())
         let sessions = SessionsStore(api: api, approvals: ApprovalsStore(api: api))

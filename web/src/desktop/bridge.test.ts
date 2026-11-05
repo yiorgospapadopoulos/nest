@@ -4,7 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import { HttpApi } from "../api/client.ts";
 import { tokenProtocols } from "../api/events.ts";
 import { memoryStorage } from "../test/render.tsx";
-import { browserBridge, platformBridge, ptyId, tauriBridge, TOKEN_KEY } from "./bridge.ts";
+import {
+  browserBridge,
+  paneBridge,
+  platformBridge,
+  ptyId,
+  tauriBridge,
+  TOKEN_KEY,
+  type PaneMessage,
+} from "./bridge.ts";
 
 describe("the API client at another origin", () => {
   it("sends the token as a Bearer header to the daemon's address, without cookies", async () => {
@@ -246,5 +254,41 @@ describe("the Tauri bridge", () => {
     await Promise.resolve();
     emit("nest://browser-closed", "browser-1");
     expect(closed).toEqual(["browser-1"]);
+  });
+});
+
+describe("a transcript pane in the Mac app", () => {
+  const replies = (reply?: unknown) => {
+    const sent: PaneMessage[] = [];
+    const post = (message: PaneMessage) => {
+      sent.push(message);
+      return Promise.resolve(reply);
+    };
+    return { sent, post };
+  };
+
+  it("asks the app for the daemon, so nothing in the page holds the token before it", async () => {
+    const { sent, post } = replies({ base: "http://127.0.0.1:8765/", token: "secret" });
+    const found = await paneBridge(post).daemon();
+    expect(found).toEqual({ base: "http://127.0.0.1:8765", token: "secret" });
+    expect(sent).toEqual([{ kind: "daemon" }]);
+  });
+
+  it("is used in a production build only where the app's handler exists", async () => {
+    const build = { dev: false, mode: "production" };
+    await expect(platformBridge(build).daemon()).rejects.toThrow("runs inside");
+    const postMessage = vi.fn(() => Promise.resolve({ base: "http://127.0.0.1:1", token: "t" }));
+    window.webkit = { messageHandlers: { nestPane: { postMessage } } };
+    try {
+      await expect(platformBridge(build).daemon()).resolves.toMatchObject({ token: "t" });
+    } finally {
+      delete window.webkit;
+    }
+  });
+
+  it("names a file by its path alone: the app holds the chat's folder", async () => {
+    const { sent, post } = replies();
+    await paneBridge(post).openTextFile("Sources/App.swift", "/tmp/somewhere-else");
+    expect(sent).toEqual([{ kind: "openFile", path: "Sources/App.swift" }]);
   });
 });

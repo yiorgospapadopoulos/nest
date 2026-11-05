@@ -63,7 +63,7 @@ public enum DictationVocabulary {
 
     /// Terms for one chat, most specific first, without duplicates.
     public static func terms(
-        repo: String?, branch: String?, items: [TranscriptItem], limit: Int = Self.limit
+        repo: String?, branch: String?, files: [String], limit: Int = Self.limit
     ) -> [String] {
         var terms: [String] = []
         if let repo {
@@ -72,7 +72,7 @@ public enum DictationVocabulary {
         if let branch {
             terms += [branch] + words(of: (branch as NSString).lastPathComponent)
         }
-        terms += recentFiles(in: items)
+        terms += recentFiles(files)
         terms += common
         var seen = Set<String>()
         let unique = terms.filter { seen.insert($0.lowercased()).inserted }
@@ -80,23 +80,8 @@ public enum DictationVocabulary {
     }
 
     /// File names (and their stems) mentioned in the transcript, newest first.
-    static func recentFiles(in items: [TranscriptItem]) -> [String] {
-        var names: [String] = []
-        for item in items.reversed() {
-            switch item.content {
-            case .tool(let call):
-                for key in ["file_path", "path", "notebook_path"] {
-                    if let path = call.input[key]?.stringValue {
-                        names.append((path as NSString).lastPathComponent)
-                    }
-                }
-            case .user(let text, _), .assistant(let text, _):
-                names += fileNames(in: text)
-            default:
-                break
-            }
-        }
-        return names.filter { !$0.isEmpty }.flatMap { name in
+    static func recentFiles(_ names: [String]) -> [String] {
+        names.flatMap { name in
             let stem = (name as NSString).deletingPathExtension
             return stem.isEmpty || stem == name ? [name] : [name, stem]
         }

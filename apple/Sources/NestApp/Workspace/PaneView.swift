@@ -18,10 +18,15 @@ struct PaneView: View {
                 } else {
                     // An inset rather than a row: the transcript keeps its size, and the open
                     // lists cover it instead of pushing it.
-                    TranscriptView(chat: chat)
+                    ChatTranscript(chat: chat)
                         .safeAreaInset(edge: .bottom, spacing: 0) {
                             if !shell.isClaudeChatPane(chat) {
                                 VStack(spacing: 0) {
+                                    if let down = shell.model.local.serverDown[chat] {
+                                        ServerDownCard(chat: chat, down: down)
+                                            .padding(.horizontal, 12)
+                                            .padding(.bottom, 6)
+                                    }
                                     BackgroundBar(chat: chat)
                                     PendingReviewBar(chat: chat)
                                     LimitPauseBar(chat: chat)

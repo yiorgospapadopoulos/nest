@@ -1,4 +1,4 @@
-// A chat's transcript, as the Mac's TranscriptView: following new content while at the
+// A chat's transcript: following new content while at the
 // bottom, Jump to latest once the reader scrolled up, a search hit scrolled to and glowing,
 // and a long chat drawing only the rows near the screen (B117). Rows that open keep their
 // open state outside the rows, so scrolling them away and back keeps them as left.
@@ -33,7 +33,7 @@ import { groupRow, hoverTurn, setOpen, turnEnds, useOpen } from "./expanded.ts";
 import { Disclosure, Glyph } from "./glyphs.tsx";
 import { RewindSheet } from "./RewindSheet.tsx";
 import { BashRow, TranscriptRow } from "./Rows.tsx";
-import { RowsContext, type ChatRows } from "./rowsContext.ts";
+import { RowsContext, type ChatRows, type RowsHost } from "./rowsContext.ts";
 import { usePrefill } from "./usePrefill.tsx";
 import { VirtualList } from "./VirtualList.tsx";
 import { ChangeModelMenu } from "./Composer.tsx";
@@ -49,6 +49,8 @@ export interface TranscriptNav {
   openTeamWork: ((team: string) => void) | null;
   openPixieWork: ((pixie: string) => void) | null;
   openChat: (id: string) => void;
+  // The Mac app around a pane takes what rows leave to it.
+  host?: RowsHost;
 }
 
 interface Props {
@@ -63,6 +65,8 @@ interface Props {
   nav: TranscriptNav;
   // Bars over the transcript's bottom edge, which the list scrolls under.
   bottom?: ReactNode;
+  // `!` commands kept outside the store, by the Mac app around a pane.
+  bash?: BashRun[];
 }
 
 /** Centres a search hit and lets it glow until its animation ends. */
@@ -89,6 +93,7 @@ export function Transcript({
   dimmed,
   nav,
   bottom,
+  bash,
 }: Props) {
   const { state, actions } = useStore();
   const id = session.id;
@@ -96,7 +101,7 @@ export function Transcript({
   const live = state.live[id] ?? "";
   const thought = state.thoughts[id] ?? "";
   const agentLive = state.agentLive[id] ?? NO_STREAMS;
-  const runs = state.bash[id] ?? NO_RUNS;
+  const runs = bash ?? state.bash[id] ?? NO_RUNS;
   const stopper = useStopTask(id);
   const runningKey = background.items
     .filter((i) => i.status === "running")
@@ -171,6 +176,11 @@ export function Transcript({
     if (item?.kind === "tools") setOpen(id, groupRow(item.key), true);
   }, [focus, items, id]);
 
+  // Asked again later, the same event scrolls and glows again.
+  useLayoutEffect(() => {
+    if (focus === null) focused.current = null;
+  }, [focus]);
+
   useLayoutEffect(() => {
     const el = box.current;
     if (virtual || focus === null || focused.current === focus || el === null) return;
@@ -219,6 +229,21 @@ export function Transcript({
     if (forked !== null) nav.openChat(forked.session.id);
   };
 
+  const { host } = nav;
+  const local = {
+    edit: (event: number) => () => void edit(event),
+    rewind: (event: number) => () => {
+      setRewinding({ event, purpose: "rewind" });
+    },
+    fork: (event: number) => () => void fork(event),
+  };
+  const act = (action: "edit" | "rewind" | "fork", event: number) =>
+    host === undefined
+      ? local[action](event)
+      : () => {
+          host.messageAction(action, event);
+        };
+
   const rows: ChatRows = {
     chat: id,
     session,
@@ -232,16 +257,13 @@ export function Transcript({
     messageActions:
       atRest && (canRewind || canFork)
         ? (event) => ({
-            edit: canRewind ? () => void edit(event) : null,
-            rewind: canRewind
-              ? () => {
-                  setRewinding({ event, purpose: "rewind" });
-                }
-              : null,
-            fork: canFork ? () => void fork(event) : null,
+            edit: canRewind ? act("edit", event) : null,
+            rewind: canRewind ? act("rewind", event) : null,
+            fork: canFork ? act("fork", event) : null,
           })
         : null,
     terminalPane: id,
+    host: host ?? null,
   };
 
   const jump = () => {
@@ -451,10 +473,12 @@ export function ReadOnlyRows({
   chat,
   items,
   terminalPane = null,
+  host = null,
 }: {
   chat: string;
   items: TranscriptItem[];
   terminalPane?: string | null;
+  host?: RowsHost | null;
 }) {
   const rows = useMemo<ChatRows>(
     () => ({
@@ -469,8 +493,9 @@ export function ReadOnlyRows({
       openChat: () => undefined,
       messageActions: null,
       terminalPane,
+      host,
     }),
-    [chat, terminalPane],
+    [chat, terminalPane, host],
   );
   return (
     <RowsContext value={rows}>

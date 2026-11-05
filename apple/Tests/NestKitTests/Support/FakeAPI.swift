@@ -80,10 +80,6 @@ final class FakeAPI: NestAPI {
         var pixieGroups: [String: [ChatPixieEntry]] = [:]
         /// What Send away answers.
         var sendAwayAnswer: [ChatPixieEntry] = []
-        /// Subagents' transcripts by "<session>/<tool use id>"; others are not found.
-        var transcripts: [String: AgentWork] = [:]
-        /// A pixie's calls in a chat by "<session>/<pixie id>".
-        var pixieCallWork: [String: [PixieCallWork]] = [:]
         /// What each project's chats are working towards, by repo name (B47).
         var goals: [String: [SessionGoals]] = [:]
         // Settings (B81)
@@ -1020,18 +1016,6 @@ final class FakeAPI: NestAPI {
     func sendAway(_ id: String, _ request: SendAwayRequest) async throws -> [ChatPixieEntry] {
         let named = request.teamID.map { "team=\($0)" } ?? "pixie=\(request.pixieID ?? "")"
         return try call("sendAway", "\(id) \(named)") { $0.sendAwayAnswer }
-    }
-
-    func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork] {
-        try call("pixieCallWork", "\(id) \(pixie)") { $0.pixieCallWork["\(id)/\(pixie)"] ?? [] }
-    }
-
-    func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork {
-        let work = try call("agentTranscript", "\(id) \(toolUseID)") {
-            $0.transcripts["\(id)/\(toolUseID)"]
-        }
-        guard let work else { throw APIError.notFound("not found") }
-        return work
     }
 
     func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws

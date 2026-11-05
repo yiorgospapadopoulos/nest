@@ -236,3 +236,21 @@ private struct HunkText: View {
         }
     }
 }
+
+/// "+48 -19 3 files"
+struct DiffStat: View {
+    let additions: Int
+    let deletions: Int
+    let files: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("+\(additions)").foregroundStyle(StatusTone.review.color)
+            Text("-\(deletions)").foregroundStyle(StatusTone.failed.color)
+            Text(files == 1 ? "1 file" : "\(files) files")
+                .foregroundStyle(Palette.t3)
+        }
+        .font(.ui(TypeSize.meta))
+        .monospacedDigit()
+    }
+}

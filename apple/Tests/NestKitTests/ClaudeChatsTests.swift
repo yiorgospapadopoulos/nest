@@ -374,38 +374,6 @@ import Testing
 @MainActor
 @Suite struct ClaudeChatTranscriptTests {
     let api = FakeAPI()
-
-    @Test func aClaudeChatPaneReadsItsHistoryWholeEachTime() async throws {
-        let id = Fixture.claudeChats[0].id
-        api.set { $0.claudeChatEvents[id] = Fixture.claudeChatEvents }
-        let transcripts = Transcripts(api: api)
-        let pane = Fixture.claudeChats[0].paneID
-        #expect(transcripts.existing(pane) == nil)
-
-        let transcript = transcripts.transcript(for: pane)
-        #expect(transcripts.existing(pane) === transcript)
-        #expect(transcript.sessionID == id)
-        #expect(transcript.source == .claudeChat)
-        try await transcript.load()
-        #expect(transcript.items.count == 3)
-
-        try await transcript.load()
-
-        #expect(transcript.items.count == 3)
-        #expect(api.calls == ["claudeChatEvents \(id)", "claudeChatEvents \(id)"])
-        guard case .user(let text, _) = transcript.items[0].content else {
-            Issue.record("expected the user's message first")
-            return
-        }
-        #expect(text == "The hero image is cut off on phones")
-    }
-
-    @Test func sessionPanesKeepReadingSessionEvents() async throws {
-        let transcript = Transcripts(api: api).transcript(for: "s1")
-        #expect(transcript.source == .session)
-        try await transcript.load()
-        #expect(api.calls == ["sessionEvents s1 after=0"])
-    }
 }
 
 @MainActor

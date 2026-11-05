@@ -1,3 +1,4 @@
+import NestKit
 import SwiftUI
 
 /// A soft highlight sweeping across content while something runs; with Reduce Motion the
@@ -15,20 +16,12 @@ private struct Shimmer: ViewModifier {
             content.foregroundStyle(Palette.t1)
         } else {
             content.overlay {
-                TimelineView(.animation(minimumInterval: 1 / 30)) { context in
-                    let time = context.date.timeIntervalSinceReferenceDate
-                    // Sweeps from before the leading edge to past the trailing one.
-                    let phase = (time.truncatingRemainder(dividingBy: Self.period)) / Self.period
-                    let center = -0.4 + phase * 1.8
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: Palette.t1, location: 0.5),
-                            .init(color: .clear, location: 1),
-                        ],
-                        startPoint: UnitPoint(x: center - 0.35, y: 0.5),
-                        endPoint: UnitPoint(x: center + 0.35, y: 0.5))
-                }
+                // Sweeps from before the leading edge to past the trailing one.
+                LightSweep(
+                    color: Palette.t1,
+                    sweep: Sweep(
+                        from: -0.4, to: 1.4, halfWidth: 0.35, period: Self.period, eases: false)
+                )
                 .mask(content)
                 .allowsHitTesting(false)
             }

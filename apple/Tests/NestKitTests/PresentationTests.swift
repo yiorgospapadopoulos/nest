@@ -438,12 +438,6 @@ import Testing
 }
 
 @Suite struct ToolSummaryTests {
-    private func call(_ name: String, _ input: [String: JSONValue], result: String? = nil)
-        -> ToolCall
-    {
-        ToolCall(id: "t", name: name, input: .object(input), result: result, isError: false)
-    }
-
     @Test func kindsFollowTheToolName() {
         #expect(ToolSummary.kind(of: "Read") == .read)
         #expect(ToolSummary.kind(of: "Edit") == .edit)
@@ -459,55 +453,5 @@ import Testing
         #expect(ToolSummary.kind(of: "WebSearch") == .web)
         #expect(ToolSummary.kind(of: "TaskCreate") == .other)
         #expect(ToolSummary.kind(of: "mcp__x__y") == .other)
-    }
-
-    @Test func argumentsPickTheTellingField() {
-        #expect(
-            ToolSummary.argument(of: call("Bash", ["command": .string("npm test")])) == "npm test")
-        #expect(
-            ToolSummary.argument(
-                of: call("Read", ["file_path": .string("/repo/a.ts"), "limit": .number(4)]))
-                == "/repo/a.ts")
-        #expect(
-            ToolSummary.argument(
-                of: call("Grep", ["pattern": .string("doi"), "path": .string("refs.bib")]))
-                == "\"doi\" refs.bib")
-        #expect(ToolSummary.argument(of: call("Grep", ["pattern": .string("doi")])) == "\"doi\"")
-        #expect(
-            ToolSummary.argument(
-                of: call(
-                    "Task",
-                    ["subagent_type": .string("Explore"), "description": .string("Find DOIs")]))
-                == "Explore: Find DOIs")
-        #expect(
-            ToolSummary.argument(of: call("Task", ["description": .string("Find DOIs")]))
-                == "Find DOIs")
-        #expect(
-            ToolSummary.argument(of: call("WebFetch", ["url": .string("https://a.b")]))
-                == "https://a.b")
-        #expect(ToolSummary.argument(of: call("Other", ["count": .number(2)])) == "")
-        let notObject = ToolCall(id: "t", name: "Bash", input: .null, result: nil, isError: false)
-        #expect(ToolSummary.argument(of: notObject) == "")
-    }
-
-    @Test func resultsSummarizeToAShortNote() {
-        // Without a result a call runs, until its turn ends without one.
-        var open = call("Bash", [:])
-        #expect(ToolSummary.result(of: open) == "running")
-        open.stopped = true
-        #expect(ToolSummary.result(of: open) == "stopped")
-        var failed = call("Bash", [:], result: "exit 1")
-        failed.isError = true
-        #expect(ToolSummary.result(of: failed) == "failed")
-        #expect(ToolSummary.result(of: call("Read", [:], result: "a\nb\nc")) == "3 lines")
-        #expect(ToolSummary.result(of: call("Read", [:], result: "a")) == "1 line")
-        #expect(ToolSummary.result(of: call("Edit", [:], result: "The file was updated")) == "done")
-        #expect(
-            ToolSummary.result(of: call("Bash", [:], result: "\n  5 passed  \nmore")) == "5 passed")
-        #expect(ToolSummary.result(of: call("Bash", [:], result: " \n")) == "done")
-        let long = String(repeating: "x", count: 60)
-        #expect(
-            ToolSummary.result(of: call("Bash", [:], result: long)) == String(long.prefix(39)) + "…"
-        )
     }
 }

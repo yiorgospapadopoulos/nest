@@ -610,39 +610,6 @@ import Testing
                 ReviewFeedbackBubble.Item(location: "file.py:3", text: "open"),
             ])
     }
-
-    @MainActor @Test func theTranscriptShowsGitHubMessagesAsTheirBubbles() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: FakeAPI())
-        try await transcript.load()
-        let issuePayload = Fixture.json(
-            IssueEventPayload(
-                text: Self.issueText,
-                issue: IssueMessageInfo(
-                    number: 118, title: "T", url: "u", labels: [], comments: 1)))
-        transcript.receive(userEvent(issuePayload, id: 1))
-        let reviewPayload = Fixture.json(
-            ReviewEventPayload(
-                text: Self.reviewText, reviewFeedback: ReviewFeedbackInfo(number: 131, count: 2)))
-        transcript.receive(userEvent(reviewPayload, id: 2))
-        // The review comments approval shows below the transcript, not as an item.
-        transcript.receive(
-            Fixture.event(
-                EventType.approvalCreated,
-                #"{"approval": \#(Fixture.json(Self.reviewApproval))}"#, id: 3))
-
-        let items = transcript.items
-        #expect(items.count == 2)
-        #expect(items[0].content == .user(text: "Look at the weekly window too.", attachments: []))
-        guard case .issue(let bubble) = items[0].github else {
-            throw Unexpected("not an issue")
-        }
-        #expect(bubble.title == "T")
-        #expect(items[1].content == .user(text: "", attachments: []))
-        guard case .reviewFeedback(let feedback) = items[1].github else {
-            throw Unexpected("not review feedback")
-        }
-        #expect(feedback.items.count == 2)
-    }
 }
 
 /// A timer the test advances by hand: each tick ends one wait, or the next one.

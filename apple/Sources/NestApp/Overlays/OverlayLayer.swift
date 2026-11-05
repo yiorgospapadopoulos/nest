@@ -50,8 +50,8 @@ struct OverlayLayer: View {
             HabitRunSheet(session: session).padding(.top, 60)
         case .image(let id):
             ImageSheet(attachment: id).padding(.vertical, 40).padding(.horizontal, 48)
-        case .work:
-            WorkSheet().padding(.vertical, 40)
+        case .work(let target):
+            WorkSheet(target: target).padding(.vertical, 40)
         case .usage:
             EmptyView()
         }
@@ -108,23 +108,6 @@ struct SheetFrame<Content: View>: View {
         .frame(maxHeight: maxHeight)
         .fixedSize(horizontal: false, vertical: true)
         .sheetSurface()
-    }
-}
-
-/// A small grey section label of a sheet, over its rows.
-struct SheetSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .padding(.top, 14)
-                .padding(.bottom, 2)
-            content()
-        }
     }
 }
 

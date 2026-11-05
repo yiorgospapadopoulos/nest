@@ -32,11 +32,8 @@ enum TextStyling {
     private static let listIndent: CGFloat = 16
 
     /// An assistant message: headings, paragraphs, lists, quotes, tables and code blocks in
-    /// one text. With `fileLinks`, what names a file reads as a link and carries
-    /// `fileReference`; where nothing could open it, such as a remote daemon, it stays text.
-    static func message(_ paragraphs: [RichParagraph], fileLinks: Bool = false)
-        -> NSAttributedString
-    {
+    /// one text.
+    static func message(_ paragraphs: [RichParagraph]) -> NSAttributedString {
         let result = NSMutableAttributedString()
         var previous: RichParagraph?
         var quote: (start: Int, leading: CGFloat)?
@@ -76,9 +73,9 @@ enum TextStyling {
                 addTable(
                     table, leading: blockIndent(paragraph) + (paragraph.quoted ? codeInset : 0),
                     trailing: paragraph.quoted ? codeInset : 0,
-                    isLast: index == paragraphs.count - 1, fileLinks: fileLinks, to: result)
+                    isLast: index == paragraphs.count - 1, to: result)
             } else {
-                addText(paragraph, spacingBefore: gap, fileLinks: fileLinks, to: result)
+                addText(paragraph, spacingBefore: gap, to: result)
             }
             previous = paragraph
         }
@@ -89,7 +86,7 @@ enum TextStyling {
     }
 
     private static func addText(
-        _ paragraph: RichParagraph, spacingBefore gap: CGFloat, fileLinks: Bool,
+        _ paragraph: RichParagraph, spacingBefore gap: CGFloat,
         to result: NSMutableAttributedString
     ) {
         let start = result.length
@@ -108,8 +105,7 @@ enum TextStyling {
         for run in paragraph.runs {
             result.append(
                 styled(
-                    run, base: base, inCodeBlock: paragraph.role.isCode, color: color,
-                    fileLinks: fileLinks))
+                    run, base: base, inCodeBlock: paragraph.role.isCode, color: color))
         }
         if case .code(let language) = paragraph.role {
             addCodeColors(paragraph, language: language, from: textStart, in: result)
@@ -269,7 +265,7 @@ enum TextStyling {
     /// A table as an `NSTextTable`: each cell a paragraph, wrapping to its share of the width,
     /// with its line break copied as a tab or, at a row's end, a line break.
     private static func addTable(
-        _ table: RichTable, leading: CGFloat, trailing: CGFloat, isLast: Bool, fileLinks: Bool,
+        _ table: RichTable, leading: CGFloat, trailing: CGFloat, isLast: Bool,
         to result: NSMutableAttributedString
     ) {
         let frame = MessageTable(
@@ -289,8 +285,7 @@ enum TextStyling {
                 for run in cell {
                     result.append(
                         styled(
-                            run, base: font, inCodeBlock: false, color: primary,
-                            fileLinks: fileLinks))
+                            run, base: font, inCodeBlock: false, color: primary))
                 }
                 let endsRow = column == row.count - 1
                 var breakAttributes: [NSAttributedString.Key: Any] = [.font: font]
@@ -374,7 +369,7 @@ enum TextStyling {
     // MARK: Runs
 
     private static func styled(
-        _ run: TextRun, base: NSFont, inCodeBlock: Bool, color: NSColor, fileLinks: Bool
+        _ run: TextRun, base: NSFont, inCodeBlock: Bool, color: NSColor
     ) -> NSAttributedString {
         var font = base
         var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color]
@@ -397,12 +392,6 @@ enum TextStyling {
         }
         if let link = run.link {
             attributes[.link] = link
-        }
-        if fileLinks, let file = run.file {
-            // Not `.link`, which AppKit opens by itself: `MessageTextView` takes the click.
-            attributes[.fileReference] = file
-            attributes[.foregroundColor] = NSColor(Mac.link)
-            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
         }
         return NSAttributedString(string: run.text, attributes: attributes)
     }

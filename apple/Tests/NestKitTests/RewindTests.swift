@@ -204,15 +204,4 @@ import Testing
         chat.pixieID = "p1"
         #expect(!RewindFlow.isAvailable(for: chat))
     }
-
-    @Test func theRestoreNoticeShowsInTheTranscript() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionNotice,
-                #"{"kind": "files_restored", "text": "Files restored to before a message"}"#,
-                id: 7))
-        #expect(transcript.items.map(\.content) == [.notice("Files restored to before a message")])
-    }
 }

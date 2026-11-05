@@ -281,7 +281,6 @@ async def test_a_client_result_is_a_finished_run_of_its_section(
     assert (layout.change.text, layout.change.tone) == ("▼ 25%", "better")
     assert [m.id for m in mac.metrics] == [
         "layout_ms",
-        "scroll_ms",
         "memory_before",
         "memory_after",
     ]

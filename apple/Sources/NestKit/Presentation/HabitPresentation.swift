@@ -354,33 +354,3 @@ public enum ReportText {
         return name.map { "From habit \($0)" } ?? "From a habit"
     }
 }
-
-/// The row for the message that starts a pixie's turn after a habit reported.
-public enum HabitReportNote {
-    public static let title = "Habit report"
-    static let prefix = "Report from habit "
-
-    /// The message's first line, "Morning check (action): CI is red", without the words
-    /// the row's title says; the report card above shows the details.
-    public static func text(_ message: String) -> String {
-        let line = String(message.prefix { $0 != "\n" })
-        return line.hasPrefix(prefix) ? String(line.dropFirst(prefix.count)) : line
-    }
-}
-
-public enum PixieCards {
-    /// The choices cards with a user message after them: their buttons are spent.
-    public static func answered(_ items: [TranscriptItem]) -> Set<String> {
-        var later = false
-        var answered: Set<String> = []
-        for item in items.reversed() {
-            switch item.content {
-            case .user: later = true
-            case .pixieCard(let card) where card.kind == .choices && later:
-                answered.insert(item.id)
-            default: break
-            }
-        }
-        return answered
-    }
-}

@@ -206,21 +206,45 @@ private struct StopRunButton: View {
 
 /// A small turning ring; still when motion is reduced.
 private struct RunSpinner: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var turning = false
+    @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.75)
-            .stroke(Palette.t3, lineWidth: 1.5)
-            .frame(width: 9, height: 9)
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .animation(
-                reduceMotion ? nil : .linear(duration: 0.9).repeatForever(autoreverses: false),
-                value: turning
-            )
-            .onAppear { turning = true }
-            .accessibilityHidden(true)
+        Group {
+            if reduceMotion {
+                Circle()
+                    .trim(from: 0, to: 0.75)
+                    .stroke(Palette.t3, lineWidth: 1.5)
+                    .frame(width: 9, height: 9)
+            } else {
+                // Wider than the ring by its stroke, half of which falls outside it.
+                ColoredLayerMark<RunSpinnerRing>(color: Palette.t3)
+                    .frame(width: RunSpinnerRing.side, height: RunSpinnerRing.side)
+                    .frame(width: 9, height: 9)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private final class RunSpinnerRing: ColoredMotionView {
+    static let side = 12.0
+
+    override func startMotion(in layer: CALayer) {
+        guard let color else { return }
+        let ring = CAShapeLayer()
+        ring.bounds = CGRect(x: 0, y: 0, width: 9, height: 9)
+        ring.position = CGPoint(x: Self.side / 2, y: Self.side / 2)
+        ring.path = CGPath(ellipseIn: ring.bounds, transform: nil)
+        ring.fillColor = nil
+        ring.strokeColor = color.cgColor
+        ring.lineWidth = 1.5
+        ring.strokeEnd = 0.75
+        ring.contentsScale = backingScale
+        layer.sublayers = [ring]
+        let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+        turn.fromValue = 0
+        turn.toValue = 2 * Double.pi
+        LayerLoop.run(turn, period: 0.9, on: ring)
     }
 }
 

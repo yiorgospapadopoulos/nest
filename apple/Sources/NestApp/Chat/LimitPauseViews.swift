@@ -50,39 +50,3 @@ struct LimitPauseBar: View {
         }
     }
 }
-
-/// Nest's continue message after the usage limit reset, as Nest's line rather than the
-/// user's bubble.
-struct LimitResumeRow: View {
-    let text: String
-
-    var body: some View {
-        NestLineRow(
-            icon: "play.circle", title: LimitResumeNote.title, text: LimitResumeNote.text(text))
-    }
-}
-
-/// A message Nest sent, as a quiet line of its own.
-struct NestLineRow: View {
-    let icon: String
-    let title: String
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: icon).font(.system(size: 10))
-            Text(title).font(.ui(TypeSize.meta, .medium))
-            Text(text)
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .lineLimit(2)
-                .textSelection(.enabled)
-        }
-        .foregroundStyle(Palette.t2)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .softFill()
-        .accessibilityElement(children: .combine)
-    }
-}

@@ -16,7 +16,7 @@ import { useRows } from "./rowsContext.ts";
 export function ArtifactCard({ item, ev }: { item: ArtifactItem; ev: string }) {
   const { state, actions } = useStore();
   const shell = use(ShellContext);
-  const { chat } = useRows();
+  const { chat, host } = useRows();
   const { artifactId: id } = item;
   const gone = state.artifactsGone[id] === true;
   const known = id in state.artifacts;
@@ -43,11 +43,13 @@ export function ArtifactCard({ item, ev }: { item: ArtifactItem; ev: string }) {
         </span>
       </div>
       <Button
-        disabled={gone || shell === null}
+        disabled={gone || (shell === null && host === null)}
         title={gone ? "This artifact was deleted" : `Open ${item.title} in Artifacts`}
         // That version in the Artifacts view, this chat focused, as the Mac's openArtifact.
         onClick={() => {
-          if (shell !== null) openArtifact(shell, id, item.version, chat === "" ? undefined : chat);
+          if (host !== null) host.openArtifact(id, item.version);
+          else if (shell !== null)
+            openArtifact(shell, id, item.version, chat === "" ? undefined : chat);
         }}
       >
         Open

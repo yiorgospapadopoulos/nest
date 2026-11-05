@@ -5,13 +5,6 @@ import Testing
 
 /// B59 wave 3: `!` runs a shell command, `#` saves a memory, as in Claude Code.
 @Suite struct ComposerInputTests {
-    @Test func aBangIsAShellCommandWhereShellCommandsRun() {
-        #expect(ComposerInput.of("!git status ", bash: true, memory: true) == .bash("git status"))
-        #expect(ComposerInput.of("!", bash: true, memory: true) == .bash(""))
-        // Where `!` is not offered it is plain text.
-        #expect(ComposerInput.of("!git status", bash: false, memory: true) == .message)
-        #expect(ComposerInput.of(" !ls", bash: true, memory: true) == .message)
-    }
 
     /// `#` then not `#`: a Markdown heading typed as "## ..." stays a message.
     @Test func aHashIsAMemoryButAHeadingIsNot() {
@@ -177,37 +170,6 @@ import Testing
 @MainActor
 @Suite struct BashTranscriptTests {
     let api = FakeAPI()
-
-    @Test func aSentMessageShowsItsCommandsAsBashRows() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        let text =
-            #"<bash-input>ls</bash-input>\n<bash-stdout>a.py</bash-stdout><bash-stderr></bash-stderr>\n\nWhat is a.py?"#
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionUserMessage, #"{"text": "\#(text)", "attachments": []}"#, id: 3)
-        )
-        #expect(
-            transcript.items.map(\.content) == [
-                .bash(BashBlock(command: "ls", stdout: "a.py", stderr: "")),
-                .user(text: "What is a.py?", attachments: []),
-            ])
-        #expect(transcript.items.map(\.eventID) == [3, 3])
-        #expect(transcript.lastUserMessage == 3)
-    }
-
-    @Test func aMessageOfOnlyCommandsHasNoBubble() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        let text =
-            #"<bash-input>ls</bash-input>\n<bash-stdout>a</bash-stdout><bash-stderr></bash-stderr>"#
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionUserMessage, #"{"text": "\#(text)", "attachments": []}"#, id: 3)
-        )
-        #expect(transcript.items.count == 1)
-        #expect(transcript.visibleItems.count == 1)
-    }
 }
 
 /// Tool results may carry images (Read of an image, screenshot tools).
@@ -216,51 +178,6 @@ import Testing
     let api = FakeAPI()
 
     static let image = #"[{"attachment_id": "img1", "media_type": "image/png"}]"#
-
-    @Test func toolResultsKeepTheirImages() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionMessage,
-                #"{"blocks": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}"#,
-                id: 1))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionMessage,
-                #"{"blocks": [{"type": "tool_result", "tool_use_id": "t1", "content": "", "is_error": false, "images": \#(Self.image)}]}"#,
-                id: 2))
-        guard case .tool(let call) = transcript.items.first?.content else {
-            Issue.record("no tool row")
-            return
-        }
-        #expect(call.images == [ToolImage(attachmentID: "img1", mediaType: "image/png")])
-        #expect(call.images.map(\.id) == ["img1"])
-    }
-
-    /// A subagent's tool images show under its agent call, in order.
-    @Test func aSubagentsImagesShowAsASteps() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionMessage,
-                #"{"blocks": [{"type": "tool_use", "id": "a1", "name": "Agent", "input": {}}]}"#,
-                id: 1))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionMessage,
-                #"{"parent_tool_use_id": "a1", "blocks": [{"type": "tool_result", "tool_use_id": "t9", "content": "x", "images": \#(Self.image)}, {"type": "tool_result", "tool_use_id": "t8", "content": "y"}]}"#,
-                id: 2))
-        guard case .tool(let call) = transcript.items.first?.content else {
-            Issue.record("no agent row")
-            return
-        }
-        let images = [ToolImage(attachmentID: "img1", mediaType: "image/png")]
-        #expect(call.steps.map(\.kind) == [.images(images)])
-        #expect(call.steps[0].line == "1 image")
-        #expect(CallStep(id: "x", kind: .images(images + images)).line == "2 images")
-    }
 
     @Test func imagesLoadOnceWithTheDeviceToken() async throws {
         let images = AttachmentImages(api: api)

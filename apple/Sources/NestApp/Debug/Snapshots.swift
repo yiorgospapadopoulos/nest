@@ -82,7 +82,6 @@
             model.app.openProject("map-viewer")
             model.app.selectProject("todo-ui")
             for id in ["c1", "c2", "c3", "c4"] {
-                try await model.transcripts.transcript(for: id).load()
                 try await model.activity.load(session: id)
             }
             let shell = Shell(model: model, userName: "Sam Rivera")
@@ -170,7 +169,6 @@
                 return
             }
             if only == "b120" {
-                try await renderAutopilot(model, shell, controller, folder)
                 return
             }
             if only == "b79" {
@@ -301,42 +299,6 @@
             try await snap(controller, "rails-light", .aqua, folder)
             try await snap(controller, "rails-dark", .darkAqua, folder)
 
-            // Selectable transcript text: a selection across paragraphs, open tool output
-            // and the Copy buttons that otherwise show on hover.
-            model.app.update("todo-ui") { state in
-                state.leftCollapsed = false
-                state.rightCollapsed = false
-                state.layout = WorkspaceLayout()
-                state.openChat("c2", in: workspace)
-            }
-            shell.expandedItems = ["t5"]
-            for appearance in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                try await snap(
-                    controller, "transcript-selection-\(appearance.0)", appearance.1, folder,
-                    revealsHoverControls: true
-                ) { host in
-                    selectAcrossParagraphs(in: host, from: "DOIs link", to: "doi: string")
-                }
-            }
-            shell.expandedItems = []
-
-            // Scrolled up while a message arrives: the view holds still and offers Jump to
-            // latest.
-            let c2 = model.transcripts.transcript(for: "c2")
-            c2.receive(
-                sampleMessage(
-                    10_000,
-                    (1...12).map { "Paragraph \($0) of a long answer that runs past the pane." }
-                        .joined(separator: "\n\n")))
-            shell.expandedItems = ["t4", "t5"]
-            try await snap(controller, "transcript-jump-light", .aqua, folder) { host in
-                await scrollUpThenReceive(in: host, transcript: c2)
-            }
-            try await snap(controller, "transcript-jump-dark", .darkAqua, folder) { host in
-                await scrollUpThenReceive(in: host, transcript: c2)
-            }
-            shell.expandedItems = []
-
             model.app.update("todo-ui") { state in
                 state.leftCollapsed = false
                 state.rightCollapsed = false
@@ -436,7 +398,6 @@
                     "id": id, "type": type, "ts": SampleData.iso(at), "session_id": "c3",
                     "payload": payload,
                 ])
-                model.transcripts.receive(event)
             }
             func file(_ id: String, _ name: String, _ type: String, _ size: Int) -> [String: Any] {
                 ["id": id, "filename": name, "media_type": type, "size": size]
@@ -757,7 +718,6 @@
             let chat = try await model.api.session("c10")
             model.sessions.insert(chat)
             model.approvals.apply(.approvalCreated(SampleData.reviewCommentsApproval(now: Date())))
-            try await model.transcripts.transcript(for: "c10").load()
             let workspace = CGSize(width: 828, height: 790)
             model.app.update("todo-ui") { state in
                 state.openChat("c10", in: workspace)
@@ -1423,7 +1383,6 @@
             // sample's full list, as when it renders on its own.
             try await model.approvals.load()
             let workspace = CGSize(width: 828, height: 790)
-            try await model.transcripts.transcript(for: "c3").load()
             model.app.openProject("todo-ui")
             model.app.update("todo-ui") { state in
                 state.view = .workspace
@@ -1485,7 +1444,6 @@
         ) async throws {
             shell.close()
             let workspace = CGSize(width: 828, height: 790)
-            try await model.transcripts.transcript(for: "c1").load()
             model.app.update("todo-ui") { state in
                 state.view = .workspace
                 state.layout = WorkspaceLayout()
@@ -1541,9 +1499,6 @@
         ) async throws {
             shell.close()
             let workspace = CGSize(width: 828, height: 790)
-            for id in ["c1", "c2", "c8"] {
-                try await model.transcripts.transcript(for: id).load()
-            }
             model.app.update("todo-ui") { state in
                 state.view = .workspace
                 state.layout = WorkspaceLayout()
@@ -1572,9 +1527,6 @@
             // Claude Code chats: no "Claude Code" tag, the same place label as any chat.
             let hero = try await model.api.claudeChat("cc-hero").paneID
             let pipeline = try await model.api.claudeChat("cc-pipeline").paneID
-            for pane in [hero, pipeline] {
-                try await model.transcripts.transcript(for: pane).load()
-            }
             model.app.update("todo-ui") { state in
                 state.layout = WorkspaceLayout()
                 state.openChat(hero, in: workspace)
@@ -1633,9 +1585,7 @@
                 state.openChat("c3", in: workspace)
             }
             try await pair(controller, "b33-rewind-button", folder, revealsHoverControls: true)
-            if let message = model.transcripts.transcript(for: "c3").items.first(where: {
-                if case .user = $0.content { true } else { false }
-            })?.eventID {
+            if let message = await shell.history(of: "c3").lastMessage {
                 shell.startRewind("c3", message: message)
                 try await Task.sleep(for: .milliseconds(50))
                 try await pair(controller, "b33-rewind", folder)
@@ -1697,9 +1647,7 @@
             try await pair(controller, "b34-publish-review-changed", folder)
             shell.close()
 
-            if let message = model.transcripts.transcript(for: "c3").items.first(where: {
-                if case .user = $0.content { true } else { false }
-            })?.eventID {
+            if let message = await shell.history(of: "c3").lastMessage {
                 sample?.previewNothingToRestore(true)
                 shell.startRewind("c3", message: message)
                 await waitUntil { shell.rewinding?.isLoading == false }
@@ -1707,13 +1655,6 @@
                 sample?.previewNothingToRestore(false)
                 shell.close()
             }
-
-            let transcript = model.transcripts.transcript(for: "c3")
-            sample?.failEvents(true)
-            await transcript.catchUp(missed: true)
-            try await pair(controller, "b34-catch-up-failed", folder)
-            sample?.failEvents(false)
-            await transcript.retryCatchUp()
 
             // A new chat on Opus with Auto as the agent default, moved to Haiku.
             try await model.agents.setDefaultModel("opus")
@@ -1945,7 +1886,6 @@
                 state.openChat("c3", in: workspace)
                 state.focusPane("c3")
             }
-            try await model.transcripts.transcript(for: "c2").load()
             var id = 30_000
             func receive(_ session: String, _ type: String, _ payload: [String: Any]) {
                 id += 1
@@ -1953,7 +1893,6 @@
                     "id": id, "type": type, "ts": SampleData.iso(Date()), "session_id": session,
                     "payload": payload,
                 ])
-                model.transcripts.receive(event)
             }
             func blocks(_ list: [[String: Any]], parent: String? = nil) -> [String: Any] {
                 ["blocks": list, "parent_tool_use_id": parent ?? NSNull()]
@@ -2009,9 +1948,7 @@
                         ["subagent_type": "watcher", "description": "Watch the build"])
                 ]))
             try await pair(controller, "b40-pixie-calls", folder)
-            shell.expandedItems.insert("pc1")
             try await pair(controller, "b40-pixie-call-open", folder)
-            shell.expandedItems.remove("pc1")
             // The mascot or name opens the pixie's pane in the Pixies tab, none open yet.
             model.app.updatePixies { $0.layout = WorkspaceLayout() }
             shell.revealPixie("reviewer")
@@ -2071,8 +2008,7 @@
                 ("b46-subagent-work", .subagent(session: "c2", toolUseID: "toolu_explore")),
                 ("b46-team-work", .team(session: "c2", teamID: qa.id, members: [bugs.id])),
             ] {
-                await model.chatPixies.open(target)
-                shell.show(.work)
+                shell.show(.work(target))
                 try await pair(controller, name, folder)
                 shell.close()
             }
@@ -2243,7 +2179,6 @@
                 state.openChat("c3", in: workspace)
                 state.focusPane("c3")
             }
-            try await model.transcripts.transcript(for: "c2").load()
             var id = 31_000
             func receive(_ session: String, _ type: String, _ payload: [String: Any]) {
                 id += 1
@@ -2251,7 +2186,6 @@
                     "id": id, "type": type, "ts": SampleData.iso(Date()), "session_id": session,
                     "payload": payload,
                 ])
-                model.transcripts.receive(event)
             }
             func blocks(_ list: [[String: Any]], parent: String? = nil) -> [String: Any] {
                 ["blocks": list, "parent_tool_use_id": parent ?? NSNull()]
@@ -2328,9 +2262,7 @@
                             ["subagent_type": stylist.slug, "description": "Export copy"]),
                     ], parent: "tc3"))
             try await pair(controller, "b70-team-calls", folder)
-            shell.expandedItems.insert("tc1")
             try await pair(controller, "b70-team-call-open", folder)
-            shell.expandedItems.remove("tc1")
         }
 
         /// B75, after B70's chats: QA's opened row in the chat where it still works, its
@@ -2350,7 +2282,6 @@
                     "session_id": "c2",
                     "payload": ["blocks": blocks, "parent_tool_use_id": parent],
                 ])
-                model.transcripts.receive(event)
             }
             func use(_ tool: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
                 ["type": "tool_use", "id": tool, "name": name, "input": input]
@@ -2381,9 +2312,7 @@
                 ], parent: "tm4")
             model.app.update("todo-ui") { $0.focusPane("c2") }
             let opened: Set<String> = ["tc3", "tm3", "tm4"]
-            shell.expandedItems.formUnion(opened)
             try await pair(controller, "b75-member-calls", folder)
-            shell.expandedItems.subtract(opened)
         }
 
         /// B71: an idle chat with its filled dot, a quiet "Thought for" line, no elapsed
@@ -2403,7 +2332,6 @@
                     "id": id, "type": type, "ts": SampleData.iso(at), "session_id": "c3",
                     "payload": payload,
                 ])
-                model.transcripts.receive(event)
             }
             func blocks(_ list: [[String: Any]]) -> [String: Any] {
                 ["blocks": list, "parent_tool_use_id": NSNull()]
@@ -2444,12 +2372,6 @@
                 state.focusPane("c3")
             }
             try await pair(controller, "b71-quiet-chat", folder)
-            let end = model.transcripts.existing("c3")?.visibleItems.last { item in
-                if case .turnEnd = item.content { true } else { false }
-            }
-            shell.setHoveredTurnEnd(end?.id)
-            try await pair(controller, "b71-quiet-chat-hover", folder)
-            shell.setHoveredTurnEnd(nil)
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
                 state.focusPane("c3")
@@ -2494,7 +2416,6 @@
                     "payload": payload,
                 ])
                 model.sessions.apply(event)
-                model.transcripts.receive(event)
             }
             // Reviewer started "Fix mobile nav overflow" and later wrote to it.
             if var started = model.sessions.session("c4") {
@@ -2514,7 +2435,6 @@
                 state.openChat("c4", in: workspace)
                 state.focusPane("c4")
             }
-            try await model.transcripts.transcript(for: "c4").load()
             receive(
                 "c4", "session.user_message",
                 [
@@ -2524,7 +2444,6 @@
             try await pair(controller, "b41-labels", folder)
 
             // Reviewer's own chat: the cards it posted and the report that its chats ended.
-            try await model.transcripts.transcript(for: "p1").load()
             receive("p1", "pixie.card", ["kind": "session", "session_id": "c4"])
             receive("p1", "pixie.card", ["kind": "pr", "session_id": "c9"])
             receive(
@@ -2571,9 +2490,7 @@
                     "payload": payload,
                 ])
                 model.sessions.apply(event)
-                model.transcripts.receive(event)
             }
-            try await model.transcripts.transcript(for: "p1").load()
             receive(
                 "session.user_message",
                 [
@@ -2717,7 +2634,6 @@
                     "id": id, "type": type, "ts": SampleData.iso(at), "session_id": session,
                     "payload": payload,
                 ])
-                model.transcripts.receive(event)
             }
             func blocks(_ list: [[String: Any]]) -> [String: Any] {
                 ["blocks": list, "parent_tool_use_id": NSNull()]
@@ -2803,10 +2719,7 @@
                 state.focusPane("c2")
             }
             try await pair(controller, "b29-turn-activity", folder)
-
-            shell.expandedItems.formUnion(["e20003-0", "tools-b1", "tools-ag0"])
             try await pair(controller, "b29-turn-activity-open", folder)
-            shell.expandedItems.subtract(["e20003-0", "tools-b1", "tools-ag0"])
         }
 
         /// B28: an archived Claude Code chat in the open Archived group, the Claude Code
@@ -2928,9 +2841,6 @@
             try await pair(controller, "b39-workspace-empty-background-grain-0", folder)
             model.settings.chatBackground.grain = 1
             let workspace = CGSize(width: 828, height: 790)
-            for id in ["c1", "c2"] {
-                try await model.transcripts.transcript(for: id).load()
-            }
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
                 state.openChat("c2", in: workspace)
@@ -3034,9 +2944,6 @@
         ) async throws {
             shell.close()
             let workspace = CGSize(width: 828, height: 790)
-            for id in ["c1", "c2", "c3"] {
-                try await model.transcripts.transcript(for: id).load()
-            }
             func arrange(_ build: @escaping (inout ProjectState) -> Void) {
                 model.app.update("todo-ui") { state in
                     state.view = .workspace
@@ -3055,31 +2962,6 @@
                 state.focusPane("c2")
             }
             try await pair(controller, "b93-three-chats", folder)
-
-            // Scrolled up in the focused c2 with a message out of view, then c1 takes the
-            // focus: c2 jumps to the latest on its own and the Jump to latest button goes.
-            let c2 = model.transcripts.transcript(for: "c2")
-            c2.receive(
-                sampleMessage(
-                    nextMessageID,
-                    (1...12).map { "Paragraph \($0) of a long answer that runs past the pane." }
-                        .joined(separator: "\n\n")))
-            nextMessageID += 1
-            arrange { state in
-                state.openChat("c2", in: workspace)
-                state.openChat("c1", in: workspace)
-                state.focusPane("c2")
-            }
-            try await snap(controller, "b93-unfocused-jumps-dark", .darkAqua, folder) { host in
-                await scrollUpThenReceive(in: host, transcript: c2)
-                model.app.update("todo-ui") { $0.focusPane("c1") }
-                try? await Task.sleep(for: .milliseconds(700))
-                if let scroll = textViews(in: host).first?.enclosingScrollView {
-                    let clip = scroll.contentView
-                    let bottom = (scroll.documentView?.frame.height ?? 0) - clip.bounds.height
-                    print("unfocused c2 offset \(clip.bounds.origin.y) of \(bottom)")
-                }
-            }
 
             arrange { $0.openChat("c1", in: workspace) }
             try await pair(controller, "b93-one-chat", folder)
@@ -3137,9 +3019,6 @@
         ) async throws {
             shell.close()
             let workspace = CGSize(width: 828, height: 790)
-            for id in ["c1", "c2"] {
-                try await model.transcripts.transcript(for: id).load()
-            }
             model.app.update("todo-ui") { state in
                 state.view = .workspace
                 state.layout = WorkspaceLayout()
@@ -3177,9 +3056,6 @@
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
             let workspace = CGSize(width: 828, height: 790)
-            for id in ["c1", "c2", "c3", "c4"] {
-                try await model.transcripts.transcript(for: id).load()
-            }
             BrowserSession.sampleHTML = samplePage
             let browser = ToolPane.browser(url: "http://localhost:3000/")
             let layouts: [(String, (inout ProjectState) -> Void)] = [
@@ -3286,9 +3162,6 @@
             try await pair(controller, "b26-new-chat-desktop", folder)
 
             // Two chats side by side.
-            for id in ["c1", "c2"] {
-                try await model.transcripts.transcript(for: id).load()
-            }
             model.app.update("todo-ui") { state in
                 state.layout = WorkspaceLayout()
                 state.openChat("c1", in: workspace)
@@ -3470,14 +3343,9 @@
                 .first { $0.sessionID == "h2" }!
             shell.run(.openMessage(project: hit.repo, pane: hit.pane, event: hit.eventID))
             for appearance in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                model.transcripts.transcript(for: "h2").requestFocus(event: hit.eventID!)
                 try await snap(
                     controller, "b13-transcript-hit-\(appearance.0)", appearance.1, folder)
             }
-            let h2 = model.transcripts.transcript(for: "h2")
-            print("h2 page: \(h2.items.count) items, older \(h2.hasOlder), newer \(h2.hasNewer)")
-
-            try await model.transcripts.transcript(for: "h1").load()
             try await model.activity.load(session: "h1")
             model.app.update("map-viewer") { state in
                 state.layout = WorkspaceLayout()
@@ -3510,7 +3378,6 @@
             let workspace = CGSize(width: 828, height: 790)
             let path = "/Users/me/Projects/todo-ui"
             for id in ["c1", "c6", "c9"] {
-                try await model.transcripts.transcript(for: id).load()
                 try await model.activity.load(session: id)
             }
             let terminal = ToolPane.terminal(in: path)
@@ -3772,7 +3639,6 @@
             shell.close()
             let workspace = CGSize(width: 828, height: 790)
             for id in ["c1", "c2", "c3", "c8"] {
-                try await model.transcripts.transcript(for: id).load()
                 try await model.activity.load(session: id)
             }
             model.app.update("todo-ui") { state in
@@ -3996,13 +3862,11 @@
             shell.show(.palette)
             try await pair(controller, "b80-palette", folder, motionTime: 0.6)
             shell.close()
-            try await model.transcripts.transcript(for: "p1").load()
             let card: Event = try SampleData.decode([
                 "id": 80_001, "type": "pixie.card", "ts": SampleData.iso(Date()),
                 "session_id": "p1", "payload": ["kind": "session", "session_id": "c2"],
             ])
             model.sessions.apply(card)
-            model.transcripts.receive(card)
             shell.openPixie("reviewer")
             shell.pixieDetailsOpen = false
             try await pair(controller, "b80-pixie-card", folder, motionTime: 0.6)
@@ -4010,143 +3874,6 @@
             try await pairView(
                 FirefliesSampler().environment(\.accentColors, AccentColors(accent: .teal)),
                 "b80-fireflies-teal", folder)
-        }
-
-        /// B120: a chat on Autopilot with its running bar, red button and held Bypass; the
-        /// popover; Autopilot's line and the report a run leaves; a new chat on Autopilot,
-        /// whose place moved to a new worktree.
-        private static func renderAutopilot(
-            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
-        ) async throws {
-            shell.close()
-            guard let original = model.sessions.session("c6") else { return }
-            let workspace = CGSize(width: 828, height: 790)
-            let transcript = model.transcripts.transcript(for: "c6")
-            try await transcript.load()
-            try await model.activity.load(session: "c6")
-            let now = Date()
-            let decisions = [
-                AutopilotDecision(
-                    kind: .question,
-                    title:
-                        "The old about page still has the press links and the talk list, and two "
-                        + "other pages link to it. Keep it, or does the new page cover everything "
-                        + "it said, so it can go?",
-                    answer: "Remove it", at: now,
-                    options: [
-                        DecisionOption(label: "Keep it", description: "Links stay as they are"),
-                        DecisionOption(
-                            label: "Remove it", description: "The new page covers it all",
-                            picked: true),
-                    ],
-                    reason: "The agent recommended it: The new page covers it all"),
-                AutopilotDecision(
-                    kind: .plan, title: "Rewrite the about section", answer: "Approved", at: now,
-                    detail: "# Rewrite the about section\n\n1. Move the bio\n2. Drop the old page"),
-                AutopilotDecision(
-                    kind: .allowed, title: "npm run build", answer: "Allowed", at: now),
-                AutopilotDecision(
-                    kind: .denied, title: "git push origin main", answer: "Denied", at: now,
-                    reason: "Autopilot leaves commits, merges and pushes to the user."),
-            ]
-            let run = AutopilotRun(
-                startedAt: now.addingTimeInterval(-48 * 60),
-                until: now.addingTimeInterval(72 * 60), weeklyCap: 80, decisions: decisions)
-            var running = original
-            running.autopilot = run
-            model.sessions.insert(running)
-            model.app.update("todo-ui") { state in
-                state.layout = WorkspaceLayout()
-                state.view = .workspace
-                state.leftCollapsed = false
-                state.rightCollapsed = false
-                state.openCards = [.goals]
-                state.openChat("c6", in: workspace)
-                state.focusPane("c6")
-            }
-            let steps: [[String: Any]] = [
-                ["id": "1", "subject": "Move the bio", "status": "completed"],
-                [
-                    "id": "2", "subject": "Write the page", "status": "in_progress",
-                    "active_form": "Writing the new about page in the first person",
-                ],
-                ["id": "3", "subject": "Drop the old page", "status": "pending"],
-            ]
-            let stepsEvent: Event = try SampleData.decode([
-                "id": 9_080, "type": EventType.sessionTasks, "ts": SampleData.iso(now),
-                "session_id": "c6", "payload": ["tasks": steps],
-            ])
-            // After the open pane has loaded the chat's empty list.
-            try await pair(controller, "b120-running", folder) { _ in
-                model.activity.apply(stepsEvent)
-            }
-            for (index, decision) in decisions.enumerated() {
-                transcript.receive(
-                    try SampleData.decode([
-                        "id": 9_090 + index, "type": EventType.sessionAutopilotDecision,
-                        "ts": SampleData.iso(now), "session_id": "c6",
-                        "payload": [
-                            "decision": try JSONSerialization.jsonObject(
-                                with: NestJSON.encoder.encode(decision))
-                        ],
-                    ]))
-            }
-            shell.expandedItems.formUnion(["e9090", "e9091", "e9093"])
-            try await pair(controller, "b120-decisions", folder)
-            var open = running
-            open.autopilot?.until = nil
-            open.autopilot?.decisions = []
-            model.sessions.insert(open)
-            try await pair(controller, "b120-running-until-done", folder)
-
-            func popover(_ choice: AutopilotChoice, run: AutopilotRun?) -> AutopilotPopover {
-                AutopilotPopover(
-                    control: AutopilotControl(choice: choice, chatExists: true, run: run)
-                ) { _ in }
-            }
-            try await pairView(popover(AutopilotChoice(), run: nil), "b120-popover-off", folder)
-            try await pairView(popover(AutopilotChoice(), run: run), "b120-popover-on", folder)
-
-            model.sessions.insert(original)
-            transcript.receive(
-                try SampleData.decode([
-                    "id": 9_101, "type": EventType.sessionUserMessage,
-                    "ts": SampleData.iso(now), "session_id": "c6",
-                    "payload": [
-                        "text": "Keep going until the task is done.", "attachments": [],
-                        "origin": "autopilot",
-                    ],
-                ]))
-            let report = AutopilotReport(
-                ended: .weeklyCap,
-                summary: "Rewrote the about section and **removed** the old page.",
-                decisions: decisions)
-            transcript.receive(
-                try SampleData.decode([
-                    "id": 9_102, "type": EventType.sessionAutopilotReport,
-                    "ts": SampleData.iso(now), "session_id": "c6",
-                    "payload": [
-                        "report": try JSONSerialization.jsonObject(
-                            with: NestJSON.encoder.encode(report))
-                    ],
-                ]))
-            try await pair(controller, "b120-report", folder)
-
-            shell.selectProject("todo-ui")
-            model.app.update("todo-ui") { state in
-                state.view = .workspace
-                state.layout = WorkspaceLayout()
-            }
-            shell.startDraft().autopilot = AutopilotChoice(on: true)
-            try await pair(controller, "b120-new-chat", folder)
-            shell.startDraft().autopilot = AutopilotChoice()
-
-            if let pixie = model.pixies.pixies.first {
-                try await pairView(
-                    HabitEditor(pixie: pixie, habitID: nil).environment(shell)
-                        .frame(width: 320, height: 760),
-                    "b120-habit", folder)
-            }
         }
 
         /// B78: a chat paused at the usage limit, with the notice above the composer (its
@@ -4159,8 +3886,6 @@
             shell.close()
             guard let original = model.sessions.session("c6") else { return }
             let workspace = CGSize(width: 828, height: 790)
-            let transcript = model.transcripts.transcript(for: "c6")
-            try await transcript.load()
             try await model.activity.load(session: "c6")
             let now = Date()
             var paused = original
@@ -4176,14 +3901,6 @@
                 ])
             }
             // The cut-off turn's error result is no failure: no line for it.
-            transcript.receive(
-                try event(
-                    9_001, EventType.sessionResult,
-                    [
-                        "is_error": true, "subtype": "error_during_execution",
-                        "duration_ms": 72_000, "num_turns": 4, "errors": ["usage limit"],
-                        "limit": true,
-                    ]))
             model.app.update("todo-ui") { state in
                 state.layout = WorkspaceLayout()
                 state.view = .workspace
@@ -4205,13 +3922,6 @@
             sample?.setQueue([], of: "c6")
             model.activity.apply(try event(9_002, EventType.sessionQueued, ["queued": []]))
             model.sessions.insert(original)
-            transcript.receive(
-                try event(
-                    9_003, EventType.sessionUserMessage,
-                    [
-                        "text": "Continue where you left off.", "attachments": [],
-                        "origin": "limit_resume",
-                    ]))
             try await pair(controller, "limit-resumed", folder)
         }
 
@@ -4237,8 +3947,6 @@
                 state.openChat("c1", in: workspace)
                 state.focusPane("c1")
             }
-            let transcript = model.transcripts.transcript(for: "c1")
-            try await transcript.load()
             let now = Date()
             func event(_ id: Int, _ type: String, _ payload: [String: Any]) throws -> Event {
                 try SampleData.decode([
@@ -4315,7 +4023,6 @@
                         "artifact 'x' belongs to another chat; create a new one instead",
                         error: true)),
             ] {
-                transcript.receive(item)
             }
             try await pair(controller, "artifacts-transcript-card", folder)
 
@@ -4420,7 +4127,6 @@
             shell.close()
             let workspace = CGSize(width: 828, height: 790)
             let hero = try await model.api.claudeChat("cc-hero").paneID
-            try await model.transcripts.transcript(for: hero).load()
             model.app.update("todo-ui") { state in
                 state.layout = WorkspaceLayout()
                 state.openCards = Set(RightCard.allCases)
@@ -4441,7 +4147,6 @@
             shell.continueInNest(hero)
             let adopted = "adopted-cc-hero"
             await waitUntil { model.app.state(of: "todo-ui").layout.contains(adopted) }
-            try await model.transcripts.transcript(for: adopted).load()
             let draft = shell.draft(for: adopted)
             draft.text = "Also check the About page portrait"
             shell.send(adopted)
@@ -4874,25 +4579,6 @@
             ([view as? WKWebView].compactMap { $0 }) + view.subviews.flatMap(webViews)
         }
 
-        /// Scrolls the transcript to the top, lets a new message arrive and prints whether
-        /// the visible text moved.
-        private static func scrollUpThenReceive(in host: NSView, transcript: TranscriptStore)
-            async
-        {
-            guard let scroll = textViews(in: host).first?.enclosingScrollView else {
-                print("no transcript scroll view")
-                return
-            }
-            scroll.contentView.scroll(to: .zero)
-            scroll.reflectScrolledClipView(scroll.contentView)
-            try? await Task.sleep(for: .milliseconds(300))
-            let before = scroll.contentView.bounds.origin.y
-            transcript.receive(sampleMessage(nextMessageID, "A new message arrived out of view."))
-            nextMessageID += 1
-            try? await Task.sleep(for: .milliseconds(500))
-            print("transcript offset before \(before), after \(scroll.contentView.bounds.origin.y)")
-        }
-
         private static var nextMessageID = 10_001
 
         private static func sampleMessage(_ id: Int, _ text: String) -> Event {
@@ -4904,23 +4590,6 @@
 
         private static func textViews(in view: NSView) -> [MessageTextView] {
             ([view as? MessageTextView].compactMap { $0 }) + view.subviews.flatMap(textViews)
-        }
-
-        /// Selects from one phrase to another in the transcript text that holds both.
-        private static func selectAcrossParagraphs(in view: NSView, from: String, to: String) {
-            if let text = view as? MessageTextView {
-                let string = text.string as NSString
-                let start = string.range(of: from)
-                let end = string.range(of: to)
-                if start.location != NSNotFound, end.location != NSNotFound {
-                    text.window?.makeFirstResponder(text)
-                    text.setSelectedRange(
-                        NSRange(location: start.location, length: NSMaxRange(end) - start.location))
-                }
-            }
-            for subview in view.subviews {
-                selectAcrossParagraphs(in: subview, from: from, to: to)
-            }
         }
 
         private static func snap(

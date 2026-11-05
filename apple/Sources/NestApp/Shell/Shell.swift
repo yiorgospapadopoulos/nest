@@ -90,9 +90,8 @@ enum Overlay: Equatable {
     case habitRun(String)
     /// A tool result's image full size, by attachment id (B59).
     case image(String)
-    /// A subagent's, pixie's or team's work in a chat, read-only (`ChatPixiesStore.work`,
-    /// B46).
-    case work
+    /// A subagent's, pixie's or team's work in a chat, read-only (B46).
+    case work(WorkTarget)
 }
 
 /// What the Pixies tab's right-hand panel shows for the focused pixie: the details, or a
@@ -157,8 +156,6 @@ final class Shell {
     /// Expanded tool calls and thinking blocks, by transcript item id.
     var expandedItems: Set<String> = []
     /// The turn end of the transcript row under the pointer: its "Worked for" line shows
-    /// (B71). Set through `setHoveredTurnEnd`.
-    private(set) var hoveredTurnEnd: String?
     var toast: Toast?
     var dragging: DragItem?
     var dropHighlight: DropHighlight?
@@ -166,6 +163,8 @@ final class Shell {
     let dictation = Dictation()
     /// The live terminals and web views of the tool panes.
     let tools = ToolSessions()
+    /// The transcripts' web pages (D151).
+    let webPanes: WebPanes
     /// Each chat's last message sent from here, for Up arrow in an empty composer.
     let sentMessages = SentMessages()
 
@@ -189,8 +188,10 @@ final class Shell {
     @ObservationIgnored private var dragMonitor: Any?
 
     init(model: AppModel, userName: String = NSFullUserName()) {
+        webPanes = WebPanes(model: model)
         self.model = model
         self.userName = userName.isEmpty ? NSUserName() : userName
+        webPanes.shell = self
     }
 
     var app: AppStore { model.app }
@@ -264,14 +265,6 @@ final class Shell {
     /// project's. The pane views and their actions work on this one.
     var workspaceState: ProjectState { pixiesOpen ? app.pixieState : projectState }
 
-    /// Writes only a change: every turn end line reads it, and rows pass under the pointer
-    /// on each scroll.
-    func setHoveredTurnEnd(_ end: String?) {
-        if hoveredTurnEnd != end {
-            hoveredTurnEnd = end
-        }
-    }
-
     func update(_ change: (inout ProjectState) -> Void) {
         withAnimation(.smooth(duration: 0.22)) {
             app.update(nil, change)
@@ -305,7 +298,12 @@ final class Shell {
     /// a closed tab keeps its panes.
     func syncTools() {
         tools.keep(Set(app.projects.values.flatMap { $0.tools.keys }))
-        model.transcripts.keep(app.openPanes.union(app.openPixieChats(pixies.pixies)))
+        webPanes.keep(openChats)
+    }
+
+    /// The chats of every open pane, in every project and the Pixies tab.
+    var openChats: Set<String> {
+        app.openPanes.union(app.openPixieChats(pixies.pixies))
     }
 
     // MARK: Tabs
@@ -520,8 +518,7 @@ final class Shell {
     /// Opens a subagent's transcript, or a pixie's, team's or member's calls in a chat,
     /// read-only; follow-ups go in the chat itself.
     func openWork(_ target: WorkTarget) {
-        show(.work)
-        Task { await chatPixies.open(target) }
+        show(.work(target))
     }
 
     /// The pixie, or the team with its members, leaves the chat's Pixies group; calling it
@@ -823,7 +820,7 @@ final class Shell {
                 withAnimation(.smooth(duration: 0.22)) {
                     app.update(session.repo) { $0.replaceChat(pane, with: session.id) }
                 }
-                model.transcripts.close(pane)
+                webPanes.close(.pane(pane))
             } catch {
                 show(error, doing: "Could not continue in Nest")
             }
@@ -1319,9 +1316,11 @@ final class Shell {
     /// Up arrow in an empty composer: the chat's last message, caret at its end. A pixie's
     /// composer names its draft apart from its chat.
     func recallLastMessage(_ chat: String, into draftKey: String? = nil) {
-        let items = model.transcripts.existing(chat)?.items ?? []
-        guard let text = sentMessages.last(chat: chat, transcript: items) else { return }
-        draft(for: draftKey ?? chat).replaceText(text, caret: text.count)
+        Task {
+            let history = await history(of: chat)
+            guard let text = sentMessages.last(chat: chat, history: history) else { return }
+            draft(for: draftKey ?? chat).replaceText(text, caret: text.count)
+        }
     }
 
     /// Puts a picked suggestion into the composer; a command Nest runs itself runs at
@@ -1837,9 +1836,6 @@ final class Shell {
     }
 
     func close() {
-        if overlay == .work {
-            chatPixies.closeWork()
-        }
         // The usage popover opens on its chart again.
         if overlay == .usage {
             model.usage.hideDetails()
@@ -1861,10 +1857,15 @@ final class Shell {
 
     /// Opens a search hit's chat, scrolled to the hit's message, which glows briefly.
     func openMessage(project: String, pane: String, event: Int?) {
-        if let event {
-            model.transcripts.transcript(for: pane).requestFocus(event: event)
-        }
         reveal(chat: pane, in: project)
+        if let event {
+            webPanes.send(.focus(event: event), to: .pane(pane))
+        }
+    }
+
+    /// What the app itself reads of a chat's messages, from the daemon when asked.
+    func history(of chat: String) async -> ChatHistory {
+        (try? await ChatHistory.load(chat, api: model.api)) ?? ChatHistory()
     }
 
     /// Runs the palette's chosen entry.
@@ -2072,10 +2073,13 @@ final class Shell {
 
     /// Esc Esc in an idle chat: Rewind on its latest message of the user.
     func rewindLast(_ chat: String) {
-        guard RewindFlow.isAvailable(for: sessions.session(chat)), supports(.rewind, chat: chat),
-            let message = model.transcripts.existing(chat)?.lastUserMessage
+        guard RewindFlow.isAvailable(for: sessions.session(chat)), supports(.rewind, chat: chat)
         else { return }
-        startRewind(chat, message: message)
+        Task {
+            if let message = await history(of: chat).lastMessage {
+                startRewind(chat, message: message)
+            }
+        }
     }
 
     /// Edit on a user message: the conversation goes back to before it and the message
