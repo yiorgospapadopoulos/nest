@@ -57,46 +57,11 @@ import Testing
 }
 
 @Suite struct DictationVocabularyTests {
-    func tool(_ id: String, _ input: String) -> TranscriptItem {
-        let value = Fixture.decode(JSONValue.self, json: input)
-        return TranscriptItem(
-            id: id, content: .tool(ToolCall(id: id, name: "Read", input: value, isError: false)))
-    }
-
-    @Test func projectBranchAndFilesComeBeforeCommonTerms() {
-        let items: [TranscriptItem] = [
-            TranscriptItem(
-                id: "u", content: .user(text: "Look at models.py and e.g. v1.2", attachments: [])),
-            tool("t1", #"{"file_path": "/repo/src/SessionsStore.swift"}"#),
-            tool("t2", #"{"pattern": "TODO", "path": "/repo/docs"}"#),
-            TranscriptItem(
-                id: "a", content: .assistant("Edited `App.tsx` and README.md.", streaming: false)),
-            TranscriptItem(id: "n", content: .notice("Interrupted")),
-        ]
-
-        let terms = DictationVocabulary.terms(
-            repo: "map-viewer", branch: "nest/fix-dark_mode", items: items)
-
-        #expect(
-            Array(terms.prefix(10)) == [
-                "map-viewer", "map viewer", "nest/fix-dark_mode", "fix dark mode", "App.tsx",
-                "App", "README.md", "README", "docs", "SessionsStore.swift",
-            ])
-        #expect(terms.contains("models.py"))
-        #expect(terms.contains("models"))
-        #expect(!terms.contains("v1.2"))
-        #expect(terms.contains("pull request"))
-        #expect(terms.contains("worktree"))
-        // README from the transcript and from the common terms appears once.
-        #expect(terms.filter { $0.lowercased() == "readme" }.count == 1)
-        #expect(Set(terms.map { $0.lowercased() }).count == terms.count)
-    }
-
     @Test func withoutContextOnlyCommonTermsRemainAndTheLimitHolds() {
-        let terms = DictationVocabulary.terms(repo: nil, branch: nil, items: [])
+        let terms = DictationVocabulary.terms(repo: nil, branch: nil, files: [])
         #expect(terms == DictationVocabulary.common)
         #expect(
-            DictationVocabulary.terms(repo: "nest", branch: "main", items: [], limit: 3) == [
+            DictationVocabulary.terms(repo: "nest", branch: "main", files: [], limit: 3) == [
                 "nest", "main", "Claude",
             ])
     }

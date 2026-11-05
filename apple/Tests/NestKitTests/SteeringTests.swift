@@ -141,38 +141,6 @@ import Testing
         #expect(!activity.isSendingNow("q1", session: "s1"))
         #expect(activity.queued(session: "s1").isEmpty)
     }
-
-    /// The message Claude read appears once, where it read it: a user bubble between the
-    /// agent's messages of the same turn, without a second turn opening.
-    @Test func aSteeredMessageShowsWhereClaudeReadIt() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionState, #"{"state": "running", "turn_start": true}"#, id: 1))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionUserMessage, #"{"text": "Go", "attachments": []}"#, id: 2))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionMessage, #"{"blocks": [{"type": "text", "text": "Working"}]}"#,
-                id: 3))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionUserMessage, #"{"text": "also the tests", "attachments": []}"#,
-                id: 4))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionMessage, #"{"blocks": [{"type": "text", "text": "Done"}]}"#,
-                id: 5))
-        #expect(
-            transcript.items.map(\.content) == [
-                .user(text: "Go", attachments: []), .assistant("Working", streaming: false),
-                .user(text: "also the tests", attachments: []),
-                .assistant("Done", streaming: false),
-            ])
-        #expect(transcript.turnStartedAt != nil)
-    }
 }
 
 @MainActor
@@ -223,50 +191,6 @@ import Testing
         #expect(rewind.attachments.map(\.filename) == ["shot.png"])
         #expect(rewind.contains(812) && rewind.contains(925))
         #expect(!rewind.contains(811) && !rewind.contains(926))
-    }
-
-    /// The message and everything after it through `through` leave; later events stay.
-    @Test func theRewoundMessageAndWhatFollowedLeave() async throws {
-        api.set { $0.events["s1"] = events() }
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        #expect(transcript.items.count { if case .user = $0.content { true } else { false } } == 2)
-        #expect(transcript.lastUserMessage == 4)
-
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionRewound,
-                #"{"message": 4, "through": 7, "text": "Second", "attachments": []}"#, id: 8))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionNotice,
-                #"{"kind": "files_restored", "text": "Restored 2 files to before your message"}"#,
-                id: 9))
-        let contents = transcript.visibleItems.map(\.content)
-        #expect(contents.first == .user(text: "First", attachments: []))
-        #expect(contents.contains(.assistant("One", streaming: false)))
-        #expect(!contents.contains(.user(text: "Second", attachments: [])))
-        #expect(!contents.contains(.assistant("Two", streaming: false)))
-        #expect(contents.last == .notice("Restored 2 files to before your message"))
-        #expect(transcript.turnStartedAt == nil)
-        #expect(transcript.lastEventID == 9)
-        #expect(transcript.lastUserMessage == 1)
-        #expect(TranscriptStore(sessionID: "s2", api: api).lastUserMessage == nil)
-    }
-
-    /// A range the loaded page does not hold changes nothing it shows.
-    @Test func aRewindOfOlderEventsKeepsTheLoadedOnes() async throws {
-        api.set { $0.events["s1"] = Array(events().suffix(4)) }
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        let before = transcript.items
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionRewound,
-                #"{"message": 1, "through": 2, "text": "", "attachments": []}"#,
-                id: 9))
-        #expect(transcript.items == before)
-        #expect(transcript.lastEventID == 9)
     }
 }
 

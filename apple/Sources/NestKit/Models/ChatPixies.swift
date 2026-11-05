@@ -108,56 +108,18 @@ public struct SendAwayRequest: Encodable, Sendable, Hashable {
     }
 }
 
-/// A message of a subagent's own, with its tool calls and results.
-public struct AgentWorkMessage: Decodable, Sendable, Hashable {
-    public var eventID: Int
-    public var ts: Date
-    public var blocks: [MessageBlock]
+/// What a work page shows, read-only (B46): a subagent's transcript, a pixie's calls in a
+/// chat, or a team's (all its members' calls).
+public enum WorkTarget: Sendable, Hashable {
+    case subagent(session: String, toolUseID: String)
+    case pixie(session: String, pixieID: String)
+    case team(session: String, teamID: String, members: [String])
 
-    public init(eventID: Int, ts: Date, blocks: [MessageBlock]) {
-        self.eventID = eventID
-        self.ts = ts
-        self.blocks = blocks
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case ts, blocks
-        case eventID = "event_id"
-    }
-}
-
-/// `GET /api/sessions/{id}/agents/{tool_use_id}/transcript`: what the subagent was asked,
-/// its own messages so far and its report once there is one.
-public struct AgentWork: Decodable, Sendable, Hashable {
-    public var toolUseID: String
-    public var prompt: String?
-    public var messages: [AgentWorkMessage]
-    public var report: String?
-
-    enum CodingKeys: String, CodingKey {
-        case prompt, messages, report
-        case toolUseID = "tool_use_id"
-    }
-}
-
-/// `GET /api/sessions/{id}/pixies/{pixie_id}/calls`: a call with its work.
-public struct PixieCallWork: Decodable, Sendable, Hashable, Identifiable {
-    public var call: ChatPixieCall
-    public var prompt: String?
-    public var messages: [AgentWorkMessage]
-    public var report: String?
-
-    public var id: String { call.id }
-
-    enum CodingKeys: String, CodingKey {
-        case prompt, messages, report
-    }
-
-    public init(from decoder: any Decoder) throws {
-        call = try ChatPixieCall(from: decoder)
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        prompt = try container.decodeIfPresent(String.self, forKey: .prompt)
-        messages = try container.decode([AgentWorkMessage].self, forKey: .messages)
-        report = try container.decodeIfPresent(String.self, forKey: .report)
+    /// The chat the work belongs to.
+    public var session: String {
+        switch self {
+        case .subagent(let session, _), .pixie(let session, _), .team(let session, _, _):
+            session
+        }
     }
 }

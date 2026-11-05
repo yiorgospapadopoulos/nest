@@ -45,65 +45,6 @@ private let start = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(AutopilotBudget(run: run).stopAfterMinutes == 120)
     }
 
-    @Test func aFullReportDecodesAndStaysInTheTranscript() async throws {
-        let event = Fixture.event(
-            EventType.sessionAutopilotReport,
-            #"""
-            {"report": {"started_at": "2026-01-01T12:00:00Z",
-             "ended_at": "2026-01-01T13:00:00Z", "ended": "weekly_cap", "summary": "Done",
-             "turns": 4, "decisions": [
-              {"kind": "question", "title": "Which?", "answer": "A", "at": "2026-01-01T12:10:00Z"},
-              {"kind": "denied", "title": "git push", "answer": "No", "at": "2026-01-01T12:20:00Z"},
-              {"kind": "later", "title": "x", "answer": "y", "at": "2026-01-01T12:30:00Z"}]}}
-            """#)
-        guard case .autopilotReport(let report) = event.body else {
-            Issue.record("not a report")
-            return
-        }
-        #expect(report.ended == .weeklyCap)
-        #expect(AutopilotText.ended(report.ended) == "Weekly cap reached")
-        #expect(report.summary == "Done")
-        #expect(report.decisions.map(\.kind) == [.question, .denied, .unknown])
-
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(event)
-        guard case .autopilotReport(let shown) = transcript.items.last?.content else {
-            Issue.record("not in the transcript")
-            return
-        }
-        #expect(shown == report)
-    }
-
-    @Test func aDecisionDecodesWithItsDetails() async throws {
-        let event = Fixture.event(
-            EventType.sessionAutopilotDecision,
-            #"""
-            {"decision": {"kind": "question", "title": "Which?", "answer": "B",
-             "at": "2026-01-01T12:10:00Z",
-             "options": [{"label": "A", "description": null, "picked": false},
-                         {"label": "B", "description": "Fast", "picked": true}],
-             "reason": "The agent recommended it: Fast", "detail": null}}
-            """#)
-        guard case .autopilotDecision(let decision) = event.body else {
-            Issue.record("not a decision")
-            return
-        }
-        #expect(decision.options.map(\.picked) == [false, true])
-        #expect(decision.options[1].description == "Fast")
-        #expect(decision.why == "The agent recommended it: Fast")
-        #expect(decision.opens)
-
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(event)
-        guard case .autopilotDecision(let shown) = transcript.items.last?.content else {
-            Issue.record("not in the transcript")
-            return
-        }
-        #expect(shown == decision)
-    }
-
     @Test func aDecisionFromBeforeTheDetailsDecodes() {
         let at = #""at": "2026-01-01T12:20:00Z""#
         let denied = Fixture.decode(
@@ -218,18 +159,6 @@ private let start = Date(timeIntervalSince1970: 1_791_288_000)
     }
 
     // MARK: Nest's line
-
-    @Test func itsMessageIsNestsAndStartsATurn() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionUserMessage,
-                #"{"text": "Keep going.", "attachments": [], "from_pixie": null, "origin": "autopilot"}"#,
-                id: 5))
-        #expect(transcript.items.map(\.content) == [.autopilotMessage("Keep going.")])
-        #expect(transcript.turnStartedAt != nil)
-    }
 
     // MARK: Habits
 

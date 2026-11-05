@@ -9,9 +9,6 @@ extension NSAttributedString.Key {
     static let tableDecoration = NSAttributedString.Key("nest.tableDecoration")
     /// An `NSColor` drawn as a small rounded chip behind the range: inline code.
     static let inlineChip = NSAttributedString.Key("nest.inlineChip")
-    /// The path a file named in a message: a click goes to `MessageTextView.onFile`. Only
-    /// `TextStyling` sets it, from `RichText`'s runs, so no message text can forge it.
-    static let fileReference = NSAttributedString.Key("nest.fileReference")
 }
 
 /// A fill behind whole lines of text, the width of the view from `leading`.
@@ -131,26 +128,19 @@ struct SelectableText: NSViewRepresentable {
     /// Shrinks to the longest line instead of taking the offered width (chat bubbles).
     var hugsWidth = false
     var linkColor: NSColor = .linkColor
-    /// The call site and key, as two sites may style the same text differently; or, for
-    /// text that `SelectableTextCache.warm` prepares ahead, its kind and key.
+    /// The call site and key, as two sites may style the same text differently.
     let cacheID: String
-    /// The kind whose offered width is noted, for preparing that kind ahead.
-    let kind: String?
-    /// A click on a file the text names.
-    let onFile: ((String) -> Void)?
     let build: () -> NSAttributedString
 
     init(
         key: String, hugsWidth: Bool = false, linkColor: NSColor = .linkColor,
-        kind: String? = nil, onFile: ((String) -> Void)? = nil, file: String = #fileID,
-        line: Int = #line, build: @escaping () -> NSAttributedString
+        file: String = #fileID, line: Int = #line,
+        build: @escaping () -> NSAttributedString
     ) {
         self.key = key
         self.hugsWidth = hugsWidth
         self.linkColor = linkColor
-        self.kind = kind
-        self.onFile = onFile
-        cacheID = SelectableTextCache.id(kind: kind ?? "\(file):\(line)", key: key)
+        cacheID = "\(file):\(line)\n\(key)"
         self.build = build
     }
 
@@ -169,7 +159,6 @@ struct SelectableText: NSViewRepresentable {
             .foregroundColor: linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue,
             .cursor: NSCursor.pointingHand,
         ]
-        view.onFile = onFile
         guard context.coordinator.key != key else { return }
         context.coordinator.key = key
         view.setContent(SelectableTextCache.text(cacheID, build: build), cacheID: cacheID)
@@ -179,18 +168,14 @@ struct SelectableText: NSViewRepresentable {
         _ proposal: ProposedViewSize, nsView view: MessageTextView, context: Context
     ) -> CGSize? {
         let offered = proposal.width.flatMap { $0.isFinite ? $0 : nil }
-        if let kind, let offered {
-            SelectableTextCache.noteWidth(offered, of: kind)
-        }
         let size = view.fit(width: offered ?? 100_000)
         guard let offered, !hugsWidth else { return size }
         return CGSize(width: offered, height: size.height)
     }
 }
 
-/// Built text and measured sizes shared by every `SelectableText`. The lazy transcript
-/// makes a new text view each time a message scrolls back into view; parsing and laying
-/// out its text again on that frame made scrolling stutter.
+/// Built text and measured sizes shared by every `SelectableText`, so that a view made
+/// again does not parse and lay out its text again.
 @MainActor enum SelectableTextCache {
     final class Measured: NSObject {
         let size: CGSize
@@ -212,41 +197,6 @@ struct SelectableText: NSViewRepresentable {
         cache.countLimit = 4_000
         return cache
     }()
-
-    /// The width each kind was last offered, to measure its texts at ahead of time.
-    private static var widths: [String: CGFloat] = [:]
-    /// Lays out the texts that `warm` prepares, never shown.
-    private static let scratch = MessageTextView.make()
-
-    static func id(kind: String, key: String) -> String { "\(kind)\n\(key)" }
-
-    static func noteWidth(_ width: CGFloat, of kind: String) {
-        widths[kind] = width
-    }
-
-    /// Builds and measures texts of `kind` before they scroll into view, a few at a time
-    /// between frames, so that a fast scroll through a chat just opened finds them ready.
-    /// Waits for a text of the kind to lay out first, to learn its width.
-    static func warm(_ keys: [String], kind: String, build: (String) -> NSAttributedString)
-        async
-    {
-        for _ in 0..<40 where widths[kind] == nil {
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        for (index, key) in keys.enumerated() {
-            guard !Task.isCancelled else { return }
-            let id = id(kind: kind, key: key)
-            let text = text(id) { build(key) }
-            if let width = widths[kind], size(id, width: width) == nil {
-                scratch.setContent(text, cacheID: id)
-                _ = scratch.fit(width: width)
-            }
-            if index % 4 == 3 {
-                // Leaves the main thread free for the frames in between.
-                try? await Task.sleep(for: .milliseconds(4))
-            }
-        }
-    }
 
     static func text(_ id: String, build: () -> NSAttributedString) -> NSAttributedString {
         if let text = texts.object(forKey: id as NSString) {
@@ -295,7 +245,6 @@ final class MessageTextView: NSTextView {
     /// The content's id in `SelectableTextCache`, for its shared sizes.
     private var cacheID: String?
     /// A click on a file the text names.
-    var onFile: ((String) -> Void)?
     /// Where the tables are at the container's width; every live text view draws on every
     /// scroll frame, and most have none to look for.
     private var tableBoxes: (width: CGFloat, boxes: [TableBox])?
@@ -511,55 +460,6 @@ final class MessageTextView: NSTextView {
             }
         }
         return rects
-    }
-
-    /// The press selects as ever; a plain click that selected nothing on a file opens it.
-    override func mouseDown(with event: NSEvent) {
-        let plain = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
-        let file = onFile != nil && plain && event.clickCount == 1 ? fileReference(at: event) : nil
-        super.mouseDown(with: event)
-        if let file, selectedRange().length == 0 {
-            onFile?(file)
-        }
-    }
-
-    private func fileReference(at event: NSEvent) -> String? {
-        guard let manager = layoutManager, let container = textContainer,
-            let storage = textStorage, storage.length > 0
-        else {
-            return nil
-        }
-        let origin = textContainerOrigin
-        let point = convert(event.locationInWindow, from: nil)
-        let inner = NSPoint(x: point.x - origin.x, y: point.y - origin.y)
-        let glyph = manager.glyphIndex(for: inner, in: container)
-        let box = manager.boundingRect(
-            forGlyphRange: NSRange(location: glyph, length: 1), in: container)
-        guard box.contains(inner) else { return nil }
-        let index = manager.characterIndexForGlyph(at: glyph)
-        return storage.attribute(.fileReference, at: index, effectiveRange: nil) as? String
-    }
-
-    /// The pointing hand over files, as `linkTextAttributes` gives web links.
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        guard let manager = layoutManager, let container = textContainer, let storage = textStorage
-        else {
-            return
-        }
-        let origin = textContainerOrigin
-        storage.enumerateAttribute(
-            .fileReference, in: NSRange(location: 0, length: storage.length)
-        ) { value, range, _ in
-            guard value != nil else { return }
-            let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-            manager.enumerateEnclosingRects(
-                forGlyphRange: glyphs,
-                withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container
-            ) { rect, _ in
-                self.addCursorRect(rect.offsetBy(dx: origin.x, dy: origin.y), cursor: .pointingHand)
-            }
-        }
     }
 
     override func copy(_ sender: Any?) {

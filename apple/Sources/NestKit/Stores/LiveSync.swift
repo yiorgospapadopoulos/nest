@@ -1,7 +1,7 @@
 import Foundation
 
 /// Feeds the daemon's live events into the stores, and reloads them on each connect so
-/// nothing missed while disconnected is lost; open transcripts catch up too.
+/// nothing missed while disconnected is lost.
 @MainActor
 public final class LiveSync {
     let source: any EventSource
@@ -9,7 +9,6 @@ public final class LiveSync {
     let sessions: SessionsStore
     let approvals: ApprovalsStore
     let activity: ActivityStore
-    let transcripts: Transcripts
     let usage: UsageStore
     let connectors: ConnectorsStore
     let claudeChats: ClaudeChatsStore
@@ -41,7 +40,7 @@ public final class LiveSync {
 
     public init(
         source: any EventSource, app: AppStore, sessions: SessionsStore, approvals: ApprovalsStore,
-        activity: ActivityStore, transcripts: Transcripts, usage: UsageStore,
+        activity: ActivityStore, usage: UsageStore,
         connectors: ConnectorsStore, claudeChats: ClaudeChatsStore, agents: AgentsStore,
         providers: ProvidersStore, pixies: PixiesStore, reports: PixieReportsStore,
         habits: HabitsStore,
@@ -54,7 +53,6 @@ public final class LiveSync {
         self.sessions = sessions
         self.approvals = approvals
         self.activity = activity
-        self.transcripts = transcripts
         self.usage = usage
         self.connectors = connectors
         self.claudeChats = claudeChats
@@ -79,11 +77,10 @@ public final class LiveSync {
         do {
             for try await update in source.updates() {
                 switch update {
-                case .connected(let resumed):
+                case .connected:
                     app.connection = .connected
                     await refresh()
                     await updates.connected()
-                    await transcripts.catchUp(missed: !resumed)
                     onConnected?()
                 case .reconnecting(let attempt, let delay):
                     app.connection = .reconnecting(attempt: attempt, delay: delay)
@@ -142,7 +139,6 @@ public final class LiveSync {
         sessions.apply(event)
         approvals.apply(event)
         activity.apply(event)
-        transcripts.receive(event)
         usage.apply(event)
         connectors.apply(event)
         claudeChats.apply(event)
@@ -201,7 +197,6 @@ public final class AppModel {
     public let sessions: SessionsStore
     public let approvals: ApprovalsStore
     public let activity: ActivityStore
-    public let transcripts: Transcripts
     public let usage: UsageStore
     public let connectors: ConnectorsStore
     public let claudeChats: ClaudeChatsStore
@@ -253,6 +248,12 @@ public final class AppModel {
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
+    /// The daemon's address and this device's token, for a page the app hosts (D150); nil
+    /// for a model without a real daemon, as in samples and snapshots.
+    public var pageConnection: (baseURL: URL, token: String)? {
+        guard let client = api as? APIClient, let tokens else { return nil }
+        return (client.baseURL, tokens.token.current)
+    }
     /// The live sync `connect()` started last.
     private var liveTask: Task<Void, Never>?
 
@@ -275,7 +276,6 @@ public final class AppModel {
         app = AppStore(api: api, store: daemonPreferences ?? preferences)
         sessions = SessionsStore(api: api, approvals: approvals)
         activity = ActivityStore(api: api)
-        transcripts = Transcripts(api: api)
         usage = UsageStore(api: api, calendar: calendar, now: now)
         connectors = ConnectorsStore(api: api)
         settings = SettingsStore(store: preferences)
@@ -310,7 +310,7 @@ public final class AppModel {
         updates = UpdatesStore(api: api)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
-            activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
+            activity: activity, usage: usage, connectors: connectors,
             claudeChats: claudeChats, agents: agents, providers: providers, pixies: pixies,
             reports: reports,
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,

@@ -75,13 +75,3 @@ public enum LimitPauseText {
         }
     }
 }
-
-/// Nest's continue message after the usage limit reset, shown as Nest's (B78).
-public enum LimitResumeNote {
-    public static let title = "Resumed after the usage limit"
-
-    /// "Nest: Continue where you left off."
-    public static func text(_ message: String) -> String {
-        "Nest: \(message)"
-    }
-}

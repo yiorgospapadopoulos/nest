@@ -775,10 +775,14 @@ private struct ComposerActions {
     }
 
     func toggleDictation() {
-        let terms = DictationVocabulary.terms(
-            repo: pixie ? nil : shell.project, branch: live.flatMap(shell.sessions.session)?.branch,
-            items: live.flatMap(shell.model.transcripts.existing)?.items ?? [])
         Task {
+            var history = ChatHistory()
+            if let live {
+                history = await shell.history(of: live)
+            }
+            let terms = DictationVocabulary.terms(
+                repo: pixie ? nil : shell.project,
+                branch: live.flatMap(shell.sessions.session)?.branch, files: history.files)
             let hint = await shell.dictation.toggle(for: chat, draft: draft, terms: terms)
             withAnimation { draft.hint = hint }
             if hint != nil {

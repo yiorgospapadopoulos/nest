@@ -1,13 +1,10 @@
 import Foundation
 import Observation
 
-/// Each project chat's group of pixies, for the tree under its row (B46), and the one work
-/// page open, which follows the live events.
+/// Each project chat's group of pixies, for the tree under its row (B46).
 @MainActor @Observable
 public final class ChatPixiesStore {
     private var groups: [String: [ChatPixieEntry]] = [:]
-    /// The work page open, if any.
-    public private(set) var work: AgentWorkStore?
 
     let api: any NestAPI
     @ObservationIgnored private let live = LiveEventLog()
@@ -44,7 +41,6 @@ public final class ChatPixiesStore {
 
     public func apply(_ event: Event) {
         live.record(event)
-        work?.receive(event)
         switch event.body {
         case .pixieGroup(let group):
             guard let id = event.sessionID else { return }
@@ -54,17 +50,6 @@ public final class ChatPixiesStore {
         default:
             break
         }
-    }
-
-    /// Opens a work page and reads it.
-    public func open(_ target: WorkTarget) async {
-        let page = AgentWorkStore(target: target, api: api)
-        work = page
-        await page.load()
-    }
-
-    public func closeWork() {
-        work = nil
     }
 
     private func store(_ group: [ChatPixieEntry], for id: String) {

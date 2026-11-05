@@ -1323,17 +1323,6 @@
             lock.withLock { groupList[id] = entries }
         }
 
-        func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork] {
-            id == "c2" && pixie == "reviewer" ? SampleTree.reviewerWork(now: now) : []
-        }
-
-        func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork {
-            guard id == "c2", toolUseID == "toolu_explore" else {
-                throw APIError.notFound("Not Found")
-            }
-            return SampleTree.exploreWork(now: now)
-        }
-
         func createPairingCode() async throws -> PairingCode {
             try decode(["code": "K7Q4-M2XD", "expires_at": SampleData.iso(Date() + 299)])
         }

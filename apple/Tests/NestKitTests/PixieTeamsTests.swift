@@ -451,43 +451,6 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
     }
 }
 
-@Suite struct MentionHighlightTests {
-    func highlights(_ text: String) -> [String] {
-        var list = pixies(("reviewer", "t1"), ("qa-bot", nil))
-        list[0].color = "#8B7CF6"
-        list[1].color = "#E5484D"
-        let teams = [
-            team("t1", 0, leader: "reviewer", handle: "qa"),
-            team("t2", 1, leader: nil, handle: "docs"),
-            team("t3", 2, leader: "gone", handle: "ops"),
-        ]
-        let found = MentionHighlights.find(in: text, pixies: list, teams: teams)
-        return found.map { highlight in
-            "\((text as NSString).substring(with: highlight.range)) \(highlight.color)"
-        }
-    }
-
-    @Test func pixieAndTeamMentionsTakeTheirColour() {
-        #expect(
-            highlights("@reviewer look, then ask @qa (and @qa-bot).")
-                == ["@reviewer #8B7CF6", "@qa #8B7CF6", "@qa-bot #E5484D"])
-        // After a line break or a tab too.
-        #expect(highlights("hi\n@reviewer\t@qa") == ["@reviewer #8B7CF6", "@qa #8B7CF6"])
-        // Offsets count UTF-16 units, as the text view does.
-        #expect(highlights("👋 @qa") == ["@qa #8B7CF6"])
-    }
-
-    @Test func onlyWholeKnownTokensCount() {
-        // Inside a word, an email, longer names, unknown names, other case.
-        #expect(highlights("me@reviewer.com").isEmpty)
-        #expect(highlights("@reviewers @qa_x @qa-x @nobody @Reviewer").isEmpty)
-        #expect(highlights("@ alone @").isEmpty)
-        // A team without a leader, or whose leader is gone, stays plain.
-        #expect(highlights("@docs @ops").isEmpty)
-        #expect(highlights("").isEmpty)
-    }
-}
-
 @Suite struct TeamLeaderColorTests {
     @Test func aTeamTakesItsLeadersCurrentColour() {
         var list = pixies(("reviewer", "t1"), ("qa-bot", "t1"))
@@ -578,71 +541,4 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
         team("gone", 2, leader: "nobody"),
     ]
 
-    private func teamCall(_ slug: String, pixieChat: Bool = false) -> TeamCall? {
-        PixieCalls.team(of: slug, pixies: known, teams: teams, pixieChat: pixieChat)
-    }
-
-    /// In a project chat the main agent calls only a team's leader, so a leader's call is
-    /// its team's, drawn in the leader's colour with the leader first (B70).
-    @Test func aProjectChatsCallOfALeaderIsItsTeamsCall() throws {
-        let call = try #require(teamCall("bugs"))
-        #expect(call.team.id == "qa")
-        #expect(call.color == "#E5484D")
-        #expect(call.members.map(\.id) == ["bugs", "stylist", "scout"])
-    }
-
-    @Test func otherCallsStayPixieCalls() {
-        // A member who does not lead, a pixie with no team, an unknown slug.
-        #expect(teamCall("stylist") == nil)
-        #expect(teamCall("solo") == nil)
-        #expect(teamCall("nobody") == nil)
-        // A member of a team with no leader.
-        #expect(teamCall("idle") == nil)
-        // In a pixie's own chat its calls are its own.
-        #expect(teamCall("bugs", pixieChat: true) == nil)
-    }
-
-    @Test func whileItRunsTheLabelSaysTheTeamIsWorking() throws {
-        let call = try #require(teamCall("bugs"))
-        #expect(call.label(running: true) == "QA working")
-        #expect(call.label(running: false) == "QA")
-    }
-
-    @Test func itsMarkIsTheTeamsGridHoppingWhileItRuns() throws {
-        let call = try #require(teamCall("bugs"))
-        let working = call.icon(working: true)
-        #expect(working.map(\.pixie.id) == ["bugs", "stylist", "scout", "bugs"])
-        #expect(working.map(\.working) == [true, true, true, true])
-        #expect(working.map(\.phaseKey) == ["bugs#0", "stylist#1", "scout#2", "bugs#3"])
-        #expect(call.icon(working: false).map(\.working) == [false, false, false, false])
-    }
-
-    /// A click opens the team's work in this chat, as the chat tree's team row does: with
-    /// the members of the chat's entry for the team, else the team's current members.
-    @Test func aClickOpensTheTeamsWork() throws {
-        let call = try #require(teamCall("bugs"))
-        #expect(
-            call.work(session: "c1", group: [])
-                == .team(session: "c1", teamID: "qa", members: ["bugs", "stylist", "scout"]))
-        let entry: ChatPixieEntry = try NestJSON.decoder.decode(
-            ChatPixieEntry.self,
-            from: Data(
-                """
-                {"kind": "team", "pixie_id": null, "team_id": "qa", "state": "done",
-                 "calls": [], "members": [
-                   {"pixie_id": "bugs", "leader": true, "state": "done"},
-                   {"pixie_id": "stylist", "leader": false, "state": null}
-                 ]}
-                """.utf8))
-        let other: ChatPixieEntry = try NestJSON.decoder.decode(
-            ChatPixieEntry.self,
-            from: Data(
-                """
-                {"kind": "pixie", "pixie_id": "solo", "team_id": null, "state": "done",
-                 "calls": [], "members": []}
-                """.utf8))
-        #expect(
-            call.work(session: "c1", group: [other, entry])
-                == .team(session: "c1", teamID: "qa", members: ["bugs", "stylist"]))
-    }
 }

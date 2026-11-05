@@ -15,38 +15,6 @@ import Testing
             #"{"blocks": [\#(blocks)], "parent_tool_use_id": \#(parentJSON)}"#, id: id)
     }
 
-    /// A call_pixie call is an agent call named by the pixie's slug: the work relayed
-    /// under it goes with it, and it is the pixie's own row in the transcript.
-    @Test func aCallPixieCallIsAPixieRowLikeAClaudeSubagent() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(
-            message(
-                #"{"type": "tool_use", "id": "c1", "name": "mcp__nest__call_pixie", "input": {"pixie": "reviewer", "task": "Review it", "description": "Review"}}"#,
-                id: 1))
-        transcript.receive(
-            message(
-                #"{"type": "text", "text": "Reading."}, {"type": "tool_use", "id": "x1", "name": "Read", "input": {"file_path": "a.ts"}}"#,
-                parent: "c1", id: 2))
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionSubagentDelta, #"{"text": "Look", "parent_tool_use_id": "c1"}"#,
-                id: nil))
-
-        guard case .tool(let call) = transcript.items[0].content else {
-            throw Unexpected(transcript.items)
-        }
-        #expect(call.subagentType == "reviewer")
-        #expect(call.steps.map(\.line) == ["Reading.", "Read a.ts"])
-        #expect(call.liveText == "Look")
-        #expect(ToolSummary.argument(of: call) == "reviewer: Review")
-        let entries = TranscriptGrouping.entries(
-            transcript.items, live: true, pixies: ["reviewer"])
-        guard case .pixieCall(let entry) = entries.first else { throw Unexpected(entries) }
-        #expect(entry.slug == "reviewer")
-        #expect(entry.isRunning)
-    }
-
     /// An engine's plan with no parent replaces the chat's task list, as TaskCreate and
     /// TaskUpdate fill Goals; with a parent its step in progress is that row's activity.
     @Test func anEnginesPlanFillsGoalsAndTheCallsRow() {
@@ -98,35 +66,6 @@ import Testing
             EventType.sessionAgents,
             #"{"agents": [{"id": "main", "name": "main", "status": "running", "steps": []}, {"id": "c1", "name": "reviewer", "status": "running", "activity": "\#(activity)", "steps": []}], "background": null}"#,
             id: nil)
-    }
-
-    /// A background call's result is Nest's compact line, never the user's bubble, and
-    /// it starts a turn as a message does.
-    @Test func aPixieResultIsACompactLine() async throws {
-        let transcript = TranscriptStore(sessionID: "s1", api: api)
-        try await transcript.load()
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionUserMessage,
-                #"{"text": "Background call of @reviewer finished. Its report:\n\nAll good", "attachments": [], "from_pixie": null, "origin": "pixie_result", "pixie_id": "p1", "tool_use_id": "c1", "status": "done"}"#,
-                id: 4))
-        guard case .pixieResult(let line) = transcript.items.first?.content else {
-            throw Unexpected(transcript.items)
-        }
-        #expect(transcript.items.count == 1)
-        #expect(transcript.turnStartedAt != nil)
-        #expect(line.pixieID == "p1")
-
-        var pixie = Fixture.decode(Pixie.self, "pixie")
-        pixie.id = "p1"
-        pixie.slug = "scout"
-        #expect(line.title(pixies: [pixie]) == "@scout finished")
-        // A pixie no longer known: the slug the message names.
-        #expect(line.title(pixies: []) == "@reviewer finished")
-        let words = [PixieResultStatus.failed, .stopped, .interrupted].map {
-            PixieResultLine(pixieID: "p1", status: $0, text: "").title(pixies: [pixie])
-        }
-        #expect(words == ["@scout failed", "@scout was stopped", "@scout was interrupted"])
     }
 
     /// Codex as the daemon lists it since B112: Stop on a call, questions, the task list
