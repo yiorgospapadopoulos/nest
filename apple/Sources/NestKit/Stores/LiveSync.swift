@@ -248,7 +248,7 @@ public final class AppModel {
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
-    /// The daemon's address and this device's token, for a page the app hosts (D150); nil
+    /// The daemon's address and this device's token, for a page the app hosts (D151); nil
     /// for a model without a real daemon, as in samples and snapshots.
     public var pageConnection: (baseURL: URL, token: String)? {
         guard let client = api as? APIClient, let tokens else { return nil }

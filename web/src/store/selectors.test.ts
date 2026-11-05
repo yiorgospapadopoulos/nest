@@ -183,6 +183,27 @@ describe("goalEntries (B47)", () => {
 });
 
 describe("inbox", () => {
+  it("leaves out a review or merge while its chat is at work, and only those", () => {
+    const review = (id: string, session_id: string) => approval({ id, session_id, kind: "review" });
+    const chats = (working: Session["state"]) => [
+      session({ id: "s1", repo: "todo-ui", state: working }),
+      session({ id: "s2", repo: "todo-ui", state: "idle" }),
+    ];
+    const items = [
+      review("kept-work", "s1"),
+      approval({ id: "merge", session_id: "s1", kind: "merge" }),
+      approval({ id: "ask", session_id: "s1" }),
+      review("ready", "s2"),
+    ];
+
+    for (const working of ["starting", "running", "waiting"] as const) {
+      const s = state(chats(working), items);
+      expect(needsCount(s, "todo-ui")).toBe(2);
+      expect(inboxGroups(s)[0]?.items.map((a) => a.id)).toEqual(["ask", "ready"]);
+    }
+    expect(needsCount(state(chats("idle"), items), "todo-ui")).toBe(4);
+  });
+
   it("groups pending items by project in project order, unknown projects last", () => {
     const items = [
       approval({ id: "a", repo: "todo-ui", created_at: "2026-10-06T10:00:02Z" }),

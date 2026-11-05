@@ -130,7 +130,7 @@ run-app: app
 	open apple/build/Nest.app
 
 # Copy the built app into /Applications so it opens from Spotlight, Launchpad and the Dock.
-# The chats are pages the daemon serves from web/dist (D150), so they are built here too.
+# The chats are pages the daemon serves from web/dist (D151), so they are built here too.
 # The app from before the rename to Nest (B43), Harness.app, is removed; its settings and
 # backgrounds are copied by Nest on its first launch.
 install-app: app

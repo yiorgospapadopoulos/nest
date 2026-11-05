@@ -1,7 +1,7 @@
 // The frame's menus and rows wired to what they do: the + popover's Add folder, inline
 // rename, the project menu's Project settings and New terminal, the Terminal button, and an
 // approval's Needs you row unfolding from outside (the pill).
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EarlierWorktree } from "../../../api/types.ts";
 import type { Actions } from "../../../store/actions.ts";
@@ -124,6 +124,44 @@ describe("a chat's earlier worktrees (B119)", () => {
   it("show nothing on a chat that never moved", () => {
     setup(moved([]));
     expect(screen.queryByRole("button", { name: /^Earlier worktrees/ })).toBeNull();
+  });
+});
+
+describe("a project tab's status", () => {
+  const tab = () => document.querySelector(".dk-proj");
+  const chat = (state: "running" | "idle") => ({
+    sessions: { s1: session({ id: "s1", repo: "todo-ui", state }) },
+  });
+
+  it("shows the fireflies while a chat runs, even with something waiting, and no number", () => {
+    setup({ state: { ...chat("running"), approvals: { q1: approval({ repo: "todo-ui" }) } } });
+    expect(tab()?.querySelector(".ff")).not.toBeNull();
+    expect(tab()?.querySelector(".dot")).toBeNull();
+    expect(tab()).not.toHaveTextContent("1");
+  });
+
+  it("shows a dot and no number when nothing runs and something waits", () => {
+    setup({ state: { ...chat("idle"), approvals: { q1: approval({ repo: "todo-ui" }) } } });
+    expect(tab()?.querySelector(".dot.s-wait")).not.toBeNull();
+    expect(tab()?.querySelector(".ff")).toBeNull();
+    expect(tab()).not.toHaveTextContent("1");
+  });
+
+  it("shows a green dot for finished work alone, amber as soon as anything else waits", () => {
+    const review = approval({ id: "r1", repo: "todo-ui", kind: "review" });
+    setup({ state: { ...chat("idle"), approvals: { r1: review } } });
+    expect(tab()?.querySelector(".dot.s-rev")).not.toBeNull();
+    cleanup();
+
+    const ask = approval({ id: "q1", repo: "todo-ui" });
+    setup({ state: { ...chat("idle"), approvals: { r1: review, q1: ask } } });
+    expect(tab()?.querySelector(".dot.s-wait")).not.toBeNull();
+    expect(tab()?.querySelector(".dot.s-rev")).toBeNull();
+  });
+
+  it("shows nothing when nothing runs or waits", () => {
+    setup({ state: chat("idle") });
+    expect(tab()?.querySelector(".ff, .dot")).toBeNull();
   });
 });
 

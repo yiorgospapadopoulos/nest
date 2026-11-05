@@ -685,6 +685,17 @@ describe("review bar", () => {
     );
   });
 
+  it("is hidden while the chat is at work, though the review stays pending", async () => {
+    const r = review();
+    await openChat({
+      chat: session({ state: "running" }),
+      approvals: [r],
+      events: [created(r, 1)],
+    });
+
+    expect(screen.queryByRole("group", { name: "Changes to review" })).not.toBeInTheDocument();
+  });
+
   it("is hidden without a pending review", async () => {
     const p = approval();
     await openChat({ approvals: [p], events: [created(p, 1)] });

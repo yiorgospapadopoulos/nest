@@ -167,6 +167,77 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(sessions.checksFailed(in: "map-viewer").isEmpty)
     }
 
+    @Test func aReviewOrMergeOfAChatAtWorkDoesNotNeedTheUser() async throws {
+        func approval(_ id: String, _ session: String, _ kind: ApprovalKind) -> Approval {
+            var approval = Fixture.approval("ap-perm")
+            approval.id = id
+            approval.sessionID = session
+            approval.kind = kind
+            return approval
+        }
+        for working in [SessionState.starting, .running, .waiting] {
+            api.set {
+                $0.sessions = [
+                    session("work", state: working, pr: nil), session("done", pr: nil),
+                ]
+                $0.approvals = [
+                    approval("kept-work", "work", .review), approval("merge", "work", .merge),
+                    approval("ask", "work", .permission), approval("ready", "done", .review),
+                ]
+            }
+            try await sessions.load()
+            try await approvals.load()
+
+            #expect(sessions.attention(of: "todo-ui") == 2)
+            #expect(sessions.waitingApprovals(in: "todo-ui").map(\.id) == ["ask", "ready"])
+        }
+
+        api.set { $0.sessions = [session("work", pr: nil), session("done", pr: nil)] }
+        try await sessions.load()
+        #expect(sessions.attention(of: "todo-ui") == 4)
+    }
+
+    @Test func theTabToneIsReviewForFinishedWorkAloneAndWaitingForAnyMix() async throws {
+        func approval(_ id: String, _ kind: ApprovalKind) -> Approval {
+            var approval = Fixture.approval("ap-perm")
+            approval.id = id
+            approval.sessionID = "done"
+            approval.kind = kind
+            return approval
+        }
+        api.set {
+            $0.sessions = [session("done", pr: nil)]
+            $0.approvals = []
+        }
+        try await sessions.load()
+        try await approvals.load()
+        #expect(sessions.attentionTone(of: "todo-ui") == nil)
+
+        api.set { $0.approvals = [approval("r", .review), approval("m", .merge)] }
+        try await approvals.load()
+        #expect(sessions.attentionTone(of: "todo-ui") == .review)
+
+        api.set { $0.approvals = [approval("r", .review), approval("q", .permission)] }
+        try await approvals.load()
+        #expect(sessions.attentionTone(of: "todo-ui") == .waiting)
+    }
+
+    @Test func theReviewBarHidesWhileTheChatIsAtWork() async throws {
+        var review = Fixture.approval("ap-review")
+        review.sessionID = "chat"
+        for (state, shown) in [
+            (SessionState.running, false), (.starting, false), (.waiting, false), (.idle, true),
+        ] {
+            api.set {
+                $0.sessions = [session("chat", state: state, pr: nil)]
+                $0.approvals = [review]
+            }
+            try await sessions.load()
+            try await approvals.load()
+            #expect((sessions.reviewBar(of: "chat") != nil) == shown)
+        }
+    }
+
     @Test func attentionCountsApprovalsFailedChecksAndStuckChats() async throws {
         var other = Fixture.approval("ap-perm")
         other.id = "ap-other"

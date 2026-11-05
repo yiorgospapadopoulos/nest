@@ -19,7 +19,7 @@ struct StartSession: View {
         let project = shell.project
         let draft = shell.startDraft()
         let screen = StartScreen(
-            approvals: shell.approvals.pending(repo: project ?? ""),
+            approvals: shell.sessions.waitingApprovals(in: project ?? ""),
             checksFailed: shell.sessions.checksFailed(in: project ?? ""),
             stuck: shell.sessions.stuck(in: project ?? ""),
             sessions: shell.sessions.sessions(in: project ?? ""),

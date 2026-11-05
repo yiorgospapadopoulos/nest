@@ -1,7 +1,7 @@
 import Foundation
 
 /// What the Mac reads from a chat's messages, the transcript itself being a web page
-/// (D150): the last message for up arrow and Esc Esc, and the files it names for
+/// (D151): the last message for up arrow and Esc Esc, and the files it names for
 /// dictation's vocabulary. Read from the daemon when asked, so a rewound message is gone.
 public struct ChatHistory: Sendable, Equatable {
     /// The event of the user's latest message.

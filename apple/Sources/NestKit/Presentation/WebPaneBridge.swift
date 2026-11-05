@@ -1,6 +1,6 @@
 import Foundation
 
-/// The Mac app's side of a transcript page (B124, D150): what the page may ask, what it is
+/// The Mac app's side of a transcript page (B124, D151): what the page may ask, what it is
 /// told, where it may go and what it may load. The page shows agent output and holds
 /// the device token, so its requests are checked here before anything runs, it answers only
 /// to the daemon's own origin, and the only network it can reach is the daemon.

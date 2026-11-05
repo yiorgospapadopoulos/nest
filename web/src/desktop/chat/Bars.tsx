@@ -16,7 +16,7 @@ import { runLine, stepLine } from "../../screens/chat/useAutopilot.ts";
 import { countdown, resetLabel } from "../../format.ts";
 import { asDraftFiles } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
-import { engineName, pendingFor } from "../../store/selectors.ts";
+import { engineName, isAtWork, pendingFor } from "../../store/selectors.ts";
 import { bashBlocks } from "../../transcript/build.ts";
 import { elapsed } from "../../transcript/activity.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
@@ -101,11 +101,11 @@ function RunningList({ items }: { items: BackgroundSummary["items"] }) {
   );
 }
 
-/** One quiet line while the chat's review waits (B56): the files and Review. */
+/** One quiet line while the chat's review waits (B56), once the chat stopped working. */
 export function ReviewBar({ session }: { session: Session }) {
   const { state } = useStore();
   const pending = pendingFor(state, session.id).find((a) => a.kind === "review");
-  if (pending === undefined) return null;
+  if (pending === undefined || isAtWork(session)) return null;
   return <PendingReview key={pending.id} approval={pending} session={session} />;
 }
 

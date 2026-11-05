@@ -21,7 +21,7 @@ Nest was called harness until B43 (D080). Its daemon and command line tool are `
 |---|---|
 | `daemon/` | Python daemon (FastAPI, websockets, Claude Agent SDK, Codex app-server, SQLite). Runs on the Mac as a background service. |
 | `web/` | iPhone PWA (React, TypeScript, Vite), served by the daemon. |
-| `apple/` | Native Mac app: a Swift package with the `NestKit` logic library and the `NestApp` SwiftUI executable (D024); its chat transcripts are the web chat in web views (D150). |
+| `apple/` | Native Mac app: a Swift package with the `NestKit` logic library and the `NestApp` SwiftUI executable (D024); its chat transcripts are the web chat in web views (D151). |
 | `desktop/` | Linux desktop app (Tauri 2, Rust) around the web UI's desktop layout (`web/desktop.html`), built in Docker (D144). The Windows block adds `src-tauri/src/platform/windows.rs`. |
 | `design/` | `tokens.toml`, the design tokens shared by both clients (`make tokens` regenerates the CSS and Swift outputs). Both clients use the `[colors.mac]` palette and lane colours; the Mac also its `mac_*` radii and spacing (Swift `DesignTokens.Colors.Mac`), the iPhone its `phone_*` type sizes, row height and card radius (CSS `--typography-size-phone-*`, `--spacing-phone-row`, `--radius-phone-card`). The iPhone no longer offers glass themes or wallpapers (D126); their token tables are still generated but unused. See D039 and D073. |
 
@@ -81,7 +81,7 @@ The Mac window is one frosted slab over your desktop: the system's behind-window
 
 The Mac's chat sidebar is one list, newest activity first, whatever each chat's state; its status dot still shows it. Pinned chats sit above it under a Pinned label (the rest then under Chats); with nothing pinned there are no labels. Archived stays folded at the bottom. In the right panel, Needs you and Goals list one row per item: a status dot, the chat's name (click it to open the chat) over a grey line (what it asks and a short detail, or a goal's "2 of 4" with a thin progress bar), and a chevron on the right that opens the full item in place (Approve, the review, the answer, the checklist). Needs you rows start closed and Goals rows start open. The iPhone keeps its grouped chat list for now. See D099.
 
-A Mac chat's transcript is the web chat in a web view, loaded from the daemon (D150): the sidebar, tabs, right panel, pane header and composer stay native, so scrolling stays smooth with four panes streaming. Moving a pane or switching views keeps its place; closing a pane frees its page. A chat that cannot load, such as with the daemon down or too old to serve the page, says so with Retry and tries again when the connection returns.
+A Mac chat's transcript is the web chat in a web view, loaded from the daemon (D151): the sidebar, tabs, right panel, pane header and composer stay native, so scrolling stays smooth with four panes streaming. Moving a pane or switching views keeps its place; closing a pane frees its page. A chat that cannot load, such as with the daemon down or too old to serve the page, says so with Retry and tries again when the connection returns.
 
 For visual review, a debug build renders the window offscreen without showing it: `cd apple && swift build && "$(swift build --show-bin-path)/NestApp" --render-snapshots <folder>` (sample data) or `--render-live <folder>` (the local daemon, read-only).
 

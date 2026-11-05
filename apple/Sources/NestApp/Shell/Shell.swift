@@ -163,7 +163,7 @@ final class Shell {
     let dictation = Dictation()
     /// The live terminals and web views of the tool panes.
     let tools = ToolSessions()
-    /// The transcripts' web pages (D150).
+    /// The transcripts' web pages (D151).
     let webPanes: WebPanes
     /// Each chat's last message sent from here, for Up arrow in an empty composer.
     let sentMessages = SentMessages()

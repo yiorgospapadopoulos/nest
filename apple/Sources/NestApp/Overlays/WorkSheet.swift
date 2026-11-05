@@ -2,7 +2,7 @@ import NestKit
 import SwiftUI
 
 /// What a subagent, pixie or team did in a chat, read-only (B46): the work view of the web
-/// chat, live while it works (D150). There is no composer: follow-ups go in the chat.
+/// chat, live while it works (D151). There is no composer: follow-ups go in the chat.
 struct WorkSheet: View {
     let target: WorkTarget
     @Environment(Shell.self) private var shell

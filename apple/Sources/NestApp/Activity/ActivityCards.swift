@@ -8,7 +8,7 @@ struct NeedsCard: View {
     @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
-        let pending = shell.approvals.pending(repo: shell.project ?? "")
+        let pending = shell.sessions.waitingApprovals(in: shell.project ?? "")
         let failed = shell.sessions.checksFailed(in: shell.project ?? "")
         let stuck = shell.sessions.stuck(in: shell.project ?? "")
         VStack(alignment: .leading, spacing: 0) {

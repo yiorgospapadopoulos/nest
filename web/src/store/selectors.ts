@@ -361,13 +361,25 @@ export function nudgeText(details: string): string {
   return `You seem stuck: ${lowered}. Step back and try a different approach.`;
 }
 
+/**
+ * The pending approvals that need the user now. A review or merge waits while its chat is
+ * at work: it cannot be acted on yet, and the turn may replace it.
+ */
+function waitingApprovals(state: State): Approval[] {
+  return Object.values(state.approvals).filter((a) => {
+    if (!isFinishedWork(a)) return true;
+    const chat = state.sessions[a.session_id];
+    return chat === undefined || !isAtWork(chat);
+  });
+}
+
+const isFinishedWork = (a: Approval) => a.kind === "review" || a.kind === "merge";
+
 /** Every pending item, failed check and stuck chat, by project in the order they are listed. */
 export function inboxGroups(state: State): InboxGroup[] {
   const order = state.repos.map((r) => r.name);
   const rank = (repo: string) => (order.includes(repo) ? order.indexOf(repo) : order.length);
-  const items = Object.values(state.approvals).sort((a, b) =>
-    a.created_at.localeCompare(b.created_at),
-  );
+  const items = waitingApprovals(state).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const failed = failures(state);
   const stuck = stuckChats(state);
   const reports = inboxReports(state);
@@ -408,10 +420,23 @@ export function unreadActions(state: State, pixieId?: string): number {
   ).length;
 }
 
+/** The agent is working on this chat, so its finished work cannot be acted on yet. */
+export function isAtWork(session: Session): boolean {
+  return session.state === "starting" || session.state === "running" || session.state === "waiting";
+}
+
+/** The colour of what waits: review when it is only finished work, wait for anything else. */
+export function needsTone(state: State, repo: string): "rev" | "wait" | null {
+  if (needsCount(state, repo) === 0) return null;
+  const mine = waitingApprovals(state).filter((a) => a.repo === repo);
+  const others = needsCount(state, repo) - mine.length;
+  return others === 0 && mine.every(isFinishedWork) ? "rev" : "wait";
+}
+
 export function needsCount(state: State, repo?: string): number {
   const mine = (x: { repo: string }) => repo === undefined || x.repo === repo;
   return (
-    Object.values(state.approvals).filter(mine).length +
+    waitingApprovals(state).filter(mine).length +
     failures(state).filter(mine).length +
     stuckChats(state).filter(mine).length +
     inboxReports(state).filter(mine).length

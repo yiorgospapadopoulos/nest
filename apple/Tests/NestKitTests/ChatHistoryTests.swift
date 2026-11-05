@@ -3,7 +3,7 @@ import Testing
 
 @testable import NestKit
 
-/// What the composer reads of a chat now that the transcript is a page (D150): up arrow, Esc
+/// What the composer reads of a chat now that the transcript is a page (D151): up arrow, Esc
 /// Esc and dictation's vocabulary.
 @MainActor
 @Suite struct ChatHistoryTests {

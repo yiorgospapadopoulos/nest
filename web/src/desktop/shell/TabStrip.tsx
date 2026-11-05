@@ -10,7 +10,7 @@ import type { RepoConfig } from "../../api/types.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { useStore } from "../../store/context.ts";
 import { GENERAL, GENERAL_REPO, projectName, repoNamed } from "../../store/general.ts";
-import { needsCount, pixieList, unreadActions } from "../../store/selectors.ts";
+import { needsCount, needsTone, pixieList, unreadActions } from "../../store/selectors.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { useKeysText } from "../layout/useShortcuts.ts";
@@ -275,7 +275,7 @@ function PixiesTab() {
         working={running}
       />
       <span className="dk-tname">Pixies</span>
-      <TabStatus current={current} attention={attention} running={running} />
+      <TabStatus tone={attention > 0 ? "wait" : null} running={running} />
     </button>
   );
 }
@@ -300,6 +300,7 @@ function ProjectTab({ name, index, repo, current, width, narrow, step, offset, o
   const { state } = useStore();
   const shell = useShell();
   const attention = needsCount(state, name);
+  const tone = needsTone(state, name);
   const running = Object.values(state.sessions).some(
     (s) => s.repo === name && (s.state === "running" || s.state === "starting"),
   );
@@ -373,7 +374,7 @@ function ProjectTab({ name, index, repo, current, width, narrow, step, offset, o
       >
         <ProjectMark name={name} repo={repo} size={13} />
         <span className="dk-tname">{projectName(name)}</span>
-        <TabStatus current={current} attention={attention} running={running} />
+        <TabStatus tone={tone} running={running} />
       </button>
       {canClose && (
         <button
@@ -390,23 +391,8 @@ function ProjectTab({ name, index, repo, current, width, narrow, step, offset, o
   );
 }
 
-/** In a background tab that needs the user an amber dot and the count, else the count. */
-function TabStatus({
-  current,
-  attention,
-  running,
-}: {
-  current: boolean;
-  attention: number;
-  running: boolean;
-}) {
-  if (attention > 0) {
-    return (
-      <span className="dk-tcount">
-        {!current && <span className="dot s-wait" aria-hidden="true" />}
-        {attention}
-      </span>
-    );
-  }
-  return running ? <Fireflies size={9} /> : null;
+/** The fireflies while a chat runs, else a dot in the colour of what needs the user. */
+function TabStatus({ tone, running }: { tone: "rev" | "wait" | null; running: boolean }) {
+  if (running) return <Fireflies size={9} />;
+  return tone === null ? null : <span className={`dot s-${tone}`} aria-hidden="true" />;
 }

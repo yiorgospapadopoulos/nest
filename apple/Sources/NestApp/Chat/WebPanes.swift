@@ -4,7 +4,7 @@ import Observation
 import SwiftUI
 import WebKit
 
-/// The chat transcripts as web pages (D150): each pane's transcript is the web chat in its
+/// The chat transcripts as web pages (D151): each pane's transcript is the web chat in its
 /// own web view, and everything around it stays native. The page comes from the daemon, so
 /// it has the daemon's version and origin on this Mac and on a remote one, and it asks the
 /// app for the token (`WebPaneBridge`), which stays out of its address and of any script.

@@ -202,14 +202,41 @@ public final class SessionsStore {
         .map(\.0)
     }
 
+    /// The pending approvals that need the user now, of one project or of all. A review or
+    /// merge waits while its chat is at work: it cannot be acted on yet, and the turn may
+    /// replace it.
+    public func waitingApprovals(in repo: String? = nil) -> [Approval] {
+        let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
+        return pending.filter { approval in
+            guard approval.kind == .review || approval.kind == .merge else { return true }
+            return sessions[approval.sessionID]?.state.isInFlight != true
+        }
+    }
+
+    /// The color of what waits on the user in a project: review when it is only finished
+    /// work, waiting for anything else or a mix; nil when nothing does.
+    public func attentionTone(of repo: String) -> StatusTone? {
+        guard attention(of: repo) > 0 else { return nil }
+        let onlyWork =
+            checksFailed(in: repo).isEmpty && stuck(in: repo).isEmpty
+            && waitingApprovals(in: repo).allSatisfy { $0.kind == .review || $0.kind == .merge }
+        return onlyWork ? .review : .waiting
+    }
+
+    /// The bar of a chat's pending review; nil while the chat is at work, as the turn may
+    /// replace the review.
+    public func reviewBar(of id: String) -> ReviewBar? {
+        guard sessions[id]?.state.isInFlight != true else { return nil }
+        return ReviewBar.pending(session: id, in: approvals.pending)
+    }
+
     /// What needs the user, for the project's tab and the Dock badge (every project's
-    /// without a repo): pending approvals, pull requests whose checks failed and chats
+    /// without a repo): waiting approvals, pull requests whose checks failed and chats
     /// that look stuck, as on the iPhone. A pixie's pending approvals count in the Dock
     /// badge, but no project's count; its chat is not a project chat, so it adds no failed
     /// checks or stuck flags (D072).
     public func attention(of repo: String? = nil) -> Int {
-        let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
-        return pending.count + checksFailed(in: repo).count + stuck(in: repo).count
+        waitingApprovals(in: repo).count + checksFailed(in: repo).count + stuck(in: repo).count
     }
 
     private func listed(in repo: String?) -> [Session] {
