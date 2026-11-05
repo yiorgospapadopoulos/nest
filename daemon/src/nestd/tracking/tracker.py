@@ -40,6 +40,9 @@ class SessionTracker:
             case types.SESSION_WORKSPACE:
                 self.agents.root = str(payload["path"])
             case types.SESSION_USER_MESSAGE:
+                # Autopilot's keep-going messages are not the user's: the list stays.
+                if payload.get("origin") == "autopilot":
+                    return False, Change.NONE
                 return self.tasks.clear(), Change.NONE
             case types.SESSION_AGENT_TASK:
                 return False, self.agents.task(AgentTask.model_validate(payload), event.ts)

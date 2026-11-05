@@ -249,6 +249,16 @@ def test_the_next_user_message_clears_the_visible_list() -> None:
     assert user_message(feed) == (False, Change.NONE)
 
 
+def test_an_autopilot_message_leaves_the_list_showing() -> None:
+    feed = Feed()
+    finished_list(feed)
+
+    sent: dict[str, JsonValue] = {"text": "Go on", "attachments": [], "origin": "autopilot"}
+    assert feed.apply("session.user_message", sent) == (False, Change.NONE)
+
+    assert len(feed.tasks()) == 3
+
+
 def test_a_new_list_numbered_from_one_replaces_the_old_tasks() -> None:
     feed = Feed()
     finished_list(feed)
