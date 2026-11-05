@@ -11,6 +11,7 @@ from typing import Any
 
 from nestd.attachments.store import Attachment
 from nestd.config.models import Effort, PermissionMode
+from nestd.local.run import LocalRun
 from nestd.providers.base import AgentRun, LimitHit
 from nestd.sessions.errors import SessionBusyError
 from nestd.sessions.models import USER, Sender
@@ -61,6 +62,8 @@ class LiveSession:
     # The account the run opened on; once another is active, the next turn opens a new
     # run on it (B98). None without accounts.
     run_account: str | None = None
+    # The local model's server the run opened on (B106).
+    run_local: LocalRun | None = None
     # Held while the saved model and mode are read and sent to the run, so the last saved win.
     controls: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Held while the state moves between running and waiting, so two prompts opening at

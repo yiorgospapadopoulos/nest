@@ -72,6 +72,7 @@ from nestd.sessions.models import (
     pixie_repo,
 )
 from nestd.sessions.moves import WorktreeMoves
+from nestd.sessions.namer import NAME_WAITS, ChatNamer
 from nestd.sessions.ports import PortsSource
 from nestd.sessions.prompts import SessionPrompts
 from nestd.sessions.queue import MessageQueue
@@ -157,6 +158,8 @@ class SessionManager:
         ports: PortsSource | None = None,
         keep_awake: KeepAwake | None = None,
         weekly_used: Callable[[Session], Awaitable[float | None]] | None = None,
+        names_dir: Path | None = None,
+        name_waits: Sequence[float] = NAME_WAITS,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
@@ -167,7 +170,9 @@ class SessionManager:
         account (B98). `issues` reads the issue a chat starts from (B101). `local` runs
         chats on local models (B106). `ports` tells a project chat's agent about its
         folder's ports and dev server (B108). `keep_awake` and `weekly_used` serve Autopilot
-        (`AutopilotRunner`).
+        (`AutopilotRunner`). `names_dir` is the empty folder of the small calls that name
+        a chat on an engine with no names of its own, and `name_waits` how long the others
+        are given (`ChatNamer`).
         """
         self._local = local
         self._issues = issues
@@ -187,6 +192,7 @@ class SessionManager:
         self._defaults = defaults
         self._hooks = hooks
         self._states = StateWriter(store, bus, hooks)
+        self.namer = ChatNamer(store, bus, self._engines, names_dir, name_waits)
         self._limits = LimitPauses(store, bus, clock)
         self._limit_task: asyncio.Task[None] | None = None
         self.autopilot = AutopilotRunner(
@@ -213,6 +219,7 @@ class SessionManager:
             repos=repos,
             attachments=attachments,
             engines=self._engines,
+            namer=self.namer,
             handler_for=self._handler_for,
             on_mode=self._engine_mode,
             idle_close=idle_close,
@@ -416,6 +423,7 @@ class SessionManager:
             repo=repo.name,
             title=request.title
             or (short_title(request.prompt) if issue is None else one_line(issue.title)[:200]),
+            title_pending=request.title is None and issue is None,
             prompt=request.prompt if issue is None else issue_message(issue, request.prompt),
             mode=mode,
             cwd=joined.path if joined is not None else repo.path if mode == "in_place" else None,
@@ -1140,6 +1148,7 @@ class SessionManager:
         recorded are applied now, before any message can start (B119).
         """
         await self._queue.unsend_all()
+        await self._store.end_all_naming()
         for session_id in await self._store.interrupt_in_flight():
             await self._bus.publish(
                 types.SESSION_STATE, {"state": SessionState.INTERRUPTED, "error": None}, session_id
@@ -1243,6 +1252,7 @@ class SessionManager:
             if isinstance(result, Exception):
                 logger.error("stopping session %s failed", live.session_id, exc_info=result)
         await self.autopilot.shutdown()
+        await self.namer.shutdown()
 
     async def _refuse_member_calls(self, session: NewSession, text: str) -> None:
         """422 for a message that calls a pixie of a team on its own: a team's pixies are

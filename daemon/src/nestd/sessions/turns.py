@@ -41,6 +41,7 @@ from nestd.sessions.live import BYPASS, LiveSession, Unsent
 from nestd.sessions.local import LocalSource, crosses_local, require
 from nestd.sessions.models import USER, NewSession, Sender, Session, SessionState
 from nestd.sessions.moves import WorktreeMoves, place_note
+from nestd.sessions.namer import ChatNamer
 from nestd.sessions.ports import NO_PORTS, FolderPorts, PortsSource
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rules import attachment_summary, require_cwd, user_input
@@ -163,6 +164,7 @@ class TurnRunner:
         repos: RepoService,
         attachments: AttachmentStore,
         engines: Engines,
+        namer: ChatNamer,
         handler_for: Callable[[LiveSession], ApprovalHandler],
         on_mode: Callable[[LiveSession, PermissionMode], Awaitable[None]],
         idle_close: timedelta,
@@ -209,6 +211,7 @@ class TurnRunner:
         self._worktrees = worktrees
         self._attachments = attachments
         self._engines = engines
+        self._namer = namer
         self._handler_for = handler_for
         self._idle_close = idle_close
         # The pixies runs call with call_pixie (B112); set once it exists, as it needs the
@@ -345,6 +348,7 @@ class TurnRunner:
         run = await self._ensure_run(live, session, cwd)
         live.turn_active = True
         await run.send(user_input(await self.agent_text(live, text, sender), attachments))
+        self._namer.message_sent(live, session)
 
     async def agent_text(self, live: LiveSession, text: str, sender: Sender = USER) -> str:
         """`text` as the agent gets it: teams it calls get their instruction (B40), and
@@ -838,6 +842,7 @@ class TurnRunner:
             live.run = await engine.provider.open(spec, self._handler_for(live), sink)
             live.run_cwd = cwd
             live.run_account = None if account is None else account.id
+            live.run_local = local
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = mode == BYPASS

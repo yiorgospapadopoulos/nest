@@ -22,6 +22,9 @@ def session_changes(session: Session, request: UpdateSession, now: datetime) -> 
     if request.permission_mode is not None and session.follows_claude_code_mode:
         # A chosen mode, even the placeholder's own, replaces Claude Code's (IMP-06).
         changes |= {"permission_mode": request.permission_mode, "follows_claude_code_mode": False}
+    if request.title is not None and session.title_pending:
+        # A name given by hand is never replaced by the engine's (B125).
+        changes["title_pending"] = False
     return changes
 
 
