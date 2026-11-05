@@ -914,10 +914,8 @@ class TurnRunner:
         return tools + calls + own
 
     async def _moves_folders(self, session: Session) -> bool:
-        """Whether the chat can change where it works: a movable chat in a git project,
-        when someone is watching: Autopilot removes no worktrees.
-        """
-        if session.autopilot is not None or not session.movable:
+        """Whether the chat can change where it works: a movable chat in a git project."""
+        if not session.movable:
             return False
         return await self._repos.has_git(session.repo)
 
