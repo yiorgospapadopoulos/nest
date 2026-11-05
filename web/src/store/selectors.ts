@@ -425,6 +425,14 @@ export function isAtWork(session: Session): boolean {
   return session.state === "starting" || session.state === "running" || session.state === "waiting";
 }
 
+/** The colour of what waits: review when it is only finished work, wait for anything else. */
+export function needsTone(state: State, repo: string): "rev" | "wait" | null {
+  if (needsCount(state, repo) === 0) return null;
+  const mine = waitingApprovals(state).filter((a) => a.repo === repo);
+  const others = needsCount(state, repo) - mine.length;
+  return others === 0 && mine.every(isFinishedWork) ? "rev" : "wait";
+}
+
 export function needsCount(state: State, repo?: string): number {
   const mine = (x: { repo: string }) => repo === undefined || x.repo === repo;
   return (

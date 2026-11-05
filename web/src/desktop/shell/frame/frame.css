@@ -1741,13 +1741,10 @@ html.desk .ewl {
 .dk-tabb > :not(.dk-tname) {
   flex: none;
 }
-/* A narrow tab's parts sit closer, so its count still fits beside its icon. */
+/* A narrow tab's parts sit closer, so its status still fits beside its icon. */
 .dk-proj.narrow .dk-tabb {
   gap: 4px;
   padding-left: 8px;
-}
-.dk-proj.narrow .dk-tcount {
-  gap: 3px;
 }
 
 /* A browser pane (ToolPanes.tsx, the Mac's BrowserPane): back, forward, reload, the

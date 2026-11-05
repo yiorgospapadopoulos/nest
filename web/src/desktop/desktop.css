@@ -245,15 +245,6 @@ html.desk button {
   flex: 1;
   text-align: left;
 }
-.dk-tcount {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--wait);
-  font-weight: 600;
-  font-size: var(--fs-meta);
-  font-variant-numeric: tabular-nums;
-}
 .dk-tclose {
   width: 18px;
   height: 18px;
