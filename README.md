@@ -305,7 +305,7 @@ The infinity button beside the mic keeps a chat working while nobody watches. Th
 
 A run ends when the agent says the task is done, or sooner if you set a time or a weekly usage cap. You can change those during a run. Stop also ends it, and the chat gets its earlier mode back.
 
-Commits, merges, pushes and pull requests stay blocked, so the work waits in the working tree for your review. Each decision shows as a line in the chat where it happened, and opens to the options, the one picked and the reason the agent gave. The bar above the composer shows the current step, the time and the number of decisions. A card in the chat says how the run ended and lists what was decided while you were away, with the same lines. It stays where the run ended, like a message, so a chat that ran several times keeps a report for each run. A new chat started on Autopilot gets its own worktree. Habits have the same switch, with their maximum minutes as the time limit.
+Commits, merges, pushes, pull requests and removing worktrees stay blocked, so the work waits in the working tree for your review. A run can make a worktree and move to it. Each decision shows as a line in the chat where it happened, and opens to the options, the one picked and the reason the agent gave. The bar above the composer shows the current step, the time and the number of decisions. A card in the chat says how the run ended and lists what was decided while you were away, with the same lines. It stays where the run ended, like a message, so a chat that ran several times keeps a report for each run. A new chat started on Autopilot gets its own worktree. Habits have the same switch, with their maximum minutes as the time limit.
 
 ## Pixies
 
