@@ -43,6 +43,8 @@ export interface CallControls {
   running: ReadonlySet<string>;
   // Null where nothing can be stopped, as in a read-only transcript.
   stopper: Stopper | null;
+  // The rows the reader opened, for those drawn again; left out in a read-only transcript.
+  opened?: Set<string>;
 }
 
 export const CallContext = createContext<CallControls>({

@@ -46,6 +46,7 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
     new Set(habit?.triggers ?? []),
   );
   const [limit, setLimit] = useState(String(habit?.max_minutes ?? DEFAULT_MINUTES));
+  const [autopilot, setAutopilot] = useState(habit?.autopilot ?? false);
   const [saving, setSaving] = useState(false);
 
   const minuteValue = whole(minute, 0, 59);
@@ -77,6 +78,7 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
           schedule: planned,
           triggers: chosen,
           max_minutes: limitValue,
+          autopilot,
         }
       : null;
 
@@ -244,6 +246,18 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
               }}
             />
           </label>
+        </div>
+        <div className="srow">
+          <span id={`${id}-autopilot`}>Autopilot</span>
+          <button
+            className="sw ap"
+            role="switch"
+            aria-checked={autopilot}
+            aria-labelledby={`${id}-autopilot`}
+            onClick={() => {
+              setAutopilot(!autopilot);
+            }}
+          />
         </div>
       </div>
     </Sheet>

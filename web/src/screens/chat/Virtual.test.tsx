@@ -294,6 +294,53 @@ describe("long chats draw only what is on screen (B117)", () => {
   });
 });
 
+describe("a search hit in a call folded to its line", () => {
+  it("opens the line, for a hit on the call's result too", async () => {
+    const api = fakeApi();
+    const chat = session();
+    const call = event({
+      id: 5,
+      type: "session.message",
+      payload: {
+        blocks: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "ls" } }],
+        parent_tool_use_id: null,
+      },
+    });
+    const output = event({
+      id: 6,
+      type: "session.message",
+      payload: {
+        blocks: [{ type: "tool_result", tool_use_id: "t1", content: "needle" }],
+        parent_tool_use_id: null,
+      },
+    });
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
+    api.session.mockResolvedValue(detail(chat));
+    api.sessionEvents.mockResolvedValue([...replies(1, 4), call, output, ...replies(7, 9)]);
+    const hit: SearchHit = {
+      session_id: "s1",
+      repo: "todo-ui",
+      title: chat.title,
+      event_id: 6,
+      ts: NOW,
+      kind: "tool_result",
+      snippet: "[[needle]]",
+    };
+    api.search.mockResolvedValue({ hits: [hit], indexing: false });
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
+    await user.type(screen.getByRole("searchbox", { name: "Search chats" }), "needle");
+    await user.click(await screen.findByRole("button", { name: /needle/ }));
+
+    const line = defined((await screen.findByText("Ran 1 command")).closest("details"));
+    await waitFor(() => {
+      expect(line).toHaveClass("hit");
+    });
+    expect(line.open).toBe(true);
+  });
+});
+
 const item = (n: number): TranscriptItem => ({
   kind: "assistant",
   key: String(n),

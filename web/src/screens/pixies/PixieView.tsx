@@ -7,6 +7,7 @@ import { ArtifactsButton } from "../artifacts/ArtifactsButton.tsx";
 import { pixieScopes } from "../artifacts/view.ts";
 import { Composer } from "../chat/Composer.tsx";
 import { Frame } from "../chat/Frame.tsx";
+import { AutopilotBar } from "../chat/LimitBar.tsx";
 import { Transcript } from "../chat/Transcript.tsx";
 import { PixieDetails } from "./PixieDetails.tsx";
 import { Sprite, WorkingDot } from "./Sprite.tsx";
@@ -170,6 +171,7 @@ function PixieChat({ pixie, working, onOpenPixie, onOpenChat }: ChatProps) {
           onOpenChat={onOpenChat}
         />
       )}
+      {session !== undefined && <AutopilotBar session={session} />}
       <Composer pixie={pixie.id} chat={session} />
     </div>
   );

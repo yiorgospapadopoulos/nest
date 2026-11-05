@@ -142,6 +142,7 @@ describe("Pixie habits page (B42)", () => {
       schedule: { kind: "hourly", minute: 15 },
       triggers: ["failed"],
       max_minutes: 30,
+      autopilot: false,
       enabled: true,
     });
     await waitFor(() => {
@@ -239,6 +240,7 @@ describe("Pixie habits page (B42)", () => {
       schedule: { kind: "weekly", weekday: 2, time: "07:45" },
       triggers: ["stuck"],
       max_minutes: 20,
+      autopilot: false,
     });
     expect(await within(sheet("Habits")).findByText("Midweek check")).toBeInTheDocument();
   });

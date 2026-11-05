@@ -15,7 +15,7 @@ import type { ChatNav } from "./CommandSheets.tsx";
 import { Composer } from "./Composer.tsx";
 import { Frame } from "./Frame.tsx";
 import { GoalsStrip } from "./GoalsStrip.tsx";
-import { LimitBar } from "./LimitBar.tsx";
+import { AutopilotBar, LimitBar } from "./LimitBar.tsx";
 import { NewChat } from "./NewChat.tsx";
 import { sessionPlace } from "./place.ts";
 import { PlaceChip } from "./PlaceMarks.tsx";
@@ -247,6 +247,7 @@ function SessionChat({
         <>
           <LimitBar session={session} />
           <ReviewBar session={session} />
+          <AutopilotBar session={session} />
           <Composer session={session} nav={nav} place={<ChatPlaceMark session={session} />} />
         </>
       ) : (
