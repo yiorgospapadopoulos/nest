@@ -532,6 +532,9 @@ class TurnRunner:
         if event_id is not None:
             await self._store.save_checkpoint(live.session_id, event_id, checkpoint_id)
 
+    async def folder_changed(self, live: LiveSession, folder: Path, *, removed: bool) -> None:
+        await self.moves.followed(live.session_id, folder, removed=removed)
+
     async def rewind(self, live: LiveSession, checkpoint_id: str, dry_run: bool) -> RewindResult:
         """Restore files to `checkpoint_id` on the session's run, resuming the agent's last
         session when the run was closed; the session counts as busy meanwhile.

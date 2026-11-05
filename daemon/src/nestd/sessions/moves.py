@@ -206,6 +206,24 @@ class WorktreeMoves:
             logger.warning("a worktree change of %s failed (%s)", session_id, _reason(error))
             await self._refused(session_id, _reason(error))
 
+    async def followed(self, session_id: str, folder: Path, *, removed: bool) -> None:
+        """The agent moved with the engine's own tool: the chat follows at once. Its run is
+        already there, so nothing closes, and the next run opens in the new folder.
+        """
+        session, repo = await self._chat(session_id)
+        if session.cwd is not None and await _same(folder, session.cwd):
+            return
+        left: EarlierState = "deleted" if removed else "kept"
+        if await _same(folder, repo.path):
+            place = Place("in_place", await self._worktrees.head(repo))
+            await self._moved(session, repo, place, left)
+            await self._say(session_id, "This chat moved to the project folder.")
+            return
+        worktree = await self._joined(repo, folder)
+        place = Place("worktree", worktree.base_ref, worktree.branch, worktree)
+        await self._moved(session, repo, place, left)
+        await self._say(session_id, f"This chat moved to {worktree.branch}.")
+
     async def cancel(self, session_id: str) -> None:
         """The turn did not end normally: what it recorded does not happen."""
         if await self.pending(session_id):
