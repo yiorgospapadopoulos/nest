@@ -12,7 +12,7 @@ import {
   review,
   reviewComments,
 } from "../test/fixtures.ts";
-import { buildTranscript, resultSummary, turnStart } from "./build.ts";
+import { buildTranscript, resultSummary, turnStart, type TranscriptItem } from "./build.ts";
 
 const json = (a: Approval) => ({ ...a }) as unknown as JsonObject;
 
@@ -373,14 +373,20 @@ describe("buildTranscript", () => {
     expect(items).toEqual([
       { kind: "user", key: "1", text: "", attachments: [] },
       {
-        kind: "tool",
+        kind: "tools",
         key: "4.0",
-        id: "t",
-        name: "Tool",
-        arg: "",
-        result: "done",
-        detail: null,
-        failed: false,
+        items: [
+          {
+            kind: "tool",
+            key: "4.0",
+            id: "t",
+            name: "Tool",
+            arg: "",
+            result: "done",
+            detail: null,
+            failed: false,
+          },
+        ],
       },
       { kind: "thinking", key: "6.1", text: "", ms: null },
     ]);
@@ -445,7 +451,7 @@ describe("tool groups", () => {
     ]);
   });
 
-  it("shows an edit with its diff on its own, between groups of other calls", () => {
+  it("folds an edit into the group, with its diff inside", () => {
     const edit = {
       type: "tool_use",
       id: "e",
@@ -458,8 +464,9 @@ describe("tool groups", () => {
       "/w",
     );
 
-    expect(shape(items)).toEqual(["group:1.0,1.1", "tool:1.2", "group:1.3,1.4"]);
-    expect(items[1]).toMatchObject({
+    expect(shape(items)).toEqual(["group:1.0,1.1,1.2,1.3,1.4"]);
+    const [group] = items;
+    expect(group?.kind === "tools" ? group.items[2] : null).toMatchObject({
       kind: "tool",
       name: "Edit",
       arg: "a.ts",
@@ -475,10 +482,50 @@ describe("tool groups", () => {
     });
   });
 
-  it("leaves a single call as a plain row", () => {
-    const items = buildTranscript([blocks(1, call("a"), { type: "text", text: "ok" })], {}, null);
+  it("folds a single call to a group of one, a failed one too", () => {
+    const failed = { ...done("b"), is_error: true };
+    const items = buildTranscript(
+      [blocks(1, call("a"), { type: "text", text: "ok" }, call("b"), failed)],
+      {},
+      null,
+    );
 
-    expect(shape(items)).toEqual(["tool:1.0", "assistant:1.1"]);
+    expect(shape(items)).toEqual(["group:1.0", "assistant:1.1", "group:1.2"]);
+  });
+
+  it("leaves thinking after a single call out of its group, as after a longer run", () => {
+    const thought = { type: "thinking", text: "next" };
+    const items = buildTranscript(
+      [blocks(1, call("a"), thought, { type: "text", text: "ok" }, call("b"), thought)],
+      {},
+      null,
+    );
+
+    expect(shape(items)).toEqual([
+      "group:1.0",
+      "thinking:1.1",
+      "assistant:1.2",
+      "group:1.3",
+      "thinking:1.4",
+    ]);
+  });
+
+  it("keeps a single agent's row until its call returns, then folds it", () => {
+    const started = blocks(1, call("a", "Agent"));
+
+    expect(shape(buildTranscript([started], {}, null))).toEqual(["tool:1.0"]);
+    // A background agent's call returns at once, while it goes on working.
+    expect(
+      shape(buildTranscript([started, blocks(2, done("a"))], {}, null, new Set(["a"]))),
+    ).toEqual(["group:1.0"]);
+  });
+
+  it("keeps the row of a single call whose result has images, which show unopened", () => {
+    const image = { attachment_id: "i1", media_type: "image/png" };
+    const shot = { ...done("a"), images: [image] };
+    const items = buildTranscript([blocks(1, call("a", "Screenshot"), shot)], {}, null);
+
+    expect(shape(items)).toEqual(["tool:1.0"]);
   });
 });
 
@@ -929,7 +976,7 @@ describe("pixie calls", () => {
       known,
     );
 
-    expect(shape(items)).toEqual(["tool:1.0", "pixie:1.1", "tool:1.2"]);
+    expect(shape(items)).toEqual(["group:1.0", "pixie:1.1", "group:1.2"]);
     expect(items[1]).toEqual({
       kind: "pixie",
       key: "1.1",
@@ -1132,7 +1179,10 @@ describe("tool output", () => {
       {},
       null,
     );
-    expect(item).toMatchObject({ kind: "tool", detail: long, result: "3000 lines" });
+    expect(item).toMatchObject({
+      kind: "tools",
+      items: [{ kind: "tool", detail: long, result: "3000 lines" }],
+    });
   });
 });
 
@@ -1251,6 +1301,52 @@ describe("pixie hand-offs (B41)", () => {
     expect(items).toEqual([
       { kind: "report", key: "1", title: "Nest", text: "Continue where you left off." },
     ]);
+  });
+
+  it("shows Autopilot's message as Autopilot's, not the user's (B120)", () => {
+    const items = buildTranscript(
+      [user(1, { text: "Keep going.", origin: "autopilot" })],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([{ kind: "report", key: "1", title: "Autopilot", text: "Keep going." }]);
+  });
+
+  it("keeps Autopilot's decision where it happened, out of tool groups (B120)", () => {
+    const call = (id: number) =>
+      event({
+        id,
+        type: "session.message",
+        payload: {
+          parent_tool_use_id: null,
+          blocks: [{ type: "tool_use", id: `t${String(id)}`, name: "Bash", input: {} }],
+        },
+      });
+    const decision = {
+      kind: "denied",
+      title: "git push",
+      answer: "Denied",
+      at: "2026-10-06T12:00:00Z",
+      options: [],
+      reason: "Left to the user",
+      detail: null,
+    };
+
+    const items = buildTranscript(
+      [
+        call(1),
+        call(2),
+        event({ id: 3, type: "session.autopilot_decision", payload: { decision } }),
+        call(4),
+        call(5),
+      ],
+      {},
+      null,
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["tools", "decision", "tools"]);
+    expect(items[1]).toEqual({ kind: "decision", key: "3", decision });
   });
 
   it("shows a message of an origin it does not know as the user's", () => {
@@ -1493,6 +1589,96 @@ describe("sent files", () => {
         text: "Look",
         attachments: [{ id: "a1", filename: "shot.png", mediaType: "image/png", size: 2048 }],
       },
+    ]);
+  });
+});
+
+describe("the end of an Autopilot run", () => {
+  const finish = {
+    type: "tool_use",
+    id: "f",
+    name: "mcp__nest__autopilot_finished",
+    input: { summary: "Done" },
+  };
+  const said = blocks(3, { type: "text", text: "All done, here is the same summary." });
+  const events = [blocks(1, finish), blocks(2, done("f")), said];
+
+  const report = (id: number, summary: string | null = "Done") =>
+    event({
+      id,
+      type: "session.autopilot_report",
+      payload: {
+        report: {
+          started_at: "2026-10-06T12:00:00Z",
+          ended_at: "2026-10-06T12:30:00Z",
+          ended: "done",
+          summary,
+          turns: 2,
+          decisions: [],
+        },
+      },
+    });
+  const texts = (items: TranscriptItem[]) =>
+    items.flatMap((item) => (item.kind === "assistant" ? [item.text] : []));
+
+  it("hides the text after a finish call when a report follows, and never shows the call", () => {
+    const items = buildTranscript([...events, report(4)], {}, "/w");
+    expect(items.map((item) => item.kind)).toEqual(["autopilot_report"]);
+  });
+
+  it("keeps that text without a report, so a summary is never lost", () => {
+    const items = buildTranscript(events, {}, "/w");
+    expect(items.map((item) => item.kind)).toEqual(["assistant"]);
+  });
+
+  it("keeps that text when the report has no summary to replace it", () => {
+    const items = buildTranscript([...events, report(4, null)], {}, "/w");
+    expect(items.map((item) => item.kind)).toEqual(["assistant", "autopilot_report"]);
+  });
+
+  it("keeps that text when the user spoke before the report came", () => {
+    const later = [
+      ...events,
+      event({ id: 4, type: "session.user_message", payload: { text: "One more thing" } }),
+      blocks(5, { type: "text", text: "Sure." }),
+      report(6),
+    ];
+    expect(texts(buildTranscript(later, {}, "/w"))).toEqual([
+      "All done, here is the same summary.",
+      "Sure.",
+    ]);
+  });
+
+  it("keeps what the agent says after the user speaks again", () => {
+    const later = [
+      ...events,
+      report(4),
+      event({ id: 5, type: "session.user_message", payload: { text: "One more thing" } }),
+      blocks(6, { type: "text", text: "Sure." }),
+    ];
+    expect(texts(buildTranscript(later, {}, "/w"))).toEqual(["Sure."]);
+  });
+
+  it("keeps each run's report where it ended, out of tool groups", () => {
+    const call = (id: number) =>
+      blocks(id, { type: "tool_use", id: String(id), name: "Read", input: { file_path: "/a" } });
+    const items = buildTranscript(
+      [
+        call(1),
+        report(2, null),
+        call(3),
+        event({ id: 4, type: "session.user_message", payload: { text: "Again" } }),
+        report(5),
+      ],
+      {},
+      "/w",
+    );
+    expect(items.map((item) => item.kind)).toEqual([
+      "tools",
+      "autopilot_report",
+      "tools",
+      "user",
+      "autopilot_report",
     ]);
   });
 });

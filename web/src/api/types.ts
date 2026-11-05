@@ -82,6 +82,69 @@ export interface LimitPause {
   since: string;
 }
 
+// The percentage of the weekly usage window at which an Autopilot run stops (B120).
+export type WeeklyCap = 50 | 60 | 70 | 80 | 90;
+
+// What may stop a run before the task is done; both null, it runs until done.
+export interface AutopilotBudget {
+  stop_after_minutes: number | null;
+  weekly_cap: WeeklyCap | null;
+}
+
+export interface SetAutopilot extends Partial<AutopilotBudget> {
+  on: boolean;
+}
+
+/** An option a question offered. */
+export interface DecisionOption {
+  label: string;
+  description: string | null;
+  picked: boolean;
+}
+
+/** What Nest settled for the user during a run; `session.autopilot_decision` carries one. */
+export interface AutopilotDecision {
+  kind: "question" | "plan" | "allowed" | "denied";
+  title: string;
+  answer: string;
+  at: string;
+  options: DecisionOption[];
+  reason: string | null;
+  // A plan's text.
+  detail: string | null;
+}
+
+/** A run in progress (B120). */
+export interface AutopilotRun {
+  started_at: string;
+  // When the time budget runs out, counted from `started_at`; null without one.
+  until: string | null;
+  weekly_cap: WeeklyCap | null;
+  // The permission mode the chat goes back to.
+  mode: PermissionMode;
+  follows_claude_code_mode: boolean;
+  turns: number;
+  idle_turns: number;
+  nudges: number;
+  nudged_since: string | null;
+  errors: number;
+  retry_at: string | null;
+  summary: string | null;
+  decisions: AutopilotDecision[];
+}
+
+export type AutopilotEnd = "done" | "time" | "weekly_cap" | "stuck" | "errors" | "stopped" | "off";
+
+/** What a finished run did; `session.autopilot_report` carries it into the chat (B120). */
+export interface AutopilotReport {
+  started_at: string;
+  ended_at: string;
+  ended: AutopilotEnd;
+  summary: string | null;
+  turns: number;
+  decisions: AutopilotDecision[];
+}
+
 /** A worktree a chat worked in before it moved (B119). */
 export interface EarlierWorktree {
   path: string;
@@ -132,6 +195,8 @@ export interface Session {
   habit_run_id: string | null;
   // Set while the chat waits for a usage limit to reset (B78); the chat is idle meanwhile.
   limit_pause: LimitPause | null;
+  // Set while the chat runs on Autopilot (B120); it stays in Bypass meanwhile.
+  autopilot: AutopilotRun | null;
   // The GitHub issue the chat was started from (B101).
   issue: IssueRef | null;
   // The pull request's review comments and which went to the agent (B101); null until read.
@@ -518,6 +583,8 @@ export interface CreateSessionBody {
   // An existing linked worktree to work in, or an existing branch to work on itself (B96).
   worktree_path?: string;
   on_branch?: string;
+  // Starts the chat on Autopilot, in a worktree unless `mode` says otherwise (B120).
+  autopilot?: SetAutopilot;
 }
 
 /** A git project's branch map (B96): each branch under the branch it comes from. */
@@ -1085,6 +1152,8 @@ export interface Habit {
   triggers: HabitTrigger[];
   max_minutes: number;
   enabled: boolean;
+  // Its runs go on Autopilot (B120).
+  autopilot: boolean;
   created_at: string;
   updated_at: string;
   next_due_at: string | null;
@@ -1099,6 +1168,7 @@ export interface HabitBody {
   triggers?: HabitTrigger[];
   max_minutes?: number;
   enabled?: boolean;
+  autopilot?: boolean;
 }
 
 export type UpdateHabitBody = Partial<HabitBody>;

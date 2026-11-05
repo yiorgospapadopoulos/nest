@@ -7,6 +7,9 @@ import type {
   Approval,
   Artifact,
   ArtifactContent,
+  AutopilotDecision,
+  AutopilotReport,
+  AutopilotRun,
   ArtifactDetail,
   CallEntry,
   CallWork,
@@ -115,8 +118,56 @@ export function session(overrides: Partial<Session> = {}): Session {
     started_by_pixie: null,
     habit_run_id: null,
     limit_pause: null,
+    autopilot: null,
     issue: null,
     review: null,
+    ...overrides,
+  };
+}
+
+/** A run on Autopilot that started at NOW, until it is done. */
+export function autopilotRun(overrides: Partial<AutopilotRun> = {}): AutopilotRun {
+  return {
+    started_at: NOW,
+    until: null,
+    weekly_cap: null,
+    mode: "default",
+    follows_claude_code_mode: false,
+    turns: 0,
+    idle_turns: 0,
+    nudges: 0,
+    nudged_since: null,
+    errors: 0,
+    retry_at: null,
+    summary: null,
+    decisions: [],
+    ...overrides,
+  };
+}
+
+/** Something a run settled. */
+export function autopilotDecision(overrides: Partial<AutopilotDecision> = {}): AutopilotDecision {
+  return {
+    kind: "question",
+    title: "Which port?",
+    answer: "8080",
+    at: NOW,
+    options: [],
+    reason: null,
+    detail: null,
+    ...overrides,
+  };
+}
+
+/** What a finished run left. */
+export function autopilotReport(overrides: Partial<AutopilotReport> = {}): AutopilotReport {
+  return {
+    started_at: NOW,
+    ended_at: NOW,
+    ended: "done",
+    summary: null,
+    turns: 3,
+    decisions: [],
     ...overrides,
   };
 }
@@ -201,6 +252,7 @@ export function habit(overrides: Partial<Habit> = {}): Habit {
     triggers: [],
     max_minutes: 20,
     enabled: true,
+    autopilot: false,
     created_at: "2026-10-14T06:00:00Z",
     updated_at: "2026-10-14T06:00:00Z",
     next_due_at: null,
