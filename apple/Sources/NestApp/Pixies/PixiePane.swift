@@ -25,6 +25,7 @@ struct PixiePane: View {
                 if let chat = pixie.chatSessionID {
                     PendingReviewBar(chat: chat)
                     LimitPauseBar(chat: chat)
+                    AutopilotBar(chat: chat)
                 }
                 Composer(pixie: pixie.id)
             }

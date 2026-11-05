@@ -897,7 +897,9 @@ final class Shell {
         draft.model = choices.model
         draft.effort = choices.effort
         draft.permission = choices.permission
-        draft.place = NewChatChoice(mode: repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode)
+        draft.defaultPlace = NewChatChoice(
+            mode: repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode)
+        draft.chosenPlace = nil
     }
 
     /// A plain folder's Init: a new chat with the git setup request written, not sent.
@@ -1245,7 +1247,8 @@ final class Shell {
             // The engine is always named: the daemon's own default may be another (B94).
             base: place.base, branch: place.branch,
             provider: draft.provider ?? ProviderInfo.claude, worktreePath: place.worktreePath,
-            onBranch: place.onBranch, issue: draft.issue?.number)
+            onBranch: place.onBranch, issue: draft.issue?.number,
+            autopilot: draft.autopilot.request)
         let session = try await sessions.create(request)
         // What was typed or attached meanwhile stays in the chat's composer.
         drafts.move(draftID, to: session.id)
@@ -1263,6 +1266,32 @@ final class Shell {
     /// Resume now on a chat paused at the usage limit (B78).
     func resumeAfterLimit(_ chat: String) {
         run("Could not resume the chat") { try await self.sessions.resumeAfterLimit(chat) }
+    }
+
+    /// Whether the chat or the new chat being written runs on Autopilot (B120).
+    func onAutopilot(_ chat: String) -> Bool {
+        isDraft(chat) ? draft(for: chat).autopilot.on : sessions.session(chat)?.autopilot != nil
+    }
+
+    /// Autopilot for a composer: `chat` is the draft's key, `session` the chat that exists.
+    func autopilotControl(chat: String, session: Session?) -> AutopilotControl {
+        AutopilotControl(
+            choice: draft(for: chat).autopilot, chatExists: session != nil, run: session?.autopilot)
+    }
+
+    func applyAutopilot(_ change: AutopilotChange, chat: String, session: String?) {
+        draft(for: chat).autopilot = change.choice
+        if let session, let request = change.request {
+            setAutopilot(request, on: session)
+        }
+    }
+
+    func turnOffAutopilot(_ chat: String) {
+        setAutopilot(SetAutopilotRequest(on: false), on: chat)
+    }
+
+    private func setAutopilot(_ request: SetAutopilotRequest, on chat: String) {
+        run("Could not change Autopilot") { try await self.sessions.setAutopilot(chat, request) }
     }
 
     /// Stops one background task or subagent of the chat; its turn goes on (B59).
@@ -1321,7 +1350,9 @@ final class Shell {
                 show("No model named \(name)", kind: .failed)
             }
         case .permissions:
-            withAnimation(.smooth(duration: 0.15)) { draft.picker = .permissions }
+            if !onAutopilot(chat) {
+                withAnimation(.smooth(duration: 0.15)) { draft.picker = .permissions }
+            }
         case .mcp:
             openConnectors()
         case .resume(let search):
@@ -2208,8 +2239,16 @@ final class ComposerDraft {
     var model: String?
     var effort: Effort?
     var permission = PermissionMode.default
+    /// The place the user chose, and the one a new chat starts with.
+    var chosenPlace: NewChatChoice?
+    var defaultPlace = NewChatChoice.inPlace
     /// Where the chat works (B55, B96).
-    var place = NewChatChoice.inPlace
+    var place: NewChatChoice {
+        get { autopilot.place(chosen: chosenPlace, fallback: defaultPlace) }
+        set { chosenPlace = newValue }
+    }
+    /// What the composer's Autopilot popover chose (B120).
+    var autopilot = AutopilotChoice()
     /// A new worktree's branch name; blank lets the daemon name it.
     var branchName = ""
     /// The caret and selection in the field.

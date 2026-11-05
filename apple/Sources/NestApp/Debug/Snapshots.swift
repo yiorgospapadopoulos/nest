@@ -169,6 +169,10 @@
                 try await renderLimitPause(model, shell, controller, folder)
                 return
             }
+            if only == "b120" {
+                try await renderAutopilot(model, shell, controller, folder)
+                return
+            }
             if only == "b79" {
                 try await renderArtifacts(model, shell, controller, folder)
                 return
@@ -3931,6 +3935,143 @@
             try await pairView(
                 FirefliesSampler().environment(\.accentColors, AccentColors(accent: .teal)),
                 "b80-fireflies-teal", folder)
+        }
+
+        /// B120: a chat on Autopilot with its running bar, red button and held Bypass; the
+        /// popover; Autopilot's line and the report a run leaves; a new chat on Autopilot,
+        /// whose place moved to a new worktree.
+        private static func renderAutopilot(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            guard let original = model.sessions.session("c6") else { return }
+            let workspace = CGSize(width: 828, height: 790)
+            let transcript = model.transcripts.transcript(for: "c6")
+            try await transcript.load()
+            try await model.activity.load(session: "c6")
+            let now = Date()
+            let decisions = [
+                AutopilotDecision(
+                    kind: .question,
+                    title:
+                        "The old about page still has the press links and the talk list, and two "
+                        + "other pages link to it. Keep it, or does the new page cover everything "
+                        + "it said, so it can go?",
+                    answer: "Remove it", at: now,
+                    options: [
+                        DecisionOption(label: "Keep it", description: "Links stay as they are"),
+                        DecisionOption(
+                            label: "Remove it", description: "The new page covers it all",
+                            picked: true),
+                    ],
+                    reason: "The agent recommended it: The new page covers it all"),
+                AutopilotDecision(
+                    kind: .plan, title: "Rewrite the about section", answer: "Approved", at: now,
+                    detail: "# Rewrite the about section\n\n1. Move the bio\n2. Drop the old page"),
+                AutopilotDecision(
+                    kind: .allowed, title: "npm run build", answer: "Allowed", at: now),
+                AutopilotDecision(
+                    kind: .denied, title: "git push origin main", answer: "Denied", at: now,
+                    reason: "Autopilot leaves commits, merges and pushes to the user."),
+            ]
+            let run = AutopilotRun(
+                startedAt: now.addingTimeInterval(-48 * 60),
+                until: now.addingTimeInterval(72 * 60), weeklyCap: 80, decisions: decisions)
+            var running = original
+            running.autopilot = run
+            model.sessions.insert(running)
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.goals]
+                state.openChat("c6", in: workspace)
+                state.focusPane("c6")
+            }
+            let steps: [[String: Any]] = [
+                ["id": "1", "subject": "Move the bio", "status": "completed"],
+                [
+                    "id": "2", "subject": "Write the page", "status": "in_progress",
+                    "active_form": "Writing the new about page in the first person",
+                ],
+                ["id": "3", "subject": "Drop the old page", "status": "pending"],
+            ]
+            let stepsEvent: Event = try SampleData.decode([
+                "id": 9_080, "type": EventType.sessionTasks, "ts": SampleData.iso(now),
+                "session_id": "c6", "payload": ["tasks": steps],
+            ])
+            // After the open pane has loaded the chat's empty list.
+            try await pair(controller, "b120-running", folder) { _ in
+                model.activity.apply(stepsEvent)
+            }
+            for (index, decision) in decisions.enumerated() {
+                transcript.receive(
+                    try SampleData.decode([
+                        "id": 9_090 + index, "type": EventType.sessionAutopilotDecision,
+                        "ts": SampleData.iso(now), "session_id": "c6",
+                        "payload": [
+                            "decision": try JSONSerialization.jsonObject(
+                                with: NestJSON.encoder.encode(decision))
+                        ],
+                    ]))
+            }
+            shell.expandedItems.formUnion(["e9090", "e9091", "e9093"])
+            try await pair(controller, "b120-decisions", folder)
+            var open = running
+            open.autopilot?.until = nil
+            open.autopilot?.decisions = []
+            model.sessions.insert(open)
+            try await pair(controller, "b120-running-until-done", folder)
+
+            func popover(_ choice: AutopilotChoice, run: AutopilotRun?) -> AutopilotPopover {
+                AutopilotPopover(
+                    control: AutopilotControl(choice: choice, chatExists: true, run: run)
+                ) { _ in }
+            }
+            try await pairView(popover(AutopilotChoice(), run: nil), "b120-popover-off", folder)
+            try await pairView(popover(AutopilotChoice(), run: run), "b120-popover-on", folder)
+
+            model.sessions.insert(original)
+            transcript.receive(
+                try SampleData.decode([
+                    "id": 9_101, "type": EventType.sessionUserMessage,
+                    "ts": SampleData.iso(now), "session_id": "c6",
+                    "payload": [
+                        "text": "Keep going until the task is done.", "attachments": [],
+                        "origin": "autopilot",
+                    ],
+                ]))
+            let report = AutopilotReport(
+                ended: .weeklyCap,
+                summary: "Rewrote the about section and **removed** the old page.",
+                decisions: decisions)
+            transcript.receive(
+                try SampleData.decode([
+                    "id": 9_102, "type": EventType.sessionAutopilotReport,
+                    "ts": SampleData.iso(now), "session_id": "c6",
+                    "payload": [
+                        "report": try JSONSerialization.jsonObject(
+                            with: NestJSON.encoder.encode(report))
+                    ],
+                ]))
+            try await pair(controller, "b120-report", folder)
+
+            shell.selectProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+            }
+            shell.startDraft().autopilot = AutopilotChoice(on: true)
+            try await pair(controller, "b120-new-chat", folder)
+            shell.startDraft().autopilot = AutopilotChoice()
+
+            if let pixie = model.pixies.pixies.first {
+                try await pairView(
+                    HabitEditor(pixie: pixie, habitID: nil).environment(shell)
+                        .frame(width: 320, height: 760),
+                    "b120-habit", folder)
+            }
         }
 
         /// B78: a chat paused at the usage limit, with the notice above the composer (its

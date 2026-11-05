@@ -53,6 +53,8 @@ enum Icon {
     static let code = "chevron.left.forwardslash.chevron.right"
     static let copy = "doc.on.doc"
     static let stop = "stop.fill"
+    /// Autopilot (B120).
+    static let infinity = "infinity"
     static let play = "play.fill"
     static let warning = "exclamationmark.triangle"
     static let hook = "bolt"
