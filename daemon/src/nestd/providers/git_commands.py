@@ -154,6 +154,8 @@ def _subcommand_writes(subcommand: str, tail: Sequence[str], commits: bool) -> b
     lowered = [word.lower() for word in tail]
     if subcommand == "subtree":
         return "push" in lowered
+    if commits and subcommand == "worktree":
+        return "remove" in lowered
     # Defining an alias that pushes, to run it later.
     return (
         subcommand == "config"
