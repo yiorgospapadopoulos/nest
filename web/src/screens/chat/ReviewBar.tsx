@@ -2,7 +2,7 @@ import { useState } from "react";
 import { reviewOf } from "../../api/payloads.ts";
 import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { pendingFor } from "../../store/selectors.ts";
+import { isAtWork, pendingFor } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ApproveButtons, DiffSheet } from "../approvals/DiffSheet.tsx";
 import { useReview } from "../approvals/hooks.ts";
@@ -10,12 +10,13 @@ import { RemoteConfirmation } from "../approvals/ReviewGuards.tsx";
 
 /**
  * "3 files changed +48 -19 · Review" just above the composer while the chat's changes
- * wait for review; Review opens them, to approve from there. Never a card in the chat.
+ * wait for review and the chat is not at work; Review opens them, to approve from there.
+ * Never a card in the chat.
  */
 export function ReviewBar({ session }: { session: Session }) {
   const { state } = useStore();
   const pending = pendingFor(state, session.id).find((a) => a.kind === "review");
-  if (pending === undefined) return null;
+  if (pending === undefined || isAtWork(session)) return null;
   // A new review starts with its sheet closed.
   return <Bar key={pending.id} approval={pending} session={session} />;
 }
