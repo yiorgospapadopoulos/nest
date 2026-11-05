@@ -369,7 +369,14 @@ class AcpRun:
     def rules(self) -> AcpRules:
         spec = self._spec
         folders = (spec.cwd, *spec.extra_dirs)
-        return AcpRules(self._mode, spec.guard_git, folders, spec.write_root, self._nest)
+        return AcpRules(
+            self._mode,
+            spec.guard_git,
+            folders,
+            spec.write_root,
+            self._nest,
+            commits=spec.guard_commits,
+        )
 
     @property
     def rpc(self) -> AcpRpc:

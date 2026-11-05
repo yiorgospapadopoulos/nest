@@ -66,6 +66,8 @@ class RunPermissions:
     read_only: bool = False
     # A subagent thread the call guard refused (B70): nothing it asks is allowed.
     refused: bool = False
+    # A guarded run's commits and merges are declined too (Autopilot).
+    commits: bool = False
 
 
 class CodexApprovals:
@@ -112,7 +114,7 @@ class CodexApprovals:
         self, params: JsonObject, permissions: RunPermissions, agent_id: str | None
     ) -> str:
         command = text(params.get("command"))
-        auto = command_decision(command, permissions.mode, permissions.guarded)
+        auto = command_decision(command, permissions.mode, permissions.guarded, permissions.commits)
         if auto is not None:
             return auto
         # The user sees the command inside Codex's shell wrapper; Codex keeps a session's
@@ -177,7 +179,8 @@ class CodexApprovals:
         tool = text(call.get("tool")) or _message_tool(message)
         tool_input = obj(meta.get("tool_params")) or obj(call.get("arguments"))
         name = f"mcp__{server}__{tool}"
-        if permissions.guarded and (not tool or tool_writes(name, tool_input)):
+        writes = tool_writes(name, tool_input, commits=permissions.commits)
+        if permissions.guarded and (not tool or writes):
             return _DECLINE
         if permissions.mode == "bypassPermissions":
             return _ACCEPT

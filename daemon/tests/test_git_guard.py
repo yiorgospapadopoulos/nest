@@ -350,3 +350,35 @@ async def test_hook_ignores_other_hook_events() -> None:
     }
 
     assert await block_git_writes(prompt, None, CONTEXT) == {}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git commit -m x",
+        "git -C /tmp/a merge main",
+        "git rebase main",
+        "git cherry-pick abc",
+        "git revert HEAD",
+        "git pull",
+        "sh -c 'git commit -m x'",
+        "git -c alias.c=commit c -m x",
+        "git-commit -m x",
+        "git push",
+        "gh pr merge 1",
+    ],
+)
+def test_autopilot_also_blocks_what_changes_the_history(command: str) -> None:
+    assert is_git_write(command, commits=True)
+
+
+@pytest.mark.parametrize(
+    "command", ["git status", "git log --grep commit", "git diff merge.py", "git add ."]
+)
+def test_autopilot_leaves_reading_and_staging_alone(command: str) -> None:
+    assert not is_git_write(command, commits=True)
+
+
+def test_a_pixie_may_still_commit() -> None:
+    assert not is_git_write("git commit -m x")
+    assert not is_git_write("git merge main")
