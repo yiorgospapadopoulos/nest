@@ -84,16 +84,31 @@ _PLAN_NOTE = (
     "and completed as soon as it is done. Skip the list only for a quick question or a "
     "single command."
 )
+# Like the Claude app's agent, say what is going on while working: a long turn is otherwise
+# silent in the chat, where tool calls fold away.
+_UPDATES_NOTE = (
+    "Keep the user informed while you work: before each batch of tool calls, write one short, "
+    "plain sentence saying what you are about to do or what you just found. Do not narrate "
+    "every call."
+)
+# A long final paragraph is hard to read back; a quick answer stays a plain answer.
+_SUMMARY_NOTE = (
+    "When you finish a task that took work, end with one or two plain lines saying what was "
+    "asked and what came of it, then short bullets for what changed, the choices you made, and "
+    "anything left for the user. "
+    "Leave nothing important out, and write no long paragraphs. A quick question still gets a "
+    "plain short answer."
+)
 # A chat uses git as in the terminal (B58).
 NEST_PROMPT = (
     "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
     f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
-    f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 # A plain folder's work is never reviewed, committed or pushed by Nest (D041).
 PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
-    f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 # A chat a pixie started, which may commit but whose pushes and pull requests stay blocked
 # (D072, B58, D123); a pixie's own runs have their own prompt.
@@ -114,11 +129,11 @@ _OWN_PLAN_NOTE = (
 CODEX_PROMPT = (
     "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
     f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
-    f"{_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
-    f"{_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_GUARDED_PROMPT = (
     "You are running inside Nest. You may commit your work. Do not run git push, "
