@@ -154,7 +154,7 @@ private struct PaneHeader: View {
                 .frame(width: 14, height: 24)
                 .contentShape(Rectangle())
                 .help("Drag to swap")
-            Text(title)
+            Text(session?.shownTitle ?? title)
                 .font(.ui(TypeSize.ui, .medium))
                 .modifier(PaneTitleColor())
                 .lineLimit(1)
