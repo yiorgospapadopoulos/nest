@@ -202,14 +202,24 @@ public final class SessionsStore {
         .map(\.0)
     }
 
+    /// The pending approvals that need the user now, of one project or of all. A review or
+    /// merge waits while its chat is at work: it cannot be acted on yet, and the turn may
+    /// replace it.
+    public func waitingApprovals(in repo: String? = nil) -> [Approval] {
+        let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
+        return pending.filter { approval in
+            guard approval.kind == .review || approval.kind == .merge else { return true }
+            return sessions[approval.sessionID]?.state.isInFlight != true
+        }
+    }
+
     /// What needs the user, for the project's tab and the Dock badge (every project's
-    /// without a repo): pending approvals, pull requests whose checks failed and chats
+    /// without a repo): waiting approvals, pull requests whose checks failed and chats
     /// that look stuck, as on the iPhone. A pixie's pending approvals count in the Dock
     /// badge, but no project's count; its chat is not a project chat, so it adds no failed
     /// checks or stuck flags (D072).
     public func attention(of repo: String? = nil) -> Int {
-        let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
-        return pending.count + checksFailed(in: repo).count + stuck(in: repo).count
+        waitingApprovals(in: repo).count + checksFailed(in: repo).count + stuck(in: repo).count
     }
 
     private func listed(in repo: String?) -> [Session] {
