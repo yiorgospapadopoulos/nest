@@ -21,6 +21,7 @@ from nestd.providers.base import (
     UserInput,
 )
 from nestd.providers.codex_agents import LAUNCHED, MEMBER_REFUSED
+from nestd.providers.codex_roles import CodexRoles
 from nestd.providers.codex_rpc import JsonObject
 from tests.async_support import until
 from tests.codex_support import FakeAppServer, note
@@ -154,8 +155,8 @@ async def test_a_pixie_on_codex_is_a_role_of_the_thread_with_its_call_prompt(
     role = _role(role_file)
     assert role["developer_instructions"] == "You are Scout (@scout), a pixie."
     assert (role["model"], role["model_reasoning_effort"]) == ("gpt-5.5", "low")
-    # Its own mode is bypass while its caller asks: the role keeps the pixie's own.
-    assert (role["approval_policy"], role["sandbox_mode"]) == ("never", "danger-full-access")
+    # Its commands come to Nest, which keeps the pixie's own bypass and declines pushes.
+    assert (role["approval_policy"], role["sandbox_mode"]) == ("untrusted", "danger-full-access")
     assert "spawn_agent" in str(start["developerInstructions"])
     # Never in the user's config: only in the run's own folder, gone with the run.
     await run.close()
@@ -401,6 +402,39 @@ async def test_a_subagents_approvals_follow_its_own_mode(tmp_path: Path) -> None
     assert edit["result"] == {"decision": "decline"}
     assert handler.requests == []
     await run.close()
+
+
+async def test_a_pixie_in_a_normal_chat_cannot_push_but_may_commit_and_merge(
+    tmp_path: Path,
+) -> None:
+    """B127: every engine's pixie stays out of pushes, in bypass too; the chat does not."""
+    server, run, _, handler = await opened(tmp_path, subagents={"scout": SCOUT}, call_rules=None)
+    spawn(server)
+    await until(lambda: run.stream.agents.thread(AGENT) is not None)
+
+    async def decision(thread_id: str, command: str) -> JsonValue:
+        answer = await server.request(
+            "item/commandExecution/requestApproval",
+            {"threadId": thread_id, "itemId": "c1", "command": command},
+        )
+        return cast("JsonObject", answer["result"])["decision"]
+
+    assert await decision(AGENT, "git push origin main") == "decline"
+    assert await decision(AGENT, "git merge --no-ff topic") == "accept"
+    assert await decision(AGENT, "git commit -m x") == "accept"
+    assert run.permissions("").guarded is False
+    assert handler.requests == []
+    await run.close()
+
+
+def test_a_bypass_pixies_role_still_asks_nest_about_its_commands() -> None:
+    """Without this Codex never asks, and the decline above never gets a chance."""
+    roles = CodexRoles({"scout": SCOUT}, False, None)
+    roles.config("default")
+    text = (roles.folder / "scout.toml").read_text(encoding="utf-8")
+    roles.close()
+
+    assert 'approval_policy = "untrusted"' in text
 
 
 class Asking(Handler):

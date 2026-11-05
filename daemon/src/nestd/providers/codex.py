@@ -159,7 +159,7 @@ class CodexRun:
         while thread is not None and len(chain) < 64:
             chain.append(thread)
             thread = agents.thread(thread.parent)
-        mode, limited = self._mode, False
+        mode, limited, guarded = self._mode, False, spec.guard_git
         for thread in reversed(chain):
             if thread.refused is not None:
                 return replace(run, refused=True)
@@ -167,7 +167,9 @@ class CodexRun:
             if subagent is not None:
                 mode = subagent.permission_mode
                 limited = read_only(subagent)
-        return replace(run, mode=mode, read_only=limited) if chain else run
+                # The chat may push when asked, its pixies never do (B127).
+                guarded = True
+        return replace(run, mode=mode, read_only=limited, guarded=guarded) if chain else run
 
     async def closed(self, reason: str) -> None:
         """Codex ended on its own, and with it the run's tools; while the run opens,
