@@ -173,7 +173,7 @@ async def test_the_run_opens_in_bypass_with_commits_and_pushes_blocked(env: Env)
     spec = env.provider.runs[-1].spec
     assert spec.permission_mode == "bypassPermissions"
     assert spec.guard_git
-    assert spec.guard_commits
+    assert spec.guard_worktrees
     assert spec.resume_id == "sdk-1"
     assert spec.system_prompt_append is not None
     assert "Autopilot is on" in spec.system_prompt_append
@@ -419,7 +419,7 @@ async def test_a_new_chat_can_start_on_it_and_is_guarded_from_its_first_turn(env
     await env.reach(created.id, SessionState.IDLE)
 
     spec = env.provider.runs[-1].spec
-    assert spec.guard_commits
+    assert spec.guard_worktrees
     assert spec.permission_mode == "bypassPermissions"
     await env.manager.autopilot.tick()
     assert (await last_report(env, created.id)).ended == "done"
@@ -516,6 +516,8 @@ async def test_a_denied_call_says_why_and_an_allowed_one_gives_the_engines_reaso
     denied = PermissionRequest("Bash", {"command": "git push"})
     assert await runner.permission(session.id, allowed) == PermissionDecision("allow")
     assert await runner.permission(session.id, denied) == PermissionDecision("deny", GUARDED_REASON)
+    committing = PermissionRequest("Bash", {"command": "git commit -m done"})
+    assert await runner.permission(session.id, committing) == PermissionDecision("allow")
 
     run = (await env.manager.get(session.id)).autopilot
     assert run is not None

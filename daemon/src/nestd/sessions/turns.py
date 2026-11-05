@@ -819,7 +819,7 @@ class TurnRunner:
                 subagents=agents.engine_subagents,
                 call_rules=agents.rules,
                 guard_git=_guarded(session),
-                guard_commits=session.autopilot is not None,
+                guard_worktrees=session.autopilot is not None,
                 account=account,
                 local=local,
                 env=ports.env,

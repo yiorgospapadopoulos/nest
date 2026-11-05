@@ -429,7 +429,7 @@ class SessionSpec:
     # git and gh as in the terminal, with the user's own login (B58).
     guard_git: bool = True
     # With `guard_git`: what changes the branch's history stays blocked too (Autopilot).
-    guard_commits: bool = False
+    guard_worktrees: bool = False
     # With `resume_id`: load the conversation only up to and including this entry, into a
     # new engine session (a fork), leaving the resumed one as it was (B59).
     resume_at: str | None = None

@@ -20,13 +20,13 @@ from collections.abc import Iterator, Mapping
 
 from claude_agent_sdk.types import HookContext, HookInput, HookJSONOutput
 
-from nestd.providers.git_commands import GIT_HISTORY, is_git_write
+from nestd.providers.git_commands import is_git_write
 
 __all__ = [
     "DENY_REASON",
-    "GIT_HISTORY_RULES",
+    "GIT_WORKTREE_RULES",
     "GIT_WRITE_RULES",
-    "block_git_history",
+    "block_autopilot_git",
     "block_git_writes",
     "is_git_write",
     "tool_writes",
@@ -37,17 +37,13 @@ GIT_WRITE_RULES = (
     "Bash(gh pr create:*)",
     "Bash(gh pr merge:*)",
 )
-# Also blocked with `guard_commits` (Autopilot).
-GIT_HISTORY_RULES = (
-    *(f"Bash(git {name}:*)" for name in sorted(GIT_HISTORY)),
-    "Bash(git worktree remove:*)",
-)
+# Also blocked with `guard_worktrees` (Autopilot).
+GIT_WORKTREE_RULES = ("Bash(git worktree remove:*)",)
 DENY_REASON = (
     "Nest: pixies may commit, but pushing and opening or merging pull requests is left to you"
 )
-HISTORY_DENY_REASON = (
-    "Nest: Autopilot leaves commits, merges, pushes, pull requests and removing worktrees"
-    " to the user"
+AUTOPILOT_DENY_REASON = (
+    "Nest: Autopilot leaves pushes, pull requests and removing worktrees to the user"
 )
 
 # Input keys, lowercased without separators, that hold a command line or an argv list.
@@ -59,12 +55,14 @@ _MCP_GIT_WRITE = re.compile(
 )
 
 
-def tool_writes(tool_name: str, tool_input: Mapping[str, object], *, commits: bool = False) -> bool:
+def tool_writes(
+    tool_name: str, tool_input: Mapping[str, object], *, worktrees: bool = False
+) -> bool:
     if tool_name.startswith(_MCP_PREFIX):
         own_name = tool_name.rsplit("__", 1)[-1]
         if _MCP_GIT_WRITE.search(_letters(own_name)):
             return True
-    return any(is_git_write(c, commits=commits) for c in _command_lines(tool_input))
+    return any(is_git_write(c, worktrees=worktrees) for c in _command_lines(tool_input))
 
 
 def _command_lines(tool_input: Mapping[str, object]) -> Iterator[str]:
@@ -98,18 +96,18 @@ async def block_git_writes(
     }
 
 
-async def block_git_history(
+async def block_autopilot_git(
     input_data: HookInput, tool_use_id: str | None, context: HookContext
 ) -> HookJSONOutput:
-    """As `block_git_writes`, and for what changes the branch's history too (Autopilot)."""
+    """As `block_git_writes`, and for removing a worktree too (Autopilot)."""
     if input_data["hook_event_name"] != "PreToolUse":
         return {}
-    if not tool_writes(input_data["tool_name"], input_data["tool_input"], commits=True):
+    if not tool_writes(input_data["tool_name"], input_data["tool_input"], worktrees=True):
         return {}
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": HISTORY_DENY_REASON,
+            "permissionDecisionReason": AUTOPILOT_DENY_REASON,
         }
     }

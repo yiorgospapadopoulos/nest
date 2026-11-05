@@ -106,6 +106,7 @@ def test_file_changes_are_accepted_when_edits_are_and_never_in_plan_mode() -> No
     assert file_change_decision("plan") == "decline"
 
 
-def test_autopilot_declines_commits_a_pixie_may_make() -> None:
-    assert command_decision("git commit -m x", "bypassPermissions", True, True) == "decline"
-    assert command_decision("git commit -m x", "bypassPermissions", True) == "accept"
+def test_autopilot_declines_removing_a_worktree() -> None:
+    assert command_decision("git worktree remove x", "bypassPermissions", True, True) == "decline"
+    assert command_decision("git worktree remove x", "bypassPermissions", True) == "accept"
+    assert command_decision("git commit -m x", "bypassPermissions", True, True) == "accept"

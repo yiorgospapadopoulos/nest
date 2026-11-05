@@ -76,9 +76,9 @@ from nestd.providers.claude_tools import (
     write_guard,
 )
 from nestd.providers.git_guard import (
-    GIT_HISTORY_RULES,
+    GIT_WORKTREE_RULES,
     GIT_WRITE_RULES,
-    block_git_history,
+    block_autopilot_git,
     block_git_writes,
 )
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
@@ -227,7 +227,7 @@ def build_options(
     if spec.system_prompt_append:
         system_prompt["append"] = spec.system_prompt_append
     # A guarded run checks every tool, so MCP and other shell tools are checked too (D049).
-    git_hook = block_git_history if spec.guard_commits else block_git_writes
+    git_hook = block_autopilot_git if spec.guard_worktrees else block_git_writes
     pre_tool_use = [HookMatcher(matcher="*", hooks=[git_hook])] if spec.guard_git else []
     pre_tool_use.append(
         HookMatcher(
@@ -253,8 +253,8 @@ def build_options(
         )
     local = spec.local
     disallowed: list[str] = list(GIT_WRITE_RULES) if spec.guard_git else []
-    if spec.guard_git and spec.guard_commits:
-        disallowed.extend(GIT_HISTORY_RULES)
+    if spec.guard_git and spec.guard_worktrees:
+        disallowed.extend(GIT_WORKTREE_RULES)
     disallowed.extend(spec.disallowed_tools)
     if local is not None:
         # Anthropic's servers run web searches; a local model has none (B106).

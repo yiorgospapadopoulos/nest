@@ -355,16 +355,9 @@ async def test_hook_ignores_other_hook_events() -> None:
 @pytest.mark.parametrize(
     "command",
     [
-        "git commit -m x",
-        "git -C /tmp/a merge main",
-        "git rebase main",
-        "git cherry-pick abc",
-        "git revert HEAD",
-        "git pull",
-        "sh -c 'git commit -m x'",
-        "git -c alias.c=commit c -m x",
-        "git-commit -m x",
         "git push",
+        "sh -c 'git push origin main'",
+        "gh pr create",
         "gh pr merge 1",
         "git worktree remove ../other",
         "git worktree remove --force ../other",
@@ -377,24 +370,29 @@ async def test_hook_ignores_other_hook_events() -> None:
         "W=worktree; git $W remove ../other",
     ],
 )
-def test_autopilot_also_blocks_what_changes_the_history(command: str) -> None:
-    assert is_git_write(command, commits=True)
+def test_autopilot_blocks_pushes_pull_requests_and_removing_worktrees(command: str) -> None:
+    assert is_git_write(command, worktrees=True)
 
 
 @pytest.mark.parametrize(
     "command",
     [
         "git status",
-        "git log --grep commit",
-        "git diff merge.py",
         "git add .",
+        "git commit -m x",
+        "git -C /tmp/a merge main",
+        "git rebase main",
+        "git cherry-pick abc",
+        "git revert HEAD",
+        "git pull",
+        "git-commit -m x",
         "git worktree list",
         "git worktree add ../other",
         'git worktree add "$DIR"',
     ],
 )
-def test_autopilot_leaves_reading_and_staging_alone(command: str) -> None:
-    assert not is_git_write(command, commits=True)
+def test_autopilot_may_do_the_rest_of_git(command: str) -> None:
+    assert not is_git_write(command, worktrees=True)
 
 
 def test_a_pixie_may_still_commit() -> None:

@@ -139,7 +139,7 @@ async def test_a_habit_on_autopilot_runs_until_it_is_done(
     session = await session_of(ctx, run)
     assert run.outcome == "quiet"
     assert len(provider.runs[-1].inputs) == 2
-    assert provider.runs[-1].spec.guard_commits
+    assert provider.runs[-1].spec.guard_worktrees
     [report] = [
         event.payload["report"]
         for event in await ctx.bus.session_events(session.id)
