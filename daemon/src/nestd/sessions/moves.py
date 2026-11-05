@@ -131,6 +131,8 @@ class WorktreeMoves:
     async def remove(self, session_id: str, name: str | None) -> str:
         """Record removing the named worktree, else the chat's current one."""
         session, repo = await self._chat(session_id)
+        if session.autopilot is not None:
+            raise MoveRefusedError("Autopilot leaves removing worktrees to the user.")
         if name is not None:
             path = (await self._found(repo, name)).path
         elif session.worktree_path is not None:

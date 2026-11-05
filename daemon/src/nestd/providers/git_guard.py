@@ -38,11 +38,17 @@ GIT_WRITE_RULES = (
     "Bash(gh pr merge:*)",
 )
 # Also blocked with `guard_commits` (Autopilot).
-GIT_HISTORY_RULES = tuple(f"Bash(git {name}:*)" for name in sorted(GIT_HISTORY))
+GIT_HISTORY_RULES = (
+    *(f"Bash(git {name}:*)" for name in sorted(GIT_HISTORY)),
+    "Bash(git worktree remove:*)",
+)
 DENY_REASON = (
     "Nest: pixies may commit, but pushing and opening or merging pull requests is left to you"
 )
-HISTORY_DENY_REASON = "Nest: Autopilot leaves commits, merges, pushes and pull requests to the user"
+HISTORY_DENY_REASON = (
+    "Nest: Autopilot leaves commits, merges, pushes, pull requests and removing worktrees"
+    " to the user"
+)
 
 # Input keys, lowercased without separators, that hold a command line or an argv list.
 _COMMAND_KEYS = frozenset({"command", "cmd", "script", "shellcommand", "commandline"})
