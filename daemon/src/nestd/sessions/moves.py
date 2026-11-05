@@ -8,9 +8,16 @@ or a failed turn cancels it and the agent hears so with its next message. After 
 restart the recorded change is applied, as nothing else can happen to it. A change that
 fails leaves the chat where it is, working, and says why in the chat and to the agent.
 
+A pixie called with call_pixie removes a worktree on the chat that called it (B127). What
+it records waits for the chat's called pixies, which work in its folder: at the end of the
+chat's turn it applies if none is left, and otherwise goes on waiting, as the last one's
+report starts or joins a turn whose end applies it. A pixie that is stopped or fails takes
+back what it recorded.
+
 Judging whether a worktree's work is merged is the agent's job, with git, when the user
 asks; Nest removes what it is told to. It keeps its own rules: a worktree another open
-chat uses stays, only its own worktrees are removed, and the branch always stays.
+chat uses stays, only its own worktrees are removed, and the branch stays unless the
+agent asks to delete it, which only git's own merged check lets happen.
 """
 
 import asyncio
@@ -56,6 +63,7 @@ PROJECT = "project"
 CHANGED: str = "worktree_changed"
 FAILED: str = "worktree_failed"
 _STOPPED = "the turn stopped before it ended"
+_PIXIE_STOPPED = "the pixie that asked for it stopped before it finished"
 # What belonged to the branch the chat left. A pull request it goes back to is found again
 # when its next turn ends (`PrAdopter`).
 _LEFT_BEHIND: dict[str, object] = {
@@ -128,8 +136,12 @@ class WorktreeMoves:
         owner = "" if await asyncio.to_thread(self._worktrees.owns, repo, path) else ", not Nest's"
         return f"{path.name}: {path}, on {checkout.branch}, {whose}{owner}"
 
-    async def remove(self, session_id: str, name: str | None) -> str:
-        """Record removing the named worktree, else the chat's current one."""
+    async def remove(
+        self, session_id: str, name: str | None, delete_branch: bool = False, by: str | None = None
+    ) -> str:
+        """Record removing the named worktree, else the chat's current one, and with
+        `delete_branch` its branch too. `by` is the called pixie's session asking for it.
+        """
         session, repo = await self._chat(session_id)
         if name is not None:
             path = (await self._found(repo, name)).path
@@ -140,13 +152,19 @@ class WorktreeMoves:
             raise MoveRefusedError(msg)
         await self._require_removable(repo, session, path)
         current = session.worktree_path is not None and await _same(path, session.worktree_path)
-        if current:
-            self._require_quiet(session)
-        await self._record(session, WorktreeChange(action="remove", path=path))
-        after = f"the next message continues here, in {repo.path}" if current else "nothing else"
+        branch = await self._branch_to_delete(repo, path) if delete_branch else None
+        change = WorktreeChange(action="remove", path=path, delete_branch=branch, by=by)
+        await self._record(session, change)
+        when = (
+            "When this turn ends and any background agents are done"
+            if by is None
+            else "After you finish and the chat's turn ends"
+        )
+        kept = "its branch stays" if branch is None else f"{branch} goes too if git finds it merged"
+        after = f"the chat continues in {repo.path}" if current else "nothing else changes"
         return (
-            f"Recorded. When this turn ends Nest removes the worktree {path}; its branch stays"
-            f" and {after} changes. Finish your reply now; it is not gone yet."
+            f"Recorded. {when} Nest removes the worktree {path}; {kept} and {after}."
+            " Finish your reply now; it is not gone yet."
         )
 
     async def new(self, session_id: str, branch: str | None, base: str | None) -> str:
@@ -183,6 +201,21 @@ class WorktreeMoves:
     async def pending(self, session_id: str) -> bool:
         return (await self._store.get(session_id)).pending_worktree is not None
 
+    async def due(self, session_id: str) -> bool:
+        """Whether what was recorded can apply now: a called pixie's change waits until
+        the pixies the chat called are done, so none loses its folder or is stopped. A
+        removal waits for background agents too: the engine runs a called pixie as one,
+        and the end of that pixie wakes the chat for a turn that applies it (B127).
+        """
+        pending = (await self._store.get(session_id)).pending_worktree
+        if pending is None:
+            return False
+        removing = any(change.action == "remove" for change in pending.changes)
+        if removing and self._background(session_id):
+            return False
+        waits = any(change.by is not None for change in pending.changes)
+        return not (waits and self.bridge is not None and self.bridge.calling(session_id))
+
     async def apply(self, live: LiveSession) -> None:
         """Apply what the turn recorded, in order. The git work of each change finishes
         even when the turn is stopped meanwhile; a new worktree's setup can be cut off.
@@ -210,6 +243,14 @@ class WorktreeMoves:
         """The turn did not end normally: what it recorded does not happen."""
         if await self.pending(session_id):
             await self._refused(session_id, _STOPPED)
+
+    async def called_stopped(self, session_id: str, called: str) -> None:
+        """The pixie the chat called was stopped or failed: what it recorded goes."""
+        pending = (await self._store.get(session_id)).pending_worktree
+        if pending is None or all(change.by != called for change in pending.changes):
+            return
+        kept = [change for change in pending.changes if change.by != called]
+        await self._refused(session_id, _PIXIE_STOPPED, kept)
 
     async def drop(self, session_id: str) -> None:
         """The chat closes or is archived: nothing it recorded happens, nobody hears."""
@@ -247,6 +288,14 @@ class WorktreeMoves:
                 if await _same(checkout.path, target):
                     return checkout
         msg = f"{repo.name} has no worktree {name!r}. The list action shows them."
+        raise MoveRefusedError(msg)
+
+    async def _branch_to_delete(self, repo: RepoConfig, path: Path) -> str:
+        _, *linked = await checkouts(repo.path)
+        for checkout in linked:
+            if checkout.branch and await _same(checkout.path, path):
+                return checkout.branch
+        msg = f"The worktree {path} is on no branch, so there is none to delete."
         raise MoveRefusedError(msg)
 
     async def _require_removable(self, repo: RepoConfig, session: Session, path: Path) -> None:
@@ -319,7 +368,16 @@ class WorktreeMoves:
         if current:
             head = await self._worktrees.head(repo)
             await self._moved(session, repo, Place("in_place", head), "deleted")
-        await self._say(session.id, f"Worktree {path.name} removed. Its branch stays.")
+        await self._say(session.id, await self._removal_line(repo, path, change.delete_branch))
+
+    async def _removal_line(self, repo: RepoConfig, path: Path, branch: str | None) -> str:
+        """What the chat shows; a branch git keeps is no failed removal."""
+        if branch is None:
+            return f"Worktree {path.name} removed. Its branch stays."
+        stays = await self._worktrees.delete_branch(repo, branch)
+        if stays is None:
+            return f"Worktree {path.name} removed with its branch {branch}."
+        return f"Worktree {path.name} removed. Its branch {branch} stays: {stays}."
 
     async def _new(
         self, live: LiveSession, repo: RepoConfig, session: Session, change: WorktreeChange
@@ -435,11 +493,15 @@ class WorktreeMoves:
             note = f"The setup command {setup.command!r} of this new worktree failed."
             await self._store.update(session_id, worktree_note=_as_note(note))
 
-    async def _refused(self, session_id: str, reason: str) -> None:
-        """What was recorded and not done goes, and both the chat and the agent hear why."""
+    async def _refused(
+        self, session_id: str, reason: str, kept: list[WorktreeChange] | None = None
+    ) -> None:
+        """What was recorded and not done goes, all but `kept`, and both the chat and the
+        agent hear why.
+        """
         await self._store.update(
             session_id,
-            pending_worktree=None,
+            pending_worktree=PendingWorktree(changes=kept) if kept else None,
             worktree_note=_as_note(f"The worktree change you asked for did not happen: {reason}."),
         )
         await self._say(session_id, f"The worktree change did not happen: {reason}", FAILED)

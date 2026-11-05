@@ -13,7 +13,7 @@ from nestd.providers.base import ForkPoint, ToolRefusedError
 from nestd.sessions.models import CreateSession, NewSession, Session, SessionState
 from nestd.storage.db import Database
 from tests.async_support import until
-from tests.fake_provider import FakeRun, Turn, reply, until_interrupted
+from tests.fake_provider import FakeRun, Turn, background, reply, until_interrupted
 from tests.fakes import FakeClock
 from tests.git_support import commit_file, git
 from tests.session_support import Env
@@ -135,6 +135,36 @@ async def test_removal_waits_for_the_turn_to_end(env: Env) -> None:
     ]
     updated = [event for event in events if event.type == "session.updated"][-1]
     assert (updated.id or 0) > (workspace.id or 0)
+
+
+async def test_removal_waits_for_background_agents_then_applies(env: Env) -> None:
+    """B127: the engine runs a called pixie as a background agent by default, so Closer
+    asks to remove the worktree while its own background task runs.
+    """
+    session = await worktree_chat(env)
+    path = session.worktree_path
+    assert path is not None
+    answer: list[str] = []
+
+    async def asks_from_the_background(run: FakeRun) -> None:
+        await background(1)(run)
+        answer.append(await call(run, {"action": "remove"}))
+        await reply("Closer works on")(run)
+
+    during = await turn_with(env, session, asks_from_the_background)
+
+    assert "Recorded" in answer[0]
+    assert path.exists()
+    assert during.pending_worktree is not None
+    assert during.worktree_path == path
+
+    await background(0)(env.provider.runs[-1])
+    await until(lambda: not env.manager.background_running(session.id))
+    done = await turn_with(env, session, reply("Closer finished"))
+
+    assert not path.exists()
+    assert done.pending_worktree is None
+    assert (done.mode, done.worktree_path) == ("in_place", None)
 
 
 async def test_the_next_message_resumes_in_the_project_folder_without_a_new_worktree(
@@ -465,6 +495,63 @@ async def test_the_change_can_be_taken_back_in_the_same_turn(env: Env) -> None:
 
     assert path.exists()
     assert done.worktree_path == path
+
+
+async def test_a_merged_branch_goes_with_its_worktree(env: Env) -> None:
+    session = await worktree_chat(env)
+    assert session.branch is not None
+    assert session.worktree_path is not None
+
+    await turn_with(env, session, asks({"action": "remove", "delete_branch": True}, reply("ok")))
+
+    assert not session.worktree_path.exists()
+    assert git(env.repo_path, "branch", "--list", session.branch) == ""
+    assert await notices(env, session, "worktree_changed") == [
+        f"Worktree {session.worktree_path.name} removed with its branch {session.branch}."
+    ]
+
+
+async def test_an_unmerged_branch_survives_and_its_worktree_still_goes(env: Env) -> None:
+    session = await worktree_chat(env)
+    assert session.branch is not None
+    assert session.worktree_path is not None
+    commit_file(session.worktree_path, "work.txt", "unmerged")
+
+    done = await turn_with(
+        env, session, asks({"action": "remove", "delete_branch": True}, reply("ok"))
+    )
+
+    assert not session.worktree_path.exists()
+    assert session.branch in git(env.repo_path, "branch", "--list", session.branch)
+    assert done.worktree_path is None
+    assert await notices(env, session, "worktree_failed") == []
+    assert await notices(env, session, "worktree_changed") == [
+        f"Worktree {session.worktree_path.name} removed."
+        f" Its branch {session.branch} stays: not merged into main."
+    ]
+
+
+async def test_removal_keeps_a_merged_branch_unless_asked(env: Env) -> None:
+    session = await worktree_chat(env)
+    assert session.branch is not None
+
+    await turn_with(env, session, asks({"action": "remove"}, reply("ok")))
+
+    assert session.branch in git(env.repo_path, "branch", "--list", session.branch)
+
+
+@pytest.mark.parametrize("branch", ["main", "feature"])
+async def test_the_default_and_the_checked_out_branch_are_never_deleted(
+    env: Env, branch: str
+) -> None:
+    git(env.repo_path, "checkout", "-q", "-b", "feature")
+    repo = env.repos.get("repo")
+    assert repo.default_branch == "main"
+
+    stays = await env.worktrees.delete_branch(repo, branch)
+
+    assert stays is not None
+    assert branch in git(env.repo_path, "branch", "--list", branch)
 
 
 async def test_a_called_pixies_folder_follows_its_caller(env: Env) -> None:

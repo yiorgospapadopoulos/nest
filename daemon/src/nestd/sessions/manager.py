@@ -311,6 +311,12 @@ class SessionManager:
             await self._states.set(session_id, SessionState.INTERRUPTED)
         await self._release(session_id, reason)
 
+    async def called_stopped(self, caller: str, called: str) -> None:
+        """A called pixie was stopped or failed: the worktree changes it recorded on its
+        caller do not happen (B127).
+        """
+        await self._moves.called_stopped(caller, called)
+
     async def list_sessions(self, repo: str | None = None, archived: bool = False) -> list[Session]:
         return await self._store.list_sessions(repo, archived)
 
