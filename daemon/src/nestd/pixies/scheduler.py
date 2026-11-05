@@ -22,6 +22,7 @@ from pydantic import JsonValue
 
 from nestd.approvals.models import ApprovalStatus
 from nestd.approvals.queue import ApprovalQueue
+from nestd.autopilot.models import AutopilotBudget
 from nestd.clock import Clock
 from nestd.config.models import AgentDefaults, PixieDefaults
 from nestd.errors import NestError
@@ -242,7 +243,8 @@ class HabitScheduler:
         except SessionNotFoundError:
             await self._end(current, "failed", GONE_REASON)
             return True
-        if session.state not in FINISHED:
+        # On Autopilot, a turn's end is not the run's.
+        if session.state not in FINISHED or session.autopilot is not None:
             return False
         if session.state is SessionState.IDLE:
             await self._end(current, None, None)
@@ -329,6 +331,11 @@ class HabitScheduler:
                 attachment_ids=[],
                 habit_run_id=run.id,
                 provider=pixie.provider,
+                autopilot=(
+                    AutopilotBudget(stop_after_minutes=habit.max_minutes)
+                    if habit.autopilot
+                    else None
+                ),
             )
         except NestError as error:
             await self._record(run.id, "failed", str(error), started_at=now)

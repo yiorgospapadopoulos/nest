@@ -111,6 +111,45 @@ async def test_a_scheduled_habit_runs_in_a_fresh_session_and_ends_quiet(
     assert habit_now.next_due_at == clock.now() + timedelta(days=1)
 
 
+async def test_a_habit_on_autopilot_runs_until_it_is_done(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    pixie = await make_pixie(ctx)
+    habit = await make_habit(
+        ctx, pixie.id, schedule={"kind": "daily", "time": "12:30"}, autopilot=True
+    )
+
+    async def finish(run: FakeRun) -> None:
+        tool = next(t for t in run.spec.nest_tools if t.name == "autopilot_finished")
+        await tool.handler({"summary": "All checked"})
+        await reply("done")(run)
+
+    provider.script(reply("working"), finish)
+    await ctx.habits.run_now(habit.pixie_id, habit.id)
+    await ctx.habit_scheduler.tick()
+
+    async def closed() -> bool:
+        await ctx.sessions.autopilot.tick()
+        await ctx.habit_scheduler.tick()
+        return (await runs(ctx, habit))[0].outcome != "running"
+
+    await until(closed)
+
+    [run] = await runs(ctx, habit)
+    session = await session_of(ctx, run)
+    assert run.outcome == "quiet"
+    assert len(provider.runs[-1].inputs) == 2
+    assert provider.runs[-1].spec.guard_commits
+    [report] = [
+        event.payload["report"]
+        for event in await ctx.bus.session_events(session.id)
+        if event.type == types.SESSION_AUTOPILOT_REPORT
+    ]
+    assert isinstance(report, dict)
+    assert report["ended"] == "done"
+    assert session.state is SessionState.CLOSED
+
+
 async def test_run_events_follow_the_outcome(ctx: AppContext, provider: FakeProvider) -> None:
     pixie = await make_pixie(ctx)
     habit = await make_habit(ctx, pixie.id)
