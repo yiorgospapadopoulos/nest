@@ -12,6 +12,8 @@ import {
   type ToolKind,
 } from "../../transcript/activity.ts";
 import type {
+  AutopilotReportItem,
+  DecisionItem,
   HookItem,
   PixieCallItem,
   PixieResultItem,
@@ -34,9 +36,10 @@ import { runInTerminal } from "../shell/frame/terminal.ts";
 import { Menu } from "../ui/Menu.tsx";
 import type { MenuEntry } from "../ui/menuItems.ts";
 import { ApprovalCard } from "./ApprovalCard.tsx";
+import { AutopilotReportCard, DecisionLine } from "./Autopilot.tsx";
 import { DiffCounts } from "./bits.tsx";
 import { ArtifactCard } from "./ArtifactCard.tsx";
-import { useOpen, useTurnShown } from "./expanded.ts";
+import { groupRow, setOpen, useOpen, useTurnShown } from "./expanded.ts";
 import { Disclosure, Glyph, type GlyphName } from "./glyphs.tsx";
 import { useImage } from "./images.ts";
 import { PixieCard } from "./PixieCards.tsx";
@@ -114,6 +117,10 @@ export function TranscriptRow({ item }: { item: TranscriptItem }) {
       return <NoteRow title={item.title} text={item.text} ev={ev} />;
     case "pixie_result":
       return <PixieResultRow item={item} ev={ev} />;
+    case "decision":
+      return <DecisionRow item={item} ev={ev} />;
+    case "autopilot_report":
+      return <ReportRow item={item} ev={ev} />;
     case "pixie":
       return <PixieCallRow item={item} ev={ev} />;
     case "approval":
@@ -382,10 +389,19 @@ function ToolGroupRow({
   ev: string;
 }) {
   const { chat, running } = useRows();
-  const [open, toggle] = useOpen(chat, id);
   const tools = items.filter((item): item is ToolItem => item.kind === "tool");
   const summary = summarizeTools(tools, running);
   const first = tools[0];
+  const row = groupRow(id);
+  // A lone agent opened while it ran as a row stays open once it folds to this line.
+  const call = tools.length === 1 && first !== undefined ? first.key : row;
+  const [opened] = useOpen(chat, row);
+  const [kept] = useOpen(chat, call);
+  const open = opened || kept;
+  const toggle = () => {
+    setOpen(chat, row, !open);
+    if (open) setOpen(chat, call, false);
+  };
   return (
     <div className="dc-group" data-ev={ev}>
       <button className="dc-line" aria-expanded={open} onClick={toggle}>
@@ -554,6 +570,16 @@ export function ToolOutput({ id, output }: { id: string; output: string }) {
       )}
     </HoverCopy>
   );
+}
+
+function DecisionRow({ item, ev }: { item: DecisionItem; ev: string }) {
+  const { chat } = useRows();
+  return <DecisionLine decision={item.decision} chat={chat} id={item.key} ev={ev} />;
+}
+
+function ReportRow({ item, ev }: { item: AutopilotReportItem; ev: string }) {
+  const { chat } = useRows();
+  return <AutopilotReportCard report={item.report} chat={chat} id={item.key} ev={ev} />;
 }
 
 /** A hook's muted line, opening to its output; a failure is tinted and opens by default. */

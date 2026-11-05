@@ -16,7 +16,7 @@ import { Sprite } from "../pixies/Sprite.tsx";
 import { useShell } from "../shell/context.ts";
 import { claudePane } from "../shell/panes.ts";
 import { Button } from "../ui/controls.tsx";
-import { BackgroundBar, LimitBar, ReviewBar } from "./Bars.tsx";
+import { AutopilotBar, BackgroundBar, LimitBar, ReviewBar } from "./Bars.tsx";
 import { Composer } from "./Composer.tsx";
 import { FileLinks } from "./FileLinks.tsx";
 import { Glyph } from "./glyphs.tsx";
@@ -168,6 +168,7 @@ function SessionBody({
               <>
                 <ReviewBar session={session} />
                 <LimitBar session={session} />
+                <AutopilotBar session={session} />
               </>
             )}
           </>

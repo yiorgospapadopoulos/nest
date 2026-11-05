@@ -537,6 +537,7 @@ interface QuietMenuProps {
   chevron?: boolean;
   align?: Align;
   className?: string;
+  disabled?: boolean;
 }
 
 /** The Mac's QuietMenu: a selector that reads as plain text, highlights on hover, opens a list. */
@@ -548,6 +549,7 @@ export function QuietMenu({
   chevron = false,
   align,
   className,
+  disabled = false,
 }: QuietMenuProps) {
   return (
     <Menu label={help} items={items} {...(align === undefined ? {} : { align })}>
@@ -557,6 +559,7 @@ export function QuietMenu({
           className={className === undefined ? "dk-quiet" : `dk-quiet ${className}`}
           title={help}
           aria-label={`${help}: ${title}`}
+          disabled={disabled}
           style={tint === undefined ? undefined : { color: tint }}
         >
           <span className="dk-quiet-t">{title}</span>

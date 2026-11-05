@@ -175,6 +175,7 @@ describe("the habit editor's draft", () => {
       triggers: ["stuck", "failed"],
       max_minutes: 30,
     });
+    expect(updateBody({ ...draft, autopilot: true }, saved)).toEqual({ autopilot: true });
     // No schedule any more clears it.
     expect(updateBody({ ...draft, repeats: "never" }, saved)).toEqual({ schedule: null });
     expect(draftOf(habit({ schedule: null })).repeats).toBe("never");
@@ -189,6 +190,7 @@ describe("the habit editor's draft", () => {
       schedule: { kind: "daily", time: "09:00" },
       triggers: ["stuck", "ci_failed"],
       max_minutes: 20,
+      autopilot: false,
     });
   });
 });

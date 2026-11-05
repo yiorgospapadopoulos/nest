@@ -1,16 +1,18 @@
 // What sits just above a chat's composer on the Mac: the running tasks (BackgroundBar), the
-// review that waits (PendingReviewBar), the usage limit pause (LimitPauseBar), and the
-// messages sent while the agent works (PendingMessages).
+// review that waits (PendingReviewBar), the usage limit pause (LimitPauseBar), Autopilot's
+// run, and the messages sent while the agent works (PendingMessages).
 import { useEffect, useState } from "react";
 import { reviewOf } from "../../api/payloads.ts";
 import type {
   Approval,
+  AutopilotRun,
   BackgroundSummary,
   LimitPause,
   QueuedMessage,
   Session,
 } from "../../api/types.ts";
 import { useReview } from "../../screens/approvals/hooks.ts";
+import { runLine, stepLine } from "../../screens/chat/useAutopilot.ts";
 import { countdown, resetLabel } from "../../format.ts";
 import { asDraftFiles } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
@@ -205,6 +207,43 @@ function Limit({ id, pause }: { id: string; pause: LimitPause }) {
         }}
       >
         Resume now
+      </Button>
+    </div>
+  );
+}
+
+/** While the chat runs on Autopilot (B120): its step, how long, its decisions, Turn off. */
+export function AutopilotBar({ session }: { session: Session }) {
+  if (session.autopilot == null) return null;
+  return <Run key={session.autopilot.started_at} id={session.id} run={session.autopilot} />;
+}
+
+function Run({ id, run }: { id: string; run: AutopilotRun }) {
+  const { state, actions } = useStore();
+  const [busy, setBusy] = useState(false);
+  const now = useNow();
+  const step = stepLine(state.tracking[id]?.tasks ?? []);
+  return (
+    <div className="dc-bar dc-line-bar" role="group" aria-label="Autopilot">
+      <Glyph name="infinity" size={13} className="dc-bad" />
+      <span className="dc-barl">Autopilot</span>
+      {step !== null && (
+        <span className="dc-apstep" title={step}>
+          {step}
+        </span>
+      )}
+      <span className="dc-bgtime">{runLine(run, now)}</span>
+      <span className="grow" />
+      <Button
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          void actions.setAutopilot(id, { on: false }).then(() => {
+            setBusy(false);
+          });
+        }}
+      >
+        Turn off
       </Button>
     </div>
   );

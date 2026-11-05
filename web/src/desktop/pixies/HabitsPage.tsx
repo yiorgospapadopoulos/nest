@@ -346,6 +346,16 @@ export function HabitEditor({
               }}
             />
             <DetailNote text="A longer run is stopped and recorded as timed out." />
+            <div className="pd-stepper">
+              <span className="pd-stepper-t">Autopilot</span>
+              <Toggle
+                label="Autopilot"
+                checked={draft.autopilot}
+                onChange={(autopilot) => {
+                  change({ autopilot });
+                }}
+              />
+            </div>
             {problem !== null && <p className="pd-problem">{problem}</p>}
           </>
         )}
