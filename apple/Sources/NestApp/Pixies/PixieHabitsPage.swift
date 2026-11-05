@@ -528,7 +528,7 @@ struct HabitRunSheet: View {
             .padding(.trailing, 10)
             .frame(height: 46)
             .overlay(alignment: .bottom) { Separator() }
-            TranscriptView(chat: session)
+            ChatTranscript(chat: session, transient: true)
                 .id(session)
         }
         .foregroundStyle(Palette.t1)

@@ -137,6 +137,7 @@ final class AppController {
             visibility?.stop()
             old.model.close()
             old.tools.keep([])
+            old.webPanes.closeAll()
             shell.keepSettings(of: old)
         }
         self.shell = shell
