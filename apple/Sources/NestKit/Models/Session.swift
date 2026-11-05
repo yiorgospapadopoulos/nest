@@ -146,6 +146,10 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     /// The worktrees it worked in before, oldest first, never the current one.
     public var earlierWorktrees: [EarlierWorktree]?
     public var movedAt: Date?
+    /// The Autopilot run in progress (B120). This and the next are missing on daemons
+    /// before it.
+    public var autopilot: AutopilotRun?
+    /// The last run's report, until it is dismissed.
 
     public var isArchived: Bool { archivedAt != nil }
 
@@ -189,6 +193,7 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case movable
         case earlierWorktrees = "earlier_worktrees"
         case movedAt = "moved_at"
+        case autopilot
     }
 }
 

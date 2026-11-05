@@ -267,8 +267,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             eventID: 1)
         let resume = TranscriptItem(id: "r", content: .limitResume("Continue"), eventID: 2)
         let entries = TranscriptGrouping.entries([call, resume], live: true)
-        guard case .item(let first) = entries.first, case .tool(let stopped) = first.content
-        else {
+        guard case .tools(let group) = entries.first, let stopped = group.calls.first else {
             Issue.record("no call")
             return
         }

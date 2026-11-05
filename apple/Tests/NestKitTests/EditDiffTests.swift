@@ -150,7 +150,7 @@ private func shape(_ lines: [EditDiff.Line]) -> [String] {
         #expect(diff.stat == "+2 -1")
     }
 
-    @Test func editsWithADiffStandAloneInTheTranscriptWhileOtherCallsGroup() {
+    @Test func editsFoldWithOtherCallsAndKeepTheirDiffInside() {
         let read = TranscriptItem(
             id: "r1", content: .tool(edit("Read", ["file_path": .string("/a")])), eventID: 1)
         let read2 = TranscriptItem(
@@ -163,11 +163,13 @@ private func shape(_ lines: [EditDiff.Line]) -> [String] {
         let read3 = TranscriptItem(
             id: "r3", content: .tool(edit("Read", ["file_path": .string("/c")])), eventID: 1)
         let entries = TranscriptGrouping.entries([read, read2, change, read3], live: false)
-        #expect(entries.map(\.id) == ["tools-r1", "e1", "r3"])
-        guard case .item(let lone) = entries[1], case .tool(let call) = lone.content else {
-            Issue.record("expected the edit alone")
+        #expect(entries.map(\.id) == ["tools-r1"])
+        guard case .tools(let group) = entries[0], case .tool(let call) = group.items[2].content
+        else {
+            Issue.record("expected the edit in the group")
             return
         }
         #expect(call.stopped)
+        #expect(EditDiff(call) != nil)
     }
 }

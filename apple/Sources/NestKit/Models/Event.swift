@@ -124,6 +124,10 @@ public enum EventType {
     public static let pixieReportRead = "pixie.report_read"
     /// The chat saved an artifact or a new version of one: a card in its transcript (B79).
     public static let sessionArtifact = "session.artifact"
+    /// Autopilot settled something for the user: a line in the transcript (B120).
+    public static let sessionAutopilotDecision = "session.autopilot_decision"
+    /// An Autopilot run ended: a card in the transcript, there for good (B120).
+    public static let sessionAutopilotReport = "session.autopilot_report"
     /// An artifact was saved in any chat, opened or deleted; each carries the unseen count.
     public static let artifactSaved = "artifact.saved"
     public static let artifactSeen = "artifact.seen"
@@ -230,6 +234,8 @@ public enum EventBody: Sendable, Hashable {
     case pixieReportRead(ids: [String])
     /// The chat saved an artifact, shown as a card where it falls (B79).
     case sessionArtifact(ArtifactCard)
+    case autopilotDecision(AutopilotDecision)
+    case autopilotReport(AutopilotReport)
     case artifactSaved(ArtifactSaved)
     case artifactSeen(id: String, unseen: Int)
     case artifactDeleted(id: String, unseen: Int)
@@ -354,6 +360,10 @@ public enum EventBody: Sendable, Hashable {
             self = .pixieReportRead(ids: try field("ids", as: [String].self))
         case EventType.sessionArtifact:
             self = .sessionArtifact(try payload.decode(ArtifactCard.self))
+        case EventType.sessionAutopilotDecision:
+            self = .autopilotDecision(try field("decision", as: AutopilotDecision.self))
+        case EventType.sessionAutopilotReport:
+            self = .autopilotReport(try field("report", as: AutopilotReport.self))
         case EventType.artifactSaved: self = .artifactSaved(try payload.decode(ArtifactSaved.self))
         case EventType.artifactSeen:
             self = .artifactSeen(
@@ -431,6 +441,8 @@ public enum MessageOrigin: String, UnknownSafeEnum {
     case limitResume = "limit_resume"
     /// The report of a pixie the chat called in the background (B112).
     case pixieResult = "pixie_result"
+    /// Nest's message that keeps a chat on Autopilot going (B120).
+    case autopilot
     case unknown
 }
 

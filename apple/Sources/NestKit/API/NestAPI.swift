@@ -53,6 +53,9 @@ public protocol NestAPI: Sendable {
     func interrupt(_ id: String) async throws
     /// Ends a usage limit pause now; the chat goes on at once (B78).
     func resumeLimit(_ id: String) async throws -> Session
+    /// Turns Autopilot on or off; on a run in progress, a new budget replaces its budget
+    /// (B120).
+    func setAutopilot(_ id: String, _ request: SetAutopilotRequest) async throws -> Session
     /// Stops one background task or subagent by its task id or the id of the tool call
     /// that started it; the turn goes on (B59).
     func stopTask(_ id: String, task: String) async throws

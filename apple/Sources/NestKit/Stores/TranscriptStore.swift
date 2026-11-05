@@ -122,6 +122,12 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         case habitReport(String)
         /// Nest's message that lets Claude continue after the usage limit reset (B78).
         case limitResume(String)
+        /// Nest's message that keeps a chat on Autopilot going (B120).
+        case autopilotMessage(String)
+        /// Something Autopilot settled for the user, where it happened (B120).
+        case autopilotDecision(AutopilotDecision)
+        /// How an Autopilot run ended, where it ended; it stays in the chat (B120).
+        case autopilotReport(AutopilotReport)
         /// A pixie the chat called in the background ended (B112).
         case pixieResult(PixieResultLine)
         /// A hook's message, output or failure, as a muted line (B59).
@@ -189,7 +195,10 @@ public final class TranscriptStore {
     /// `visibleItems` and `entries(live:background:)` as last computed for these items.
     @ObservationIgnored private var visibleCache: [TranscriptItem]?
     @ObservationIgnored private var entriesCache:
-        (live: Bool, background: Set<String>, pixies: Set<String>, entries: [TranscriptEntry])?
+        (
+            live: Bool, background: Set<String>, pixies: Set<String>,
+            entries: [TranscriptEntry]
+        )?
     /// A main-agent thinking block runs, as the daemon's `session.thinking` reports.
     private var thinkingLive = false
     /// The daemon sends `session.thinking`; older daemons do not.
@@ -321,9 +330,9 @@ public final class TranscriptStore {
 
     /// The transcript's rows (`TranscriptGrouping.entries`), kept until the items, the
     /// turn's liveness, the running background tasks or the pixies' slugs change.
-    public func entries(live: Bool, background: Set<String> = [], pixies: Set<String> = [])
-        -> [TranscriptEntry]
-    {
+    public func entries(
+        live: Bool, background: Set<String> = [], pixies: Set<String> = []
+    ) -> [TranscriptEntry] {
         let visible = visibleItems
         if let cached = entriesCache, cached.live == live, cached.background == background,
             cached.pixies == pixies
@@ -515,6 +524,8 @@ public final class TranscriptStore {
                 append(key, .habitReport(message.text), eventID)
             } else if message.origin == .limitResume {
                 append(key, .limitResume(message.text), eventID)
+            } else if message.origin == .autopilot {
+                append(key, .autopilotMessage(message.text), eventID)
             } else if message.origin == .pixieResult {
                 let line = PixieResultLine(
                     pixieID: message.pixieID, status: message.status ?? .unknown,
@@ -590,6 +601,10 @@ public final class TranscriptStore {
             append(key, .pixieCard(card), eventID)
         case .sessionArtifact(let card):
             append(key, .artifact(card), eventID)
+        case .autopilotDecision(let decision):
+            append(key, .autopilotDecision(decision), eventID)
+        case .autopilotReport(let report):
+            append(key, .autopilotReport(report), eventID)
         case .rewound(let rewind):
             drop(rewind)
         default:

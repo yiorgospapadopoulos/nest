@@ -122,6 +122,12 @@ public struct ToolGroup: Sendable, Hashable, Identifiable {
     public var summary: String {
         ToolActivity.summary(calls, running: isRunning, background: background)
     }
+
+    /// The rows that hold it open: its own, and a lone agent's, opened while it ran as a
+    /// row, so it stays open once it folds to this line.
+    public var openIDs: Set<String> {
+        calls.count == 1 ? [id, calls[0].id] : [id]
+    }
 }
 
 /// An agent call of a pixie, shown as its own row with the pixie's mascot and name (B40).
@@ -183,9 +189,11 @@ public enum TranscriptEntry: Sendable, Hashable, Identifiable {
 }
 
 public enum TranscriptGrouping {
-    /// The rows for these items: two or more tool calls with nothing but thinking or hook
-    /// lines between them become a group; anything else, assistant text above all, ends it. `live` says
-    /// the session's turn is running, so calls after the last turn end can still run.
+    /// The rows for these items: tool calls, even a single one, with nothing but thinking
+    /// or hook lines between them become a group; anything else, assistant text above all,
+    /// ends it. A single call keeps its row while it is an agent still running, or when
+    /// its result has images (`keepsRow`). `live` says the session's turn is running, so
+    /// calls after the last turn end can still run.
     /// `background` holds the tool use ids of background tasks still running: a call that
     /// started one runs until it ends (D045). Other calls without a result that can no
     /// longer run are marked stopped (D054). An agent call of one of the `pixies` (by
@@ -195,10 +203,13 @@ public enum TranscriptGrouping {
         _ items: [TranscriptItem], live: Bool, background: Set<String> = [],
         pixies: Set<String> = []
     ) -> [TranscriptEntry] {
+        let items = withoutFinish(items)
         // A turn's end line, or a user message or report starting the next turn.
         let lastEnd = items.lastIndex {
             switch $0.content {
-            case .turnEnd, .user, .reportBack, .habitReport, .limitResume, .pixieResult: true
+            case .turnEnd, .user, .reportBack, .habitReport, .limitResume, .autopilotMessage,
+                .pixieResult:
+                true
             default: false
             }
         }
@@ -213,7 +224,8 @@ public enum TranscriptGrouping {
             }
             let tail = run.reversed().prefix { !$0.isTool }.count
             let grouped = run.dropLast(tail)
-            if grouped.count(where: \.isTool) > 1 {
+            let tools = grouped.filter(\.isTool)
+            if !tools.isEmpty && (tools.count > 1 || !tools[0].keepsRow) {
                 let working = Set(grouped.map(\.id)).intersection(background)
                 let running =
                     !working.isEmpty
@@ -236,12 +248,6 @@ public enum TranscriptGrouping {
                 flush()
                 let open = live && index > (lastEnd ?? -1)
                 entries.append(.pixieCall(pixieCall(call, open: open, background: background)))
-            // An edit shows its diff, so it stands alone rather than folded away (B59).
-            case .tool(let call) where EditDiff(call) != nil:
-                flush()
-                run = [item]
-                runIsOpen = index > (lastEnd ?? -1)
-                flush()
             case .tool:
                 run.append(item)
                 runIsOpen = index > (lastEnd ?? -1)
@@ -255,6 +261,39 @@ public enum TranscriptGrouping {
         }
         flush()
         return entries
+    }
+
+    /// Autopilot's finishing call is never a row. What the agent writes after one repeats
+    /// the run's summary, so it hides when a report with that summary follows before the
+    /// user speaks again. Without one, say the run died, it stays: a summary is never lost.
+    private static func withoutFinish(_ items: [TranscriptItem]) -> [TranscriptItem] {
+        func isFinish(_ item: TranscriptItem) -> Bool {
+            guard case .tool(let call) = item.content else { return false }
+            return call.name.hasSuffix("autopilot_finished") && !call.isError
+        }
+        var hidden = Set<String>()
+        var finished = false
+        var echoes: [String] = []
+        for item in items {
+            switch item.content {
+            case .tool where isFinish(item):
+                finished = true
+            case .user:
+                finished = false
+                echoes = []
+            case .autopilotReport(let report):
+                if finished && report.summary != nil {
+                    hidden.formUnion(echoes)
+                }
+                finished = false
+                echoes = []
+            case .assistant where finished:
+                echoes.append(item.id)
+            default:
+                break
+            }
+        }
+        return items.filter { !isFinish($0) && !hidden.contains($0.id) }
     }
 
     /// A pixie's call, marked stopped once it can no longer run, as a lone call is.
@@ -282,7 +321,7 @@ public enum TranscriptGrouping {
                 continue
             }
             switch item.content {
-            case .user, .reportBack, .habitReport, .limitResume, .pixieResult:
+            case .user, .reportBack, .habitReport, .limitResume, .autopilotMessage, .pixieResult:
                 reply = []
             case .turnEnd:
                 for id in reply + [item.id] {
@@ -314,6 +353,13 @@ extension TranscriptItem {
     /// A tool call's result: nil while it runs, and for other items.
     fileprivate var toolResult: String? {
         if case .tool(let call) = content { call.result } else { nil }
+    }
+
+    /// A running agent's row shows what it does; a result's images show unopened.
+    fileprivate var keepsRow: Bool {
+        guard case .tool(let call) = content else { return false }
+        let running = call.result == nil && !call.stopped
+        return running && ToolSummary.kind(of: call.name) == .agent || !call.images.isEmpty
     }
 
     /// A call without a result, marked stopped unless its background task still runs.

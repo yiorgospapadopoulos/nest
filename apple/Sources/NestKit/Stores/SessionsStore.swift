@@ -38,6 +38,8 @@ public final class SessionsStore {
     public private(set) var refreshingPR: Set<String> = []
     /// Paused sessions whose Resume now is on its way to the daemon (B78).
     public private(set) var resumingLimit: Set<String> = []
+    /// Chats whose Autopilot change the daemon has not answered yet (B120).
+    public private(set) var settingAutopilot: Set<String> = []
 
     let api: any NestAPI
     let approvals: ApprovalsStore
@@ -290,6 +292,12 @@ public final class SessionsStore {
         resumingLimit.insert(id)
         defer { resumingLimit.remove(id) }
         try await fetch { try await self.api.resumeLimit(id) }
+    }
+
+    public func setAutopilot(_ id: String, _ request: SetAutopilotRequest) async throws {
+        settingAutopilot.insert(id)
+        defer { settingAutopilot.remove(id) }
+        try await fetch { try await self.api.setAutopilot(id, request) }
     }
 
     /// Send a nudge: stops the stuck turn and sends a message asking for another
