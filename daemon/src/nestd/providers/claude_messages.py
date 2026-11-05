@@ -3,6 +3,7 @@
 import json
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal, cast, get_args
 
 from claude_agent_sdk import (
@@ -39,6 +40,9 @@ PERMISSION_MODES: frozenset[str] = frozenset(get_args(PermissionMode))
 _COMMAND_OUTPUT = re.compile(r"<local-command-(stdout|stderr)>(.*?)</local-command-\1>", re.DOTALL)
 
 
+_FOLDER_TOOLS = frozenset({"EnterWorktree", "ExitWorktree"})
+
+
 class TurnOutput:
     """Whether the current turn showed the user text: the agent's, a command's or a notice;
     and whether the engine's echo of the user message just sent is still to come.
@@ -54,6 +58,9 @@ class TurnOutput:
         # Messages written into a running turn, by the uuid their echo carries, to their
         # Nest id (B59).
         self.steered: dict[str, str] = {}
+        # The main agent's calls of the engine's worktree tools, whose results say where
+        # it works now.
+        self.folder_calls: set[str] = set()
 
 
 async def translate(
@@ -118,6 +125,7 @@ async def translate(
                     ):
                         output.shown = True
                 await sink.message(blocks, message.parent_tool_use_id)
+                await _follow_folder(message, blocks, sink, output)
             if isinstance(message, AssistantMessage):
                 await _report_subagent_usage(message, sink)
             if isinstance(message, AssistantMessage) and message.error == "rate_limit":
@@ -297,6 +305,33 @@ class BackgroundTasks:
         ):
             self._running.discard(message.task_id)
         return len(self._running) if len(self._running) != before else None
+
+
+async def _follow_folder(
+    message: AssistantMessage | UserMessage,
+    blocks: list[base.MessageBlock],
+    sink: base.ProviderEventSink,
+    output: TurnOutput,
+) -> None:
+    """Report the main agent moving with EnterWorktree or ExitWorktree, which Nest does not
+    run: only their results say the folder it ended up in.
+    """
+    if message.parent_tool_use_id is not None:
+        return
+    for block in blocks:
+        if isinstance(block, base.ToolUseBlock) and block.name in _FOLDER_TOOLS:
+            output.folder_calls.add(block.id)
+        elif isinstance(block, base.ToolResultBlock) and block.tool_use_id in output.folder_calls:
+            output.folder_calls.discard(block.tool_use_id)
+            result = message.tool_use_result if isinstance(message, UserMessage) else None
+            if result is not None and not block.is_error:
+                await _report_folder(result, sink)
+
+
+async def _report_folder(result: dict[str, Any], sink: base.ProviderEventSink) -> None:
+    folder = result.get("restoredCwd") or result.get("originalCwd") or result.get("worktreePath")
+    if isinstance(folder, str):
+        await sink.folder_changed(Path(folder), removed=result.get("action") == "remove")
 
 
 def _time_thinking(blocks: list[base.MessageBlock], thinking: ThinkingTimer) -> None:
