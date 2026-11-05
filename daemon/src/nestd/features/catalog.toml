@@ -575,3 +575,21 @@ where = "Settings › Devices"
 added = 2026-10-07
 changed = 2026-11-02
 block = "B10"
+
+[[features]]
+id = "autopilot"
+group = "chats"
+name = "Autopilot"
+text = "One button keeps a chat working without you: it answers its own questions, goes on after early stops, restarts and errors, and shows each decision in the chat with the options and the reason, then a report at the end. Commits, pushes and merges stay yours."
+where = "Chat › the button beside the mic"
+added = 2026-11-04
+block = "B120"
+
+[[features]]
+id = "update-lines"
+group = "chats"
+name = "Short updates while it works"
+text = "Agents say in a sentence what they are doing as they go, and tool calls fold to one short line you can open."
+where = "Chat"
+added = 2026-11-04
+block = "B120"
