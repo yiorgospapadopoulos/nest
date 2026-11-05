@@ -14,6 +14,7 @@ import {
 import type { BackgroundSummary, Restore, Session } from "../../api/types.ts";
 import { reviewWaitingLine } from "../../transcript/github.ts";
 import { ScrollFollow } from "../../screens/chat/scrollFollow.ts";
+import { useJumpOnSend } from "../../screens/chat/useJumpOnSend.ts";
 import { useStopTask } from "../../screens/chat/useStopTask.ts";
 import { itemIndexAt, nearestItem, VIRTUAL_FROM } from "../../screens/chat/virtualRows.ts";
 import { workRoot } from "../../screens/approvals/hooks.ts";
@@ -271,6 +272,7 @@ export function Transcript({
     setAway(false);
     setJumps((n) => n + 1);
   };
+  useJumpOnSend(items, state.queued[id]?.length ?? 0, loaded, jump);
 
   const renderItem = (item: TranscriptItem) => (
     <div

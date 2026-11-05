@@ -10,6 +10,7 @@ from nestd.events import types
 from nestd.providers.base import AccountInfo, EngineDetails
 from nestd.providers.codex_engine import NOT_SIGNED_IN
 from tests.api_client import Api, running_api
+from tests.async_support import until
 from tests.codex_support import SIGNED_OUT, item, note, turn_completed
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
@@ -91,7 +92,7 @@ async def test_a_codex_chat_runs_a_turn_on_codex(api: Api) -> None:
         turn_completed(),
     )
 
-    session = await create(api, provider="codex", mode="in_place")
+    session = await create(api, title="Hi", provider="codex", mode="in_place")
     session_id = str(session["id"])
     await reach(api, session_id, "idle", results=1)
 
@@ -110,6 +111,33 @@ async def test_a_codex_chat_runs_a_turn_on_codex(api: Api) -> None:
     assert turn["input"][-1]["text"].endswith("Do it")  # type: ignore[index]
     assert (turn["model"], turn["effort"]) == ("gpt-6.1-sol", "low")
     assert api.provider.runs == []
+
+
+async def test_a_codex_chats_name_comes_from_a_call_that_leaves_no_thread(api: Api) -> None:
+    api.codex.script(
+        note("turn/started", threadId="thread-1", turn={"id": "turn-1"}),
+        item("completed", {"type": "agentMessage", "id": "a1", "text": "Done"}),
+        turn_completed(),
+    )
+    api.codex.script(
+        note("turn/started", threadId="thread-1", turn={"id": "turn-2"}),
+        item("completed", {"type": "agentMessage", "id": "a2", "text": "Login redirect loop"}),
+        turn_completed(),
+    )
+
+    session = await create(api, provider="codex", mode="in_place")
+    session_id = str(session["id"])
+
+    async def named() -> bool:
+        detail = (await api.http.get(f"/api/sessions/{session_id}")).json()
+        return detail["title"] == "Login redirect loop"
+
+    await until(named)
+    (chat, call) = api.codex.requests("thread/start")
+    assert "ephemeral" not in chat
+    assert call["ephemeral"] is True
+    assert call["cwd"] != chat["cwd"]
+    assert session["title"] != "Login redirect loop"
 
 
 async def test_a_codex_chat_while_signed_out_is_refused_with_its_code(api: Api) -> None:

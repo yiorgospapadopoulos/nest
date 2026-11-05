@@ -574,3 +574,78 @@ async def test_a_called_pixies_folder_follows_its_caller(env: Env) -> None:
     await turn_with(env, session, asks({"action": "remove"}, reply("ok")))
 
     assert (await env.store.get(called.id)).cwd == env.repo_path
+
+
+def moves_itself(folder: Path, then: Turn, *, removed: bool = False) -> Turn:
+    """The agent changes folder with the engine's own tool, which Nest does not run."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.folder_changed(folder, removed=removed)
+        await then(run)
+
+    return turn
+
+
+def agents_worktree(env: Env) -> Path:
+    """A worktree the engine made, as `EnterWorktree` does."""
+    folder = env.repo_path / ".claude" / "worktrees" / "own"
+    git(env.repo_path, "worktree", "add", "-q", "-b", "own-branch", str(folder))
+    return folder
+
+
+async def in_place_chat(env: Env, *, movable: bool = True) -> Session:
+    env.provider.script(reply("ok"))
+    created = await env.create("in place", mode="in_place")
+    session = await env.reach(created.id, SessionState.IDLE)
+    if not movable:
+        session = await env.store.update(session.id, movable=False)
+    return session
+
+
+@pytest.mark.parametrize("movable", [True, False])
+async def test_a_chat_follows_its_agent_into_a_worktree_it_made_itself(
+    env: Env, *, movable: bool
+) -> None:
+    session = await in_place_chat(env, movable=movable)
+    folder = agents_worktree(env).resolve()
+
+    moved = await turn_with(env, session, moves_itself(folder, reply("ok")))
+
+    assert (moved.mode, moved.branch) == ("worktree", "own-branch")
+    assert (moved.cwd, moved.worktree_path) == (folder, folder)
+    assert await next_message_runs_in(env, moved) == folder
+
+
+async def test_a_chat_follows_its_agent_back_and_keeps_the_worktree_as_earlier(env: Env) -> None:
+    session = await in_place_chat(env)
+    folder = agents_worktree(env).resolve()
+    await turn_with(env, session, moves_itself(folder, reply("ok")))
+
+    back = await turn_with(env, session, moves_itself(env.repo_path, reply("ok")))
+
+    assert (back.mode, back.worktree_path, back.cwd) == ("in_place", None, env.repo_path)
+    assert [(e.path, e.branch, e.state) for e in back.earlier_worktrees] == [
+        (folder, "own-branch", "kept")
+    ]
+
+
+async def test_a_worktree_the_agent_removed_itself_shows_deleted(env: Env) -> None:
+    session = await in_place_chat(env)
+    folder = agents_worktree(env).resolve()
+    await turn_with(env, session, moves_itself(folder, reply("ok")))
+
+    back = await turn_with(env, session, moves_itself(env.repo_path, reply("ok"), removed=True))
+
+    assert [e.state for e in back.earlier_worktrees] == ["deleted"]
+
+
+async def test_a_folder_outside_the_project_leaves_the_chat_where_it_is(
+    env: Env, tmp_path: Path
+) -> None:
+    session = await in_place_chat(env)
+    stranger = tmp_path / "elsewhere"
+    stranger.mkdir()
+
+    after = await turn_with(env, session, moves_itself(stranger, reply("ok")))
+
+    assert (after.state, after.mode, after.cwd) == (SessionState.IDLE, "in_place", session.cwd)

@@ -159,6 +159,8 @@ export interface Session {
   id: string;
   repo: string;
   title: string;
+  /** The name is still on its way: `title` is the quick one, which only Needs you shows. */
+  title_pending?: boolean;
   prompt: string;
   mode: SessionMode;
   cwd: string | null;

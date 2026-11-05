@@ -28,6 +28,7 @@ from nestd.providers.base import (
     Question,
     QuestionOption,
     QuestionRequest,
+    ToolRefusedError,
     ToolUseBlock,
 )
 from nestd.sessions.errors import NoTurnInProgressError
@@ -88,6 +89,21 @@ def wait_then_reply(go_on: asyncio.Event, text: str) -> Turn:
     async def turn(run: FakeRun) -> None:
         await go_on.wait()
         await reply(text)(run)
+
+    return turn
+
+
+def moves_then_stops_at_remove(refused: list[str]) -> Turn:
+    """The agent makes a worktree, and is told no when it tries to remove one."""
+
+    async def turn(run: FakeRun) -> None:
+        tool = next(t for t in run.spec.nest_tools if t.name == "worktree")
+        await tool.handler({"action": "new", "branch": "from-autopilot"})
+        try:
+            await tool.handler({"action": "remove", "worktree": "from-autopilot"})
+        except ToolRefusedError as error:
+            refused.append(str(error))
+        await reply("moved")(run)
 
     return turn
 
@@ -157,7 +173,7 @@ async def test_the_run_opens_in_bypass_with_commits_and_pushes_blocked(env: Env)
     spec = env.provider.runs[-1].spec
     assert spec.permission_mode == "bypassPermissions"
     assert spec.guard_git
-    assert spec.guard_commits
+    assert spec.guard_worktrees
     assert spec.resume_id == "sdk-1"
     assert spec.system_prompt_append is not None
     assert "Autopilot is on" in spec.system_prompt_append
@@ -403,7 +419,7 @@ async def test_a_new_chat_can_start_on_it_and_is_guarded_from_its_first_turn(env
     await env.reach(created.id, SessionState.IDLE)
 
     spec = env.provider.runs[-1].spec
-    assert spec.guard_commits
+    assert spec.guard_worktrees
     assert spec.permission_mode == "bypassPermissions"
     await env.manager.autopilot.tick()
     assert (await last_report(env, created.id)).ended == "done"
@@ -500,6 +516,8 @@ async def test_a_denied_call_says_why_and_an_allowed_one_gives_the_engines_reaso
     denied = PermissionRequest("Bash", {"command": "git push"})
     assert await runner.permission(session.id, allowed) == PermissionDecision("allow")
     assert await runner.permission(session.id, denied) == PermissionDecision("deny", GUARDED_REASON)
+    committing = PermissionRequest("Bash", {"command": "git commit -m done"})
+    assert await runner.permission(session.id, committing) == PermissionDecision("allow")
 
     run = (await env.manager.get(session.id)).autopilot
     assert run is not None
@@ -537,3 +555,17 @@ def test_a_decision_stored_before_the_details_still_loads() -> None:
     assert decision.options == []
     assert decision.reason is None
     assert decision.detail is None
+
+
+async def test_a_run_can_make_a_worktree_but_never_remove_one(env: Env) -> None:
+    session = await idle_chat(env)
+    refused: list[str] = []
+    env.provider.script(moves_then_stops_at_remove(refused), done("All done"))
+    await env.manager.set_autopilot(session.id, ON)
+    await tick_until_turn(env, session.id, 2)
+
+    assert len(refused) == 1
+    moved = await env.manager.get(session.id)
+    assert moved.branch == "from-autopilot"
+    assert moved.worktree_path is not None
+    assert moved.worktree_path.is_dir()

@@ -121,6 +121,10 @@ _AUTH_WORDS = re.compile(r"api key|auth|sign(?:ed)? ?in|log(?:ged)? ?in|credenti
 type AcpLauncher = Callable[[RunAccount | None], Awaitable[AcpLaunch]]
 
 
+# The title an engine gives a session before it has named it.
+_PLACEHOLDER_TITLE = re.compile(r"new session\b", re.IGNORECASE)
+
+
 class AcpNotReadyError(ConflictError):
     """The engine cannot run: not installed, without its key, or signed out."""
 
@@ -177,6 +181,8 @@ class AgentCaps:
     close: bool
     mcp_http: bool
     image: bool
+    # The engine lists its sessions with their titles (`session/list`).
+    list_sessions: bool = False
 
 
 @dataclass(frozen=True)
@@ -214,6 +220,7 @@ def agent_caps(result: JsonObject) -> AgentCaps:
         close=sessions.get("close") not in (None, False),
         mcp_http=obj(caps.get("mcpCapabilities")).get("http") is True,
         image=obj(caps.get("promptCapabilities")).get("image") is True,
+        list_sessions=sessions.get("list") not in (None, False),
     )
 
 
@@ -375,7 +382,7 @@ class AcpRun:
             folders,
             spec.write_root,
             self._nest,
-            commits=spec.guard_commits,
+            worktrees=spec.guard_worktrees,
         )
 
     @property
@@ -413,6 +420,22 @@ class AcpRun:
             logger.warning("%s refused the model or thinking level (%s)", self._engine.name, error)
         self._session_id = session_id
         await self._sink.provider_session_id(session_id)
+
+    @property
+    def names_chats(self) -> bool:
+        return self._caps is not None and self._caps.list_sessions
+
+    async def engine_title(self, session_id: str) -> str | None:
+        """The session's title in the engine's list, unless it is still the engine's
+        placeholder (OpenCode's `New session - <time>`).
+        """
+        listed = await self.rpc.request("session/list", {"cwd": str(self._spec.cwd)})
+        for entry in items(listed.get("sessions")):
+            session = obj(entry)
+            if text(session.get("sessionId")) == session_id:
+                title = text(session.get("title"))
+                return None if _PLACEHOLDER_TITLE.match(title) else title or None
+        return None
 
     async def on_request(self, method: str, params: JsonObject) -> JsonValue:
         if method == "session/request_permission":

@@ -41,6 +41,7 @@ from nestd.sessions.live import BYPASS, LiveSession, Unsent
 from nestd.sessions.local import LocalSource, crosses_local, require
 from nestd.sessions.models import USER, NewSession, Sender, Session, SessionState
 from nestd.sessions.moves import WorktreeMoves, place_note
+from nestd.sessions.namer import ChatNamer
 from nestd.sessions.ports import NO_PORTS, FolderPorts, PortsSource
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rules import attachment_summary, require_cwd, user_input
@@ -168,6 +169,7 @@ class TurnRunner:
         repos: RepoService,
         attachments: AttachmentStore,
         engines: Engines,
+        namer: ChatNamer,
         handler_for: Callable[[LiveSession], ApprovalHandler],
         on_mode: Callable[[LiveSession, PermissionMode], Awaitable[None]],
         idle_close: timedelta,
@@ -214,6 +216,7 @@ class TurnRunner:
         self._worktrees = worktrees
         self._attachments = attachments
         self._engines = engines
+        self._namer = namer
         self._handler_for = handler_for
         self._idle_close = idle_close
         # The pixies runs call with call_pixie (B112); set once it exists, as it needs the
@@ -350,6 +353,7 @@ class TurnRunner:
         run = await self._ensure_run(live, session, cwd)
         live.turn_active = True
         await run.send(user_input(await self.agent_text(live, text, sender), attachments))
+        self._namer.message_sent(live, session)
 
     async def agent_text(self, live: LiveSession, text: str, sender: Sender = USER) -> str:
         """`text` as the agent gets it: teams it calls get their instruction (B40), and
@@ -536,6 +540,9 @@ class TurnRunner:
         event_id, live.user_event = live.user_event, None
         if event_id is not None:
             await self._store.save_checkpoint(live.session_id, event_id, checkpoint_id)
+
+    async def folder_changed(self, live: LiveSession, folder: Path, *, removed: bool) -> None:
+        await self.moves.followed(live.session_id, folder, removed=removed)
 
     async def rewind(self, live: LiveSession, checkpoint_id: str, dry_run: bool) -> RewindResult:
         """Restore files to `checkpoint_id` on the session's run, resuming the agent's last
@@ -824,7 +831,7 @@ class TurnRunner:
                 subagents=agents.engine_subagents,
                 call_rules=agents.rules,
                 guard_git=_guarded(session),
-                guard_commits=session.autopilot is not None,
+                guard_worktrees=session.autopilot is not None,
                 account=account,
                 local=local,
                 env=ports.env,
@@ -846,6 +853,7 @@ class TurnRunner:
             live.run = await engine.provider.open(spec, self._handler_for(live), sink)
             live.run_cwd = cwd
             live.run_account = None if account is None else account.id
+            live.run_local = local
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = mode == BYPASS
@@ -938,10 +946,8 @@ class TurnRunner:
         return (called_worktree_tool(self.moves, caller, session),)
 
     async def _moves_folders(self, session: Session) -> bool:
-        """Whether the chat can change where it works: a movable chat in a git project,
-        when someone is watching: Autopilot removes no worktrees.
-        """
-        if session.autopilot is not None or not session.movable:
+        """Whether the chat can change where it works: a movable chat in a git project."""
+        if not session.movable:
             return False
         return await self._repos.has_git(session.repo)
 

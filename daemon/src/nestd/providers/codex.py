@@ -116,6 +116,8 @@ class CodexNotSignedInError(ConflictError):
 
 class CodexRun:
     steers = True
+    # Only Codex's terminal app names threads; `app-server` leaves them unnamed (0.163).
+    names_chats = False
 
     def __init__(
         self,
@@ -151,7 +153,7 @@ class CodexRun:
             spec.guard_git,
             spec.write_root,
             _nest_servers(spec),
-            commits=spec.guard_commits,
+            worktrees=spec.guard_worktrees,
         )
         agents = self.stream.agents
         chain: list[Subthread] = []
@@ -188,6 +190,9 @@ class CodexRun:
     def thread_id(self) -> str:
         assert self.stream.thread_id is not None  # noqa: S101 (set with the connection)
         return self.stream.thread_id
+
+    async def engine_title(self, session_id: str) -> str | None:
+        return None
 
     async def send(self, user_input: UserInput) -> None:
         spec = self._spec

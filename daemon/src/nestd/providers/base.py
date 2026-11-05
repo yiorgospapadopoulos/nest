@@ -429,7 +429,7 @@ class SessionSpec:
     # git and gh as in the terminal, with the user's own login (B58).
     guard_git: bool = True
     # With `guard_git`: what changes the branch's history stays blocked too (Autopilot).
-    guard_commits: bool = False
+    guard_worktrees: bool = False
     # With `resume_id`: load the conversation only up to and including this entry, into a
     # new engine session (a fork), leaving the resumed one as it was (B59).
     resume_at: str | None = None
@@ -577,6 +577,12 @@ class ProviderEventSink(Protocol):
 
     async def message(self, blocks: list[MessageBlock], parent_tool_use_id: str | None) -> None: ...
 
+    async def folder_changed(self, folder: Path, *, removed: bool) -> None:
+        """The main agent moved to `folder` with an engine tool of its own; `removed` when
+        the worktree it left went with that.
+        """
+        ...
+
     async def text_delta(self, text: str) -> None: ...
 
     async def thinking(self, active: bool) -> None:
@@ -677,6 +683,15 @@ class AgentRun(Protocol):
     # Whether messages can be written into a running turn (`steer`); a provider that
     # cannot gets them after the turn instead (B59).
     steers: bool
+
+    @property
+    def names_chats(self) -> bool:
+        """Whether the engine names its chats itself, read with `engine_title` (B125)."""
+        ...
+
+    async def engine_title(self, session_id: str) -> str | None:
+        """The engine's own name for its session `session_id`; None until it has one."""
+        ...
 
     async def send(self, user_input: UserInput) -> None:
         """Submit a user message; what the agent does comes through the sink."""

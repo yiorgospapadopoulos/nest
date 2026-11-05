@@ -78,6 +78,9 @@ IN_FLIGHT = (SessionState.STARTING, SessionState.RUNNING, SessionState.WAITING)
 class NewSession(BaseModel):
     repo: str
     title: str
+    # `title` is the quick name, kept for commits and notifications, and clients leave the
+    # name blank until the engine's own replaces it or none comes (B125).
+    title_pending: bool = False
     prompt: str
     mode: SessionMode
     cwd: Path | None

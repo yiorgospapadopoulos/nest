@@ -9,7 +9,7 @@ import { startedByText } from "../../screens/pixies/options.ts";
 import { useStore } from "../../store/context.ts";
 import { GENERAL } from "../../store/general.ts";
 import { localModelOf } from "../../store/local.ts";
-import { chatStatus, engineName, pendingFor } from "../../store/selectors.ts";
+import { chatStatus, engineName, pendingFor, shownTitle } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { PrChip } from "../shell/frame/PrChip.tsx";
@@ -59,7 +59,7 @@ export function ChatHeaderParts({ session, run }: { session: Session; run: React
   const started = session.started_by_pixie === null ? null : startedByText(pixie?.name);
   return (
     <>
-      <HeaderTitle title={session.title} />
+      <HeaderTitle title={shownTitle(session)} />
       <span className="dc-hstatus" title={status.label}>
         <Dot tone={status.tone} label={status.label} />
       </span>

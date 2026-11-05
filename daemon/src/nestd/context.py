@@ -129,6 +129,7 @@ from nestd.providers.codex_process import (
     spawn,
 )
 from nestd.providers.codex_trust import forget_trust
+from nestd.providers.one_off import cheapest
 from nestd.providers.shell_env import LoginShellEnv, ShellEnvSource, login_shell
 from nestd.prs.adopt import PrAdopter
 from nestd.prs.monitor import PrMonitor
@@ -439,6 +440,10 @@ class AppContext:
             fetch_usage=codex_usage,
             on_signed_in=lambda: signed_in(CODEX),
         )
+
+        async def codex_small_model() -> str | None:
+            return cheapest((await codex.models()).models)
+
         pixie_files = PixieFiles(paths.pixies_dir)
         team_store = TeamStore(db, clock)
         activity = ActivityStore(db, clock)
@@ -580,6 +585,7 @@ class AppContext:
                     models=codex.find,
                     ready=codex.require_signed_in,
                     default=lambda: local.default_or(codex.default_model),
+                    small=codex_small_model,
                     accounts=active.source(CODEX_ACCOUNTS),
                 ),
                 *(
@@ -593,6 +599,7 @@ class AppContext:
                         models=service.find,
                         ready=service.require_ready,
                         default=service.default_model,
+                        small=_acp_small_model(service),
                         accounts=active.source(service.name),
                         git_guard=service.engine.git_guard,
                     )
@@ -602,6 +609,7 @@ class AppContext:
             accounts=active.source(CLAUDE_ACCOUNTS),
             local=local,
             ports=runs.agent_ports,
+            names_dir=paths.names_dir,
             keep_awake=KeepAwake(system.name),
             weekly_used=partial(weekly_used, usage),
         )
@@ -1011,6 +1019,13 @@ class AppContext:
         await self.modules.stop_all()
         await self.notifications.close()
         await self.db.close()
+
+
+def _acp_small_model(service: AcpEngineService) -> Callable[[], Awaitable[str | None]]:
+    async def small_model() -> str | None:
+        return cheapest((await service.models()).models)
+
+    return small_model
 
 
 def _locations(paths: AppPaths) -> Locations | None:

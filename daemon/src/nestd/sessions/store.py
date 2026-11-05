@@ -177,6 +177,29 @@ class SessionStore:
         )
         return await self.get(session_id)
 
+    async def adopt_title(self, session_id: str, title: str) -> Session | None:
+        """The chat's real name replaces the quick one; None once it has another, even one
+        set a moment ago (B125).
+        """
+        rows = await self._db.fetch_all(
+            "UPDATE sessions SET title = ?, title_pending = 0, updated_at = ?"
+            " WHERE id = ? AND title_pending = 1 RETURNING *",
+            (title, _column(self._clock.now()), session_id),
+        )
+        return _session(rows[0]) if rows else None
+
+    async def end_naming(self, session_id: str) -> Session | None:
+        """No name came: the chat shows its quick one. None when it was already settled."""
+        rows = await self._db.fetch_all(
+            "UPDATE sessions SET title_pending = 0 WHERE id = ? AND title_pending = 1 RETURNING *",
+            (session_id,),
+        )
+        return _session(rows[0]) if rows else None
+
+    async def end_all_naming(self) -> None:
+        """Nothing is naming a chat when the daemon starts."""
+        await self._db.execute("UPDATE sessions SET title_pending = 0 WHERE title_pending = 1")
+
     async def set_pr(self, session_id: str, pr: PrStatus) -> Session:
         """Store the pull request's status without moving the session up the list."""
         await self._db.execute(

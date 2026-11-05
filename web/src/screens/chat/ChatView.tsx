@@ -5,7 +5,7 @@ import { useStore } from "../../store/context.ts";
 import { localModelOf } from "../../store/local.ts";
 import { LocalTag } from "./LocalCards.tsx";
 import { projectName, repoNamed } from "../../store/general.ts";
-import { chatStatus, exchangeBackground, pendingFor } from "../../store/selectors.ts";
+import { chatStatus, exchangeBackground, pendingFor, shownTitle } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ChatActions } from "../projects/ChatActions.tsx";
 import { NO_BACKGROUND } from "../../store/state.ts";
@@ -171,7 +171,7 @@ function SessionChat({
 
   return (
     <Frame
-      title={session.title}
+      title={shownTitle(session)}
       status={status}
       back={
         session.habit_run_id == null ? projectName(session.repo) : runBack(state.pixies, session)

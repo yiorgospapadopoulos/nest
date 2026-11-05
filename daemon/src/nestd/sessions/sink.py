@@ -5,6 +5,7 @@ if the agent had crashed, so each step is isolated and only logged (D048).
 """
 
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Literal, Protocol
 
 from pydantic import JsonValue
@@ -74,6 +75,10 @@ class TurnEvents(Protocol):
 
     async def message_taken(self, live: LiveSession, message_id: str, checkpoint_id: str) -> None:
         """The engine read a message written into the turn (B59)."""
+        ...
+
+    async def folder_changed(self, live: LiveSession, folder: Path, *, removed: bool) -> None:
+        """The agent moved to `folder` with an engine tool of its own."""
         ...
 
 
@@ -279,6 +284,11 @@ class SessionSink:
     async def checkpoint(self, checkpoint_id: str) -> None:
         await self._isolated(
             "the message checkpoint", self._turns.checkpoint(self._live, checkpoint_id)
+        )
+
+    async def folder_changed(self, folder: Path, *, removed: bool) -> None:
+        await self._isolated(
+            "the agent's move", self._turns.folder_changed(self._live, folder, removed=removed)
         )
 
     async def message_taken(self, message_id: str, checkpoint_id: str) -> None:

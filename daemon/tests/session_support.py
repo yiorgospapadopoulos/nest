@@ -27,6 +27,7 @@ from nestd.sessions.ports import PortsSource
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import ChatAgentsSource, PixieCalls
+from nestd.sessions.titles import short_title
 from nestd.storage.db import Database
 from nestd.worktrees.manager import WorktreeManager
 from tests.async_support import until_published
@@ -98,6 +99,8 @@ class Env:
             accounts=accounts,
             local=local,
             ports=ports,
+            names_dir=self.paths.data_dir / "names",
+            name_waits=(0,),
         )
 
     def use_worktrees(self) -> None:
@@ -114,6 +117,10 @@ class Env:
             self.repos.update_worktree_config("repo", worktree)
 
     async def create(self, prompt: str = "Fix the bug\nDetails here", **fields: object) -> Session:
+        """A chat with the name of its prompt, so it waits for no name of the engine's; pass
+        `title=None` for one that does (B125).
+        """
+        fields = {"title": short_title(prompt), **fields}
         request = CreateSession.model_validate({"repo": "repo", "prompt": prompt, **fields})
         return await self.manager.create(request)
 

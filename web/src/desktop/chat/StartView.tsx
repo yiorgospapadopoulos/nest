@@ -3,6 +3,7 @@ import type { Session } from "../../api/types.ts";
 import { age, question, questions, startLists } from "../../screens/chat/start.ts";
 import { useStore } from "../../store/context.ts";
 import { projectName, repoNamed } from "../../store/general.ts";
+import { shownTitle } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { ProjectMark } from "../shell/bits.tsx";
 import { Composer } from "./Composer.tsx";
@@ -72,7 +73,7 @@ export function StartView({ repo: name, onOpen, onCreated }: Props) {
                     }}
                   >
                     <span className="dk-startv-t">
-                      <span>{chat.title}</span>
+                      <span>{shownTitle(chat)}</span>
                     </span>
                     <span className="dk-startv-a">{age(chat.updated_at, now)}</span>
                   </button>

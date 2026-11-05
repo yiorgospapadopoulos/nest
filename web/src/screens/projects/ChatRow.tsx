@@ -1,6 +1,6 @@
 import type { Session } from "../../api/types.ts";
 import { ago } from "../../format.ts";
-import type { ChatStatus } from "../../store/selectors.ts";
+import { shownTitle, type ChatStatus } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { useStore } from "../../store/context.ts";
@@ -44,7 +44,7 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
       <button className="row" aria-label={label} data-chat={session.id} {...gestures}>
         <Dot tone={status.tone} />
         <span className="rbody">
-          <span className="rt">{session.title}</span>
+          <span className="rt">{shownTitle(session)}</span>
           <span className="rsub">
             <PlaceMark place={place} />
             {session.issue !== null && <span className="rissue">#{session.issue.number}</span>}
