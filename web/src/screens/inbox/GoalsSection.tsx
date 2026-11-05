@@ -1,7 +1,7 @@
 import { useEffect, type CSSProperties } from "react";
 import type { TrackedTask } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { goalEntries } from "../../store/selectors.ts";
+import { goalEntries, shownTitle } from "../../store/selectors.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { FoldRow } from "./FoldRow.tsx";
@@ -39,7 +39,7 @@ export function GoalsSection({ project, onOpenChat }: Props) {
             key={session.id}
             label={`${session.title}: ${progress}, ${status.label}`}
             tone={status.tone}
-            name={session.title}
+            name={shownTitle(session)}
             onOpen={() => {
               onOpenChat(session.id);
             }}
