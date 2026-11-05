@@ -213,6 +213,16 @@ public final class SessionsStore {
         }
     }
 
+    /// The color of what waits on the user in a project: review when it is only finished
+    /// work, waiting for anything else or a mix; nil when nothing does.
+    public func attentionTone(of repo: String) -> StatusTone? {
+        guard attention(of: repo) > 0 else { return nil }
+        let onlyWork =
+            checksFailed(in: repo).isEmpty && stuck(in: repo).isEmpty
+            && waitingApprovals(in: repo).allSatisfy { $0.kind == .review || $0.kind == .merge }
+        return onlyWork ? .review : .waiting
+    }
+
     /// What needs the user, for the project's tab and the Dock badge (every project's
     /// without a repo): waiting approvals, pull requests whose checks failed and chats
     /// that look stuck, as on the iPhone. A pixie's pending approvals count in the Dock

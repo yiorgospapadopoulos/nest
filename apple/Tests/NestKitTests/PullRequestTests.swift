@@ -197,6 +197,31 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(sessions.attention(of: "todo-ui") == 4)
     }
 
+    @Test func theTabToneIsReviewForFinishedWorkAloneAndWaitingForAnyMix() async throws {
+        func approval(_ id: String, _ kind: ApprovalKind) -> Approval {
+            var approval = Fixture.approval("ap-perm")
+            approval.id = id
+            approval.sessionID = "done"
+            approval.kind = kind
+            return approval
+        }
+        api.set {
+            $0.sessions = [session("done", pr: nil)]
+            $0.approvals = []
+        }
+        try await sessions.load()
+        try await approvals.load()
+        #expect(sessions.attentionTone(of: "todo-ui") == nil)
+
+        api.set { $0.approvals = [approval("r", .review), approval("m", .merge)] }
+        try await approvals.load()
+        #expect(sessions.attentionTone(of: "todo-ui") == .review)
+
+        api.set { $0.approvals = [approval("r", .review), approval("q", .permission)] }
+        try await approvals.load()
+        #expect(sessions.attentionTone(of: "todo-ui") == .waiting)
+    }
+
     @Test func attentionCountsApprovalsFailedChecksAndStuckChats() async throws {
         var other = Fixture.approval("ap-perm")
         other.id = "ap-other"

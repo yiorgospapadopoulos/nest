@@ -187,21 +187,17 @@ private struct TabBackground: ViewModifier {
     }
 }
 
-/// What follows a tab's name: in a background tab that needs the user an amber dot and
-/// the count, in the current one the count alone; the fireflies while one runs.
+/// What follows a tab's name: the fireflies while a chat runs, else a dot in the color of
+/// what needs the user, else nothing.
 private struct TabStatus: View {
-    let isCurrent: Bool
-    let attention: Int
+    let tone: StatusTone?
     let running: Bool
 
     var body: some View {
-        if attention > 0 {
-            if !isCurrent {
-                StatusDot(tone: .waiting)
-            }
-            CountBadge(count: attention, urgent: true)
-        } else if running {
+        if running {
             Fireflies(height: 9)
+        } else if let tone {
+            StatusDot(tone: tone)
         }
     }
 }
@@ -221,8 +217,7 @@ private struct TabCloseButton: View {
     }
 }
 
-/// One project tab: its icon, name, and how many chats need the user, or the fireflies
-/// while one runs.
+/// One project tab: its icon, name and status (`TabStatus`).
 /// Every project tab has the same width (`Metrics.projectTabWidth`), a long name ending
 /// in an ellipsis; in a narrow window the tabs shrink together, down to
 /// `Metrics.projectTabMinWidth`. The current tab ends with its close button; a background tab shows it
@@ -253,7 +248,7 @@ private struct ProjectTab: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            TabStatus(isCurrent: isCurrent, attention: attention, running: running)
+            TabStatus(tone: shell.sessions.attentionTone(of: name), running: running)
                 .fixedSize()
                 .opacity(closesOnHover ? 0 : 1)
             if canClose && isCurrent {
@@ -329,7 +324,7 @@ private struct PixiesTab: View {
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(isCurrent ? Palette.t1 : Palette.t2)
                 .lineLimit(1)
-            TabStatus(isCurrent: isCurrent, attention: attention, running: running)
+            TabStatus(tone: attention > 0 ? .waiting : nil, running: running)
         }
         .fixedSize()
         .modifier(TabBackground(isCurrent: isCurrent, hovering: hovering, padding: 12))
