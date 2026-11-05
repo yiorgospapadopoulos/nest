@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -950,3 +951,61 @@ async def test_tokens_are_reported_only_for_subagent_replies_with_usage_and_an_i
     message: AssistantMessage,
 ) -> None:
     assert await translated(message) == []
+
+
+async def used(
+    tool: str,
+    result: dict[str, Any] | None,
+    *,
+    failed: bool = False,
+    parent: str | None = None,
+) -> list[tuple[str, object]]:
+    """What the sink hears when the agent runs `tool` and it returns `result`."""
+    output = TurnOutput()
+    call = ToolUseBlock(id="t1", name=tool, input={})
+    await translated(
+        AssistantMessage(content=[call], model="m", parent_tool_use_id=parent), output=output
+    )
+    answer = ToolResultBlock(tool_use_id="t1", content="done", is_error=failed)
+    return await translated(
+        UserMessage(content=[answer], parent_tool_use_id=parent, tool_use_result=result),
+        output=output,
+    )
+
+
+ENTERED = {"worktreePath": "/w/own", "worktreeBranch": "own", "message": "made"}
+LEFT = {"action": "keep", "originalCwd": "/repo", "worktreePath": "/w/own"}
+
+
+async def test_entering_a_worktree_reports_the_new_folder() -> None:
+    assert ("folder_changed", (Path("/w/own"), False)) in await used("EnterWorktree", ENTERED)
+
+
+async def test_leaving_a_worktree_reports_where_the_agent_ended_up() -> None:
+    fallback = {**LEFT, "restoredCwd": "/fallback"}
+
+    assert ("folder_changed", (Path("/repo"), False)) in await used("ExitWorktree", LEFT)
+    assert ("folder_changed", (Path("/fallback"), False)) in await used("ExitWorktree", fallback)
+
+
+async def test_removing_the_worktree_on_the_way_out_says_so() -> None:
+    removed = {**LEFT, "action": "remove"}
+
+    assert ("folder_changed", (Path("/repo"), True)) in await used("ExitWorktree", removed)
+
+
+@pytest.mark.parametrize(
+    ("tool", "result", "failed", "parent"),
+    [
+        ("EnterWorktree", ENTERED, True, None),
+        ("EnterWorktree", ENTERED, False, "agent-1"),
+        ("EnterWorktree", None, False, None),
+        ("Bash", ENTERED, False, None),
+    ],
+)
+async def test_nothing_else_moves_the_chat(
+    tool: str, result: dict[str, Any] | None, *, failed: bool, parent: str | None
+) -> None:
+    calls = await used(tool, result, failed=failed, parent=parent)
+
+    assert not [call for call in calls if call[0] == "folder_changed"]
