@@ -11,9 +11,7 @@ from nestd.autopilot.models import AutopilotDecision, DecisionOption
 from nestd.providers.base import Question, QuestionOption, QuestionRequest
 from nestd.providers.git_guard import tool_writes
 
-GUARDED_REASON = (
-    "Autopilot leaves commits, merges, pushes, pull requests and removing worktrees to the user."
-)
+GUARDED_REASON = "Autopilot leaves pushes, pull requests and removing worktrees to the user."
 NO_OPTIONS_ANSWER = "Use your best judgement; nobody is here to answer."
 RECOMMENDED_REASON = "The agent recommended it"
 FIRST_OPTION_REASON = "The agent gave no recommendation, so Autopilot took the first option."
@@ -24,7 +22,7 @@ DETAIL_CHARS = 4000
 
 
 def blocked(tool: str, tool_input: Mapping[str, object]) -> bool:
-    return tool_writes(tool, tool_input, commits=True)
+    return tool_writes(tool, tool_input, worktrees=True)
 
 
 def _pick(question: Question) -> QuestionOption | None:

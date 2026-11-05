@@ -78,8 +78,8 @@ class AcpRules:
     # Edits outside it are rejected in every mode (D072).
     write_root: Path | None = None
     nest: NestTools = field(default_factory=dict[str, frozenset[str]])
-    # A guarded run's commits and merges are rejected too (Autopilot).
-    commits: bool = False
+    # A guarded run's worktree removals are rejected too (Autopilot).
+    worktrees: bool = False
 
 
 class AcpPermissions:
@@ -106,7 +106,7 @@ class AcpPermissions:
         rules = self._rules()
         name, tool_input = tool_use(call, rules.nest)
         own = name.startswith("mcp__") and name.split("__")[1] in rules.nest
-        writes = git_write(call, name, rules.commits)
+        writes = git_write(call, name, rules.worktrees)
         if rules.guarded and (writes or (not own and _blind_runner(call))):
             call.refused = DENY_REASON
             return "reject"
@@ -161,17 +161,17 @@ class AcpPermissions:
             self._asking.discard(task)
 
 
-def git_write(call: ToolCall, name: str, commits: bool = False) -> bool:
+def git_write(call: ToolCall, name: str, worktrees: bool = False) -> bool:
     """Whether the call pushes or writes a pull request: its command, else its title
     (where Gemini puts a command), and an MCP tool's name and input.
     """
     commands = [command_text(call)] if shell_call(call) else []
     if call.kind not in READ_KINDS | EDIT_KINDS:
         commands.append(call.title)
-    if any(is_git_write(command, commits=commits) for command in commands if command):
+    if any(is_git_write(command, worktrees=worktrees) for command in commands if command):
         return True
     tool = name if name.startswith("mcp__") or not unknown_kind(call) else _mcp_name(call)
-    return tool_writes(tool, call.raw_input, commits=commits)
+    return tool_writes(tool, call.raw_input, worktrees=worktrees)
 
 
 def _blind_runner(call: ToolCall) -> bool:

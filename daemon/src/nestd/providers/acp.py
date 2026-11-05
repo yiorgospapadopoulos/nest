@@ -382,7 +382,7 @@ class AcpRun:
             folders,
             spec.write_root,
             self._nest,
-            commits=spec.guard_commits,
+            worktrees=spec.guard_worktrees,
         )
 
     @property

@@ -592,9 +592,10 @@ block = "B121"
 id = "autopilot"
 group = "chats"
 name = "Autopilot"
-text = "One button keeps a chat working without you: it answers its own questions, goes on after early stops, restarts and errors, and shows each decision in the chat with the options and the reason, then a report at the end. Commits, pushes and merges stay yours."
+text = "One button keeps a chat working without you: it answers its own questions, goes on after early stops, restarts and errors, and shows each decision in the chat with the options and the reason, then a report at the end. Pushes and pull requests stay yours."
 where = "Chat › the button beside the mic"
 added = 2026-11-04
+changed = 2026-11-05
 block = "B120"
 
 [[features]]

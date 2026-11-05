@@ -1,6 +1,6 @@
 """Whether a shell command line could push, or open or merge a pull request (D049).
-Commits are allowed (pixies may commit, 2026-10-21); with `commits`, what changes the history
-is flagged too (Autopilot).
+Commits are allowed (pixies may commit, 2026-10-21); with `worktrees`, removing a worktree is
+flagged too (Autopilot).
 
 The line is read the way a shell reads it: `shlex` resolves quotes and escapes, `;`, `&`,
 `|`, `(`, `)`, `<`, `>`, newlines and backticks separate commands, and `#` starts nothing.
@@ -27,12 +27,9 @@ import shlex
 from collections.abc import Sequence
 from posixpath import basename
 
-# Subcommands that send commits to a remote.
+# Subcommands that send worktrees to a remote.
 GIT_WRITES = frozenset({"push", "send-pack", "http-push"})
 _DASHED_WRITES = frozenset(f"git-{name}" for name in GIT_WRITES)
-# Subcommands that change the branch's history, flagged with `commits`.
-GIT_HISTORY = frozenset({"commit", "merge", "rebase", "cherry-pick", "revert", "am", "pull"})
-_DASHED_HISTORY = frozenset(f"git-{name}" for name in GIT_HISTORY)
 # `gh pr new` is gh's own alias of `gh pr create`.
 _GH_PR_WRITES = frozenset({"create", "merge", "new"})
 # git's global options that take the next word as their value.
@@ -54,44 +51,38 @@ _SEPARATOR = re.compile(r"^[;&|()<>]+$")
 _NESTED = re.compile(r"[\s;&|()<>`$]")
 _DYNAMIC = re.compile(r"[$`]")
 _WRITE_WORD = re.compile(r"\b(?:push|send-pack|http-push)\b", re.IGNORECASE)
-_HISTORY_WORD = re.compile(r"\b(?:commit|merge|rebase|cherry-pick|revert|am|pull)\b", re.IGNORECASE)
 _GIT_MENTION = re.compile(r"\bgit\b.*?\b(?:push|send-pack|http-push)\b", re.I | re.S)
 _GH_MENTION = re.compile(r"\bgh\b.*?\bpr\b.*?\b(?:create|merge|new)\b", re.I | re.S)
-_GIT_HISTORY_MENTION = re.compile(
-    r"\bgit\b.*?\b(?:commit|merge|rebase|cherry-pick|revert|am|pull)\b", re.I | re.S
-)
 # Both words, in any order: a variable can hold either.
 _WORKTREE_REMOVE = re.compile(r"(?=.*\bworktree\b).*\bremove\b", re.I | re.S)
 _GH_DYNAMIC = re.compile(r"\bpr\b.*?\b(?:create|merge|new)\b", re.I | re.S)
 
 
-def is_git_write(command: str, *, commits: bool = False) -> bool:
-    return _writes(command, nested=False, commits=commits)
+def is_git_write(command: str, *, worktrees: bool = False) -> bool:
+    return _writes(command, nested=False, worktrees=worktrees)
 
 
-def _writes(text: str, *, nested: bool, commits: bool) -> bool:
-    if nested and _mentions_write(text, commits):
+def _writes(text: str, *, nested: bool, worktrees: bool) -> bool:
+    if nested and _mentions_write(text, worktrees):
         return True
     if _DYNAMIC.search(text) and (
-        _WRITE_WORD.search(text) or _GH_DYNAMIC.search(text) or (commits and _history_mention(text))
+        _WRITE_WORD.search(text)
+        or _GH_DYNAMIC.search(text)
+        or (worktrees and _WORKTREE_REMOVE.search(text))
     ):
         return True
     try:
         words = _words(text)
     except ValueError:  # unbalanced quotes
-        return _mentions_write(text, commits)
-    return _words_write(words, len(text), commits)
+        return _mentions_write(text, worktrees)
+    return _words_write(words, len(text), worktrees)
 
 
-def _mentions_write(text: str, commits: bool) -> bool:
+def _mentions_write(text: str, worktrees: bool) -> bool:
     plain = re.sub(r"[\"'\\]", "", text)
-    if commits and _history_mention(plain):
+    if worktrees and _WORKTREE_REMOVE.search(plain):
         return True
     return bool(_GIT_MENTION.search(plain) or _GH_MENTION.search(plain))
-
-
-def _history_mention(text: str) -> bool:
-    return bool(_GIT_HISTORY_MENTION.search(text) or _WORKTREE_REMOVE.search(text))
 
 
 def _words(text: str) -> list[str]:
@@ -102,16 +93,16 @@ def _words(text: str) -> list[str]:
     return list(lexer)
 
 
-def _words_write(words: Sequence[str], length: int, commits: bool) -> bool:
+def _words_write(words: Sequence[str], length: int, worktrees: bool) -> bool:
     """`length` is the line's; only shorter words are read again, so reading ends."""
     for index, word in enumerate(words):
         name = basename(word).lower()
-        if name in _DASHED_WRITES or (commits and name in _DASHED_HISTORY):
+        if name in _DASHED_WRITES:
             return True
-        if name == "git" and _git_writes(words[index + 1 :], {}, commits):
+        if name == "git" and _git_writes(words[index + 1 :], {}, worktrees):
             return True
         if (
-            commits
+            worktrees
             and name == "git-worktree"
             and _removes_worktree(_until_separator(words[index + 1 :]))
         ):
@@ -122,13 +113,13 @@ def _words_write(words: Sequence[str], length: int, commits: bool) -> bool:
             len(word) < length
             and not _SEPARATOR.match(word)
             and _NESTED.search(word)
-            and _writes(word, nested=True, commits=commits)
+            and _writes(word, nested=True, worktrees=worktrees)
         ):
             return True
     return False
 
 
-def _git_writes(args: Sequence[str], aliases: dict[str, str | None], commits: bool) -> bool:
+def _git_writes(args: Sequence[str], aliases: dict[str, str | None], worktrees: bool) -> bool:
     aliases = dict(aliases)
     uncertain = False
     index = 0
@@ -150,21 +141,20 @@ def _git_writes(args: Sequence[str], aliases: dict[str, str | None], commits: bo
     if not rest:
         return False
     subcommand, tail = rest[0].lower(), rest[1:]
-    if _subcommand_writes(subcommand, tail, commits):
+    if _subcommand_writes(subcommand, tail, worktrees):
         return True
     if subcommand in aliases:
-        return _alias_writes(aliases.pop(subcommand), tail, aliases, commits)
-    flagged = GIT_WRITES | GIT_HISTORY if commits else GIT_WRITES
-    return uncertain and any(word.lower() in flagged for word in rest)
+        return _alias_writes(aliases.pop(subcommand), tail, aliases, worktrees)
+    return uncertain and any(word.lower() in GIT_WRITES for word in rest)
 
 
-def _subcommand_writes(subcommand: str, tail: Sequence[str], commits: bool) -> bool:
-    if subcommand in GIT_WRITES or (commits and subcommand in GIT_HISTORY):
+def _subcommand_writes(subcommand: str, tail: Sequence[str], worktrees: bool) -> bool:
+    if subcommand in GIT_WRITES:
         return True
     lowered = [word.lower() for word in tail]
     if subcommand == "subtree":
         return "push" in lowered
-    if commits and subcommand == "worktree":
+    if worktrees and subcommand == "worktree":
         return _removes_worktree(lowered)
     # Defining an alias that pushes, to run it later.
     return (
@@ -172,12 +162,7 @@ def _subcommand_writes(subcommand: str, tail: Sequence[str], commits: bool) -> b
         and any(word.startswith(_ALIAS_PREFIX) for word in lowered)
         and bool(
             _WRITE_WORD.search(" ".join(tail))
-            or (
-                commits
-                and (
-                    _HISTORY_WORD.search(" ".join(tail)) or _WORKTREE_REMOVE.search(" ".join(tail))
-                )
-            )
+            or (worktrees and _WORKTREE_REMOVE.search(" ".join(tail)))
         )
     )
 
@@ -188,17 +173,17 @@ def _removes_worktree(tail: Sequence[str]) -> bool:
 
 
 def _alias_writes(
-    expansion: str | None, tail: Sequence[str], aliases: dict[str, str | None], commits: bool
+    expansion: str | None, tail: Sequence[str], aliases: dict[str, str | None], worktrees: bool
 ) -> bool:
     if expansion is None:  # set from an environment variable, so unknown here
         return True
     if expansion.startswith("!"):
-        return _writes(expansion[1:], nested=True, commits=commits)
+        return _writes(expansion[1:], nested=True, worktrees=worktrees)
     try:
         expanded = shlex.split(expansion)
     except ValueError:
         return True
-    return _git_writes([*expanded, *tail], aliases, commits)
+    return _git_writes([*expanded, *tail], aliases, worktrees)
 
 
 def _note_alias(option: str, value: str, aliases: dict[str, str | None]) -> None:

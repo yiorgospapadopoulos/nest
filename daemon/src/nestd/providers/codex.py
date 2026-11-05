@@ -153,7 +153,7 @@ class CodexRun:
             spec.guard_git,
             spec.write_root,
             _nest_servers(spec),
-            commits=spec.guard_commits,
+            worktrees=spec.guard_worktrees,
         )
         agents = self.stream.agents
         chain: list[Subthread] = []
