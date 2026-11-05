@@ -223,6 +223,13 @@ public final class SessionsStore {
         return onlyWork ? .review : .waiting
     }
 
+    /// The bar of a chat's pending review; nil while the chat is at work, as the turn may
+    /// replace the review.
+    public func reviewBar(of id: String) -> ReviewBar? {
+        guard sessions[id]?.state.isInFlight != true else { return nil }
+        return ReviewBar.pending(session: id, in: approvals.pending)
+    }
+
     /// What needs the user, for the project's tab and the Dock badge (every project's
     /// without a repo): waiting approvals, pull requests whose checks failed and chats
     /// that look stuck, as on the iPhone. A pixie's pending approvals count in the Dock

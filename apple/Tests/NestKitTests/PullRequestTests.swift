@@ -222,6 +222,22 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(sessions.attentionTone(of: "todo-ui") == .waiting)
     }
 
+    @Test func theReviewBarHidesWhileTheChatIsAtWork() async throws {
+        var review = Fixture.approval("ap-review")
+        review.sessionID = "chat"
+        for (state, shown) in [
+            (SessionState.running, false), (.starting, false), (.waiting, false), (.idle, true),
+        ] {
+            api.set {
+                $0.sessions = [session("chat", state: state, pr: nil)]
+                $0.approvals = [review]
+            }
+            try await sessions.load()
+            try await approvals.load()
+            #expect((sessions.reviewBar(of: "chat") != nil) == shown)
+        }
+    }
+
     @Test func attentionCountsApprovalsFailedChecksAndStuckChats() async throws {
         var other = Fixture.approval("ap-perm")
         other.id = "ap-other"

@@ -3,13 +3,13 @@ import SwiftUI
 
 /// One quiet line just above the composer while the chat's review waits (B56), in place of
 /// a card in the transcript: "3 files changed +48 -19" and Review, which opens the changes
-/// to approve. Nothing while no review waits.
+/// to approve. Nothing while no review waits or the chat is at work.
 struct PendingReviewBar: View {
     let chat: String
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        if let bar = ReviewBar.pending(session: chat, in: shell.approvals.pending) {
+        if let bar = shell.sessions.reviewBar(of: chat) {
             let shape = RoundedRectangle.rounded(Radius.card)
             HStack(spacing: 8) {
                 Image(systemName: Icon.diff)
