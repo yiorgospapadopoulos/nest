@@ -44,7 +44,7 @@
                 "points": [{"day": "2026-11-01", "value": 212}, {"day": "2026-11-02", "value": 106}]}},
     {"id": "mac", "title": "Mac app", "advanced": true, "runner": "mac", "live": false,
      "ran_at": null, "error": null, "note": null,
-     "metrics": [{"id": "layout_ms", "label": "Lay out the biggest chat", "value": null,
+     "metrics": [{"id": "layout_ms", "label": "Open the biggest chat", "value": null,
                   "unit": "ms", "text": "-", "previous": null, "previous_text": null,
                   "change": null, "parts": null}],
      "series": null}
