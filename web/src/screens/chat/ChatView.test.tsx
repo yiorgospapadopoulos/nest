@@ -251,6 +251,8 @@ describe("chat view", () => {
     scrollTo(690);
     said(2, "Second");
     expect(box.scrollTop).toBe(690);
+    expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
+    // Sending goes to the latest, however far up the reader was (B122).
     await user.type(screen.getByLabelText("Message"), "Go on{Enter}");
     push({
       id: 3,
@@ -258,10 +260,13 @@ describe("chat view", () => {
       type: "session.user_message",
       payload: { text: "Go on", attachments: [] },
     });
-    expect(box.scrollTop).toBe(690);
-    expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
+    expect(box.scrollTop).toBe(1000);
+    expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
 
     // A move down into the bottom zone follows again.
+    scrollTo(1000);
+    scrollTo(690);
+    expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
     scrollTo(695);
     expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
     said(4, "Third");

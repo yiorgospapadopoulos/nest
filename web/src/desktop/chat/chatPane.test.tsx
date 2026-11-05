@@ -259,6 +259,41 @@ describe("a long chat draws only what is on screen (B117)", () => {
     expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
   });
 
+  it("goes to the latest when the user sends, wherever the reader was (B122)", async () => {
+    const { box, say, push } = await openLongChat(400);
+    await scrollTo(box, 15_000);
+    say(401);
+    await frames();
+    expect(atEnd(box)).toBe(false);
+
+    // The Mac's composer is outside the page, so only the event says a message was sent.
+    push({
+      id: 402,
+      session_id: "s1",
+      type: "session.user_message",
+      payload: { text: "Go on", attachments: [] },
+    });
+    await frames();
+    expect(atEnd(box)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
+    say(403);
+    await frames();
+    expect(atEnd(box)).toBe(true);
+
+    // While a turn runs a sent message waits in the queue, and that is a send too.
+    await scrollTo(box, 15_000);
+    push({
+      id: null,
+      session_id: "s1",
+      type: "session.queued",
+      payload: {
+        queued: [{ id: "q1", text: "Next", attachments: [], created_at: "", sent: false }],
+      },
+    });
+    await frames();
+    expect(atEnd(box)).toBe(true);
+  });
+
   it("keeps the reader's place when new items arrive and items above change height", async () => {
     const { box, say } = await openLongChat(400);
     await scrollTo(box, 15_000);
