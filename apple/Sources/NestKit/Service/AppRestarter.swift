@@ -24,6 +24,7 @@ public struct DetachedSpawner: ProcessSpawner {
 
 /// How the app reopens itself: a shell waits until this process has quit, then opens the
 /// app's bundle again (an `open` while it still runs would only bring it forward).
+/// Settings' Restart uses it plainly, after `kickstart`.
 public enum AppRelaunch {
     public static let shell = "/bin/sh"
 
@@ -33,6 +34,37 @@ public enum AppRelaunch {
             "while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done; open "
                 + DaemonService.quoted(appPath),
         ]
+    }
+
+    /// For a restart the daemon does itself (Relaunch to update, Undo update): reopens only
+    /// once the daemon went down and answers again on `daemon`, so the new app finds it up.
+    /// A daemon already back is missed, so the wait for it to go down ends after 5 seconds;
+    /// after 60 the app opens anyway. A test build keeps its daemon through `environment`.
+    public static func afterDaemonRestart(
+        appPath: String, pid: Int32, daemon: URL, environment: [String: String]
+    ) -> [String] {
+        let health = DaemonService.quoted(daemon.appending(path: "api/health").absoluteString)
+        let script = [
+            "start=$(date +%s)",
+            "up() { /usr/bin/curl -fs --noproxy '*' -m 1 -o /dev/null \(health); }",
+            "passed() { [ $(($(date +%s) - start)) -ge \"$1\" ]; }",
+            "while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done",
+            "while up && ! passed 5; do sleep 0.2; done",
+            "until up || passed 60; do sleep 0.2; done",
+            open(appPath: appPath, environment: environment),
+        ]
+        return ["-c", script.joined(separator: "; ")]
+    }
+
+    /// `open` starts the app through launchd, which does not pass this process's environment on.
+    private static func open(appPath: String, environment: [String: String]) -> String {
+        let kept = ["NEST_DAEMON_URL", "NEST_DATA_DIR"].compactMap { name in
+            environment[name].flatMap { value in
+                value.isEmpty ? nil : "--env " + DaemonService.quoted("\(name)=\(value)")
+            }
+        }
+        let flags = kept.isEmpty ? [] : ["-n"] + kept
+        return (["open"] + flags + [DaemonService.quoted(appPath)]).joined(separator: " ")
     }
 }
 

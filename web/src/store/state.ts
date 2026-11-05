@@ -46,7 +46,7 @@ import type {
 } from "../api/types.ts";
 import { NO_LOCAL, type LocalFailure, type LocalState } from "./local.ts";
 import { NO_METER_CHOICE, type UsageMeterChoice } from "./usageMeter.ts";
-import type { BankedResets, EngineAccount } from "../api/types.ts";
+import type { BankedResets, EngineAccount, EngineUpdates } from "../api/types.ts";
 
 /**
  * The usage period shown in Settings, shared by the Agents page and its breakdown (B84):
@@ -138,6 +138,18 @@ export interface SettingsState {
   usageMeter: UsageMeterChoice;
 }
 
+/** The engine updates as the daemon last told them, and a restart they asked for. */
+export interface UpdatesState {
+  status: EngineUpdates | null;
+  // Until the page loads again, or the daemon does not come back. The daemon clears what it
+  // reports as soon as it agrees to restart, so this keeps "Relaunching..." on screen.
+  restarting: "relaunch" | "undo" | null;
+  // The strip's x, until the page next loads: in memory only.
+  hidden: boolean;
+}
+
+export const NO_UPDATES: UpdatesState = { status: null, restarting: null, hidden: false };
+
 export const NO_SETTINGS: SettingsState = {
   accounts: null,
   bankedResets: {},
@@ -161,6 +173,7 @@ export interface State {
   auth: AuthState;
   // The event socket dropped and is reconnecting.
   reconnecting: boolean;
+  updates: UpdatesState;
   // The name of the daemon's machine (B105), null until one is known.
   machine: string | null;
   repos: RepoConfig[];
@@ -242,6 +255,7 @@ export interface State {
 export const initialState: State = {
   auth: "loading",
   reconnecting: false,
+  updates: NO_UPDATES,
   machine: null,
   repos: [],
   sessions: {},
@@ -290,6 +304,7 @@ export const initialState: State = {
 export type Action =
   | { type: "auth"; auth: AuthState }
   | { type: "reconnecting"; on: boolean }
+  | { type: "updates"; change: Partial<UpdatesState> }
   | { type: "machine"; machine: string }
   | { type: "loaded"; repos: RepoConfig[]; sessions: Session[]; approvals: Approval[] }
   | { type: "repo"; repo: RepoConfig }

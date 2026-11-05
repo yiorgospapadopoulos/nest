@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { newCount } from "../../screens/settings/featureNew.ts";
 import { useStore } from "../../store/context.ts";
+import { connectionLost } from "../../store/updates.ts";
 import { Icon, type IconName } from "../../ui/Icon.tsx";
 import { ProjectMark } from "../shell/bits.tsx";
 import { useShell } from "../shell/context.ts";
@@ -76,6 +77,7 @@ function PlaceIcon({ place }: { place: SettingsPlace }) {
  */
 export function SettingsView() {
   const { state, actions } = useStore();
+  const lost = connectionLost(state);
   const shell = useShell();
   const [query, setQuery] = useState("");
   const [visitNew, setVisitNew] = useState<string[] | null>(null);
@@ -155,8 +157,8 @@ export function SettingsView() {
             )}
           </div>
           <div className="dks-foot">
-            <i className={state.reconnecting ? "wait" : "ok"} />
-            {state.reconnecting ? "Nest service not connected" : "Nest service running"}
+            <i className={lost ? "wait" : "ok"} />
+            {lost ? "Nest service not connected" : "Nest service running"}
           </div>
         </nav>
         <section className="dks-detail" aria-label={placeTitle(place)}>

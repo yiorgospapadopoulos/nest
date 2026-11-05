@@ -26,6 +26,7 @@
         private var heldFeatureReports: Set<String> = []
         /// Settings > Performance's results (B115); nil until first read.
         private var perfView: PerfView?
+        private var updateStatus = EngineUpdates()
         private var usage = UsageSettings(refreshMinutes: 3)
         /// Chats' runs and their output, by session id (B108).
         private var runs: [String: RunStatus] = [:]
@@ -1361,6 +1362,32 @@
         }
 
         func restartService() async throws {}
+
+        /// What the update strip and Settings show in a snapshot (B121).
+        func setUpdates(_ status: EngineUpdates) {
+            lock.withLock { updateStatus = status }
+        }
+
+        func updates() async throws -> EngineUpdates {
+            lock.withLock { updateStatus }
+        }
+
+        func checkUpdates() async throws -> EngineUpdates {
+            lock.withLock { updateStatus }
+        }
+
+        func relaunchUpdate() async throws {
+            lock.withLock { updateStatus = EngineUpdates(canUndo: updateStatus.canUndo) }
+        }
+
+        func undoUpdate() async throws {}
+
+        func dismissUpdateNotice() async throws -> EngineUpdates {
+            lock.withLock {
+                updateStatus.notice = nil
+                return updateStatus
+            }
+        }
 
         func features() async throws -> FeaturesCatalog {
             lock.withLock { SampleFeatures.catalog(shown: shownFeatures) }

@@ -243,6 +243,16 @@ public protocol NestAPI: Sendable {
     func health() async throws -> DaemonHealth
     /// Restarts the daemon: it answers first, then launchd starts it again.
     func restartService() async throws
+    /// Where the engine updates stand (B121).
+    func updates() async throws -> EngineUpdates
+    /// Starts a check, which prepares what it finds, unless one runs.
+    func checkUpdates() async throws -> EngineUpdates
+    /// Applies the ready update and restarts the daemon; a 409 when none is ready.
+    func relaunchUpdate() async throws
+    /// Goes back to the engines from before and restarts the daemon; a 409 when there are
+    /// none.
+    func undoUpdate() async throws
+    func dismissUpdateNotice() async throws -> EngineUpdates
     /// Settings > Features with what is new on this device (B103).
     func features() async throws -> FeaturesCatalog
     /// Reports the features this device shows; only the first report of each counts.

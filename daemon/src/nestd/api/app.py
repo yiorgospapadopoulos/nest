@@ -50,6 +50,7 @@ from nestd.api.routes import (
     setup,
     storage,
     stuck,
+    updates,
     usage,
 )
 from nestd.api.static import install_static
@@ -98,6 +99,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             await ctx.usage_warnings.start()
             if loops:
                 await ctx.configuration_watcher.start()
+                await ctx.updates.start()
             # Last, so the start's time covers everything before serving (B115).
             await ctx.perf.started(ready_ms())
             yield
@@ -106,6 +108,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             if ctx.token_socket is not None:
                 await ctx.token_socket.stop()
             await ctx.perf.stop()
+            await ctx.updates.stop()
             await ctx.configuration_watcher.stop()
             await ctx.archiver.stop()
             await ctx.usage_warnings.stop()
@@ -181,6 +184,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         push,
         notifications,
         service,
+        updates,
         accounts,
         claude_code,
         extensions,

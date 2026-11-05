@@ -84,6 +84,7 @@ import { nudgeText } from "./selectors.ts";
 import { accountActions } from "./accountActions.ts";
 import { localActions } from "./localActions.ts";
 import { settingsActions } from "./settingsActions.ts";
+import { updateActions } from "./updateActions.ts";
 import { draftKey, type Action, type Toast } from "./state.ts";
 
 export type Dispatch = (action: Action) => void;
@@ -473,6 +474,27 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
   const settings = settingsActions(api, { dispatch, attempt, quietly, toast });
   const local = localActions(api, { dispatch, attempt, quietly, storage });
+  /**
+   * Asks the daemon to restart, then waits until it answers again: "back", "timeout" when
+   * it never does, or null when the request itself failed (shown as a toast). The first
+   * check waits, as the daemon answers the request before it exits.
+   */
+  const restartAndWait = async (
+    call: () => Promise<unknown>,
+  ): Promise<"back" | "timeout" | null> => {
+    if ((await attempt(call)) === null) return null;
+    for (let check = 0; check < RESTART_POLLS; check += 1) {
+      await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_MS));
+      try {
+        await api.health();
+        return "back";
+      } catch {
+        // Still restarting.
+      }
+    }
+    return "timeout";
+  };
+  const updates = updateActions(api, { dispatch, attempt, quietly, toast, restartAndWait });
   const accounts = accountActions(api, storage, {
     dispatch,
     attempt,
@@ -485,6 +507,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     ...settings,
     ...local,
     ...accounts,
+    ...updates,
     /** This device's id, when it was paired since B81. */
     toast,
     dismissToast: () => {
@@ -683,6 +706,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       dispatch({ type: "event", event });
       local.receiveLocal(event);
       accounts.accountEvent(event);
+      updates.updatesEvent(event);
       for (const listener of [...eventListeners]) listener(event);
       if (event.type === "artifact.storage") {
         const change = storageChangeOf(event.payload);
@@ -1456,24 +1480,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       }
     },
 
-    /**
-     * Asks the Mac to restart Nest, then waits until it answers again: "back", "timeout"
-     * when it never does, or null when the request itself failed (shown as a toast). The
-     * first check waits, as the daemon answers the request before it exits.
-     */
-    async restartService(): Promise<"back" | "timeout" | null> {
-      if ((await attempt(() => api.restartService())) === null) return null;
-      for (let check = 0; check < RESTART_POLLS; check += 1) {
-        await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_MS));
-        try {
-          await api.health();
-          return "back";
-        } catch {
-          // Still restarting.
-        }
-      }
-      return "timeout";
-    },
+    restartService: () => restartAndWait(() => api.restartService()),
 
     /** The connectors alone, for `/mcp` in a chat (B59). */
     async loadConnectors(): Promise<void> {

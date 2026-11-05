@@ -213,6 +213,7 @@ final class Shell {
     var artifacts: ArtifactsStore { model.artifacts }
     /// The projects' branch maps (B96).
     var branchMaps: BranchMapStore { model.branchMaps }
+    var updates: UpdatesStore { model.updates }
 
     /// Connected to a daemon on another machine (B105): what opens apps or a shell on this
     /// Mac is off, as it would act on the wrong machine.
@@ -2196,6 +2197,24 @@ final class Shell {
             return "the daemon's answer could not be read"
         }
         return error.message
+    }
+
+    /// Relaunch or Undo as a button runs it, which may ask first (`UpdatesStore.asking`).
+    func startRestart(_ kind: UpdateRestart) {
+        run(Self.restartFailure(kind)) { try await self.updates.start(kind) }
+    }
+
+    /// Relaunch or Undo once confirmed.
+    func confirmRestart(_ kind: UpdateRestart) {
+        run(Self.restartFailure(kind)) { try await self.updates.run(kind) }
+    }
+
+    func dismissUpdateNotice() {
+        run("Could not dismiss") { try await self.updates.dismissNotice() }
+    }
+
+    private static func restartFailure(_ kind: UpdateRestart) -> String {
+        kind == .relaunch ? "Could not relaunch" : "Could not undo the update"
     }
 
     private func run(_ failure: String, _ action: @escaping @MainActor () async throws -> Void) {

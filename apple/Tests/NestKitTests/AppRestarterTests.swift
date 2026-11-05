@@ -67,6 +67,36 @@ final class FakeSpawner: ProcessSpawner {
         #expect(AppRelaunch.shell == "/bin/sh")
     }
 
+    /// The reopen after a restart the daemon does itself, and its last command.
+    private func opening(_ environment: [String: String]) throws -> String {
+        let arguments = AppRelaunch.afterDaemonRestart(
+            appPath: Self.app, pid: 7, daemon: try #require(URL(string: "http://127.0.0.1:41060")),
+            environment: environment)
+        let script = try #require(arguments.last)
+        #expect(arguments.first == "-c")
+        #expect(script.contains("kill -0 7 "))
+        #expect(script.contains("'http://127.0.0.1:41060/api/health'"))
+        return try #require(script.components(separatedBy: "; ").last)
+    }
+
+    @Test func aPlainAppReopensWithAPlainOpen() throws {
+        #expect(try opening([:]) == "open '/Users/me/My apps/Nest.app'")
+        #expect(
+            try opening(["NEST_DAEMON_URL": "", "NEST_DATA_DIR": ""])
+                == "open '/Users/me/My apps/Nest.app'")
+    }
+
+    @Test func aTestBuildKeepsItsDaemon() throws {
+        let opened = try opening([
+            "NEST_DAEMON_URL": "http://127.0.0.1:41060", "NEST_DATA_DIR": "/tmp/my test's data",
+            "HOME": "/Users/me",
+        ])
+        #expect(
+            opened
+                == "open -n --env 'NEST_DAEMON_URL=http://127.0.0.1:41060' "
+                + "--env 'NEST_DATA_DIR=/tmp/my test'\\''s data' '/Users/me/My apps/Nest.app'")
+    }
+
     @Test func aServiceThatCannotRestartKeepsTheAppOpen() async {
         let runner = FakeRunner([
             ServiceStarterTests.notFound, CommandOutput(status: 5, output: "Input/output error"),

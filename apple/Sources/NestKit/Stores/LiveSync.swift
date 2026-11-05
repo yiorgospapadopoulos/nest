@@ -24,6 +24,7 @@ public final class LiveSync {
     let configuration: ConfigurationStore
     let branchMaps: BranchMapStore
     let runs: RunStore
+    let updates: UpdatesStore
     /// The island around the notch (B114), set by the app model.
     var island: IslandStore?
     /// Settings > Performance (B115), set by the app model.
@@ -46,7 +47,7 @@ public final class LiveSync {
         habits: HabitsStore,
         chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore,
         configuration: ConfigurationStore, artifacts: ArtifactsStore, branchMaps: BranchMapStore,
-        runs: RunStore
+        runs: RunStore, updates: UpdatesStore
     ) {
         self.source = source
         self.app = app
@@ -69,6 +70,7 @@ public final class LiveSync {
         self.artifacts = artifacts
         self.branchMaps = branchMaps
         self.runs = runs
+        self.updates = updates
     }
 
     /// Runs until the task is cancelled or the daemon refuses the connection.
@@ -80,6 +82,7 @@ public final class LiveSync {
                 case .connected(let resumed):
                     app.connection = .connected
                     await refresh()
+                    await updates.connected()
                     await transcripts.catchUp(missed: !resumed)
                     onConnected?()
                 case .reconnecting(let attempt, let delay):
@@ -154,6 +157,7 @@ public final class LiveSync {
         artifacts.apply(event)
         branchMaps.apply(event)
         runs.apply(event)
+        updates.apply(event)
         island?.apply(event)
         performance?.apply(event)
         switch event.body {
@@ -242,6 +246,8 @@ public final class AppModel {
     public let issues: IssuesStore
     /// The chats' folders' runs (B108).
     public let runs: RunStore
+    /// The engine updates (B121).
+    public let updates: UpdatesStore
     /// The island around the notch (B114).
     public let island: IslandStore
     public let live: LiveSync
@@ -301,6 +307,7 @@ public final class AppModel {
         branchMaps = BranchMapStore(api: api)
         issues = IssuesStore(api: api, store: daemonPreferences ?? preferences)
         runs = RunStore(api: api)
+        updates = UpdatesStore(api: api)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
@@ -308,7 +315,7 @@ public final class AppModel {
             reports: reports,
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
             configuration: configuration, artifacts: artifacts, branchMaps: branchMaps,
-            runs: runs)
+            runs: runs, updates: updates)
         island = IslandStore(
             api: api, store: preferences, sessions: sessions, approvals: approvals,
             activity: activity, chatPixies: chatPixies, pixies: pixies, now: now)

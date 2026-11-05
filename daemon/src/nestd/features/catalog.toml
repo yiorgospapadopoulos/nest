@@ -577,6 +577,17 @@ changed = 2026-11-02
 block = "B10"
 
 [[features]]
+
+
+id = "engine-updates"
+group = "engines"
+name = "Engine updates"
+text = "When a new engine version is out, Nest installs it to the side, tests it, and offers Relaunch to update. If it fails to start, Nest goes back by itself."
+where = "Left bar, above Settings"
+added = 2026-11-04
+block = "B121"
+
+[[features]]
 id = "autopilot"
 group = "chats"
 name = "Autopilot"

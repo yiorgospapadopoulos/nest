@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../../store/context.ts";
+import {
+  engineChanges,
+  readyUpdate,
+  restartQuestion,
+  useUpdateRestart,
+} from "../../../store/updates.ts";
 import { Fireflies } from "../../../ui/Fireflies.tsx";
 import type { LinuxSettings } from "../../bridge.ts";
 import { useBridge } from "../../context.ts";
@@ -30,6 +36,8 @@ export function GeneralPage() {
       <SettingsSection title="Nest">
         <VersionRow />
         <RestartRow />
+        <UpdateRow />
+        <UndoUpdateRow />
       </SettingsSection>
     </>
   );
@@ -142,6 +150,60 @@ function RestartRow() {
           onClose={() => {
             setConfirming(false);
           }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The strip's update and button, here whether or not the strip was hidden. */
+function UpdateRow() {
+  const { state } = useStore();
+  const relaunch = useUpdateRestart("relaunch");
+  const ready = readyUpdate(state.updates);
+  if (ready === null) return null;
+  const question = relaunch.asking === null ? null : restartQuestion("relaunch", relaunch.asking);
+  return (
+    <>
+      <SettingsRow label="Update available">
+        <span className="dks-val lines">{engineChanges(ready.engines)}</span>
+        <Button disabled={ready.relaunching} onClick={() => void relaunch.start()}>
+          {ready.relaunching ? "Relaunching..." : "Relaunch to update"}
+        </Button>
+      </SettingsRow>
+      {question !== null && (
+        <Alert
+          title={question.title}
+          message={question.about}
+          actions={[{ title: question.action, onSelect: relaunch.confirm }]}
+          onClose={relaunch.cancel}
+        />
+      )}
+    </>
+  );
+}
+
+/** Back to the engines before the last update, while there are any to go back to. */
+function UndoUpdateRow() {
+  const { state } = useStore();
+  const undo = useUpdateRestart("undo");
+  const undoing = undo.restarting === "undo";
+  if (state.updates.status?.can_undo !== true && !undoing) return null;
+  const question = undo.asking === null ? null : restartQuestion("undo", undo.asking);
+  return (
+    <>
+      <SettingsRow label="Undo update">
+        {undoing && <Fireflies />}
+        <Button disabled={undo.restarting !== null} onClick={() => void undo.start()}>
+          Undo
+        </Button>
+      </SettingsRow>
+      {question !== null && (
+        <Alert
+          title={question.title}
+          message={question.about}
+          actions={[{ title: question.action, onSelect: undo.confirm }]}
+          onClose={undo.cancel}
         />
       )}
     </>

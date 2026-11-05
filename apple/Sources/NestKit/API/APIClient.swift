@@ -430,6 +430,26 @@ public struct APIClient: NestAPI {
         try await perform("POST", ["service", "restart"])
     }
 
+    public func updates() async throws -> EngineUpdates {
+        try await get("updates")
+    }
+
+    public func checkUpdates() async throws -> EngineUpdates {
+        try await call("POST", ["updates", "check"])
+    }
+
+    public func relaunchUpdate() async throws {
+        try await perform("POST", ["updates", "relaunch"])
+    }
+
+    public func undoUpdate() async throws {
+        try await perform("POST", ["updates", "undo"])
+    }
+
+    public func dismissUpdateNotice() async throws -> EngineUpdates {
+        try await call("POST", ["updates", "dismiss"])
+    }
+
     /// Pairs this app as a new device with a one-time code; used without a token.
     public func redeemPairing(code: String, deviceName: String) async throws -> RedeemedPairing {
         try await call(

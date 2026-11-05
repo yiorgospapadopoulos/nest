@@ -328,6 +328,10 @@ class SessionManager:
         live = self._live.get(session_id)
         return live is not None and live.busy
 
+    def busy_count(self) -> int:
+        """How many chats have a turn or a start in progress in this process."""
+        return sum(1 for live in self._live.values() if live.busy)
+
     def has_run(self, session_id: str) -> bool:
         """Whether this process runs (or is starting, or still closing) the session's agent."""
         live = self._live.get(session_id)

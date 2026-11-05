@@ -136,6 +136,11 @@ class AppPaths:
         return self.data_dir / "engines"
 
     @property
+    def environments_dir(self) -> Path:
+        """The prepared engine environments and which one runs (`nestd/updates`)."""
+        return self.data_dir / "environments"
+
+    @property
     def db_path(self) -> Path:
         return self.data_dir / DB_NAME
 

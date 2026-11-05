@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/context.ts";
+import {
+  engineChanges,
+  readyUpdate,
+  restartQuestion,
+  useUpdateRestart,
+} from "../../store/updates.ts";
 import { Confirm } from "../pixies/Confirm.tsx";
 import { Row, Section } from "./rows.tsx";
 
@@ -50,6 +56,8 @@ function NestSection() {
           {restarting ? "Restarting..." : "Restart"}
         </button>
       </Row>
+      <UpdateRow />
+      <UndoUpdateRow />
       {phase === "failed" && (
         <p className="srow note" role="alert">
           Nest did not come back. Check that the Mac is awake, then reload.
@@ -67,5 +75,56 @@ function NestSection() {
         />
       )}
     </Section>
+  );
+}
+
+/** The strip's update and button, here whether or not the strip was hidden. */
+function UpdateRow() {
+  const { state } = useStore();
+  const relaunch = useUpdateRestart("relaunch");
+  const ready = readyUpdate(state.updates);
+  if (ready === null) return null;
+  return (
+    <>
+      <Row label="Update available">
+        <span className="sval mono lines">{engineChanges(ready.engines)}</span>
+        <button className="b" disabled={ready.relaunching} onClick={() => void relaunch.start()}>
+          {ready.relaunching ? "Relaunching..." : "Relaunch to update"}
+        </button>
+      </Row>
+      {relaunch.asking !== null && (
+        <Confirm
+          {...restartQuestion("relaunch", relaunch.asking)}
+          neutral
+          onConfirm={relaunch.confirm}
+          onClose={relaunch.cancel}
+        />
+      )}
+    </>
+  );
+}
+
+/** Back to the engines before the last update, while there are any to go back to. */
+function UndoUpdateRow() {
+  const { state } = useStore();
+  const undo = useUpdateRestart("undo");
+  const undoing = undo.restarting === "undo";
+  if (state.updates.status?.can_undo !== true && !undoing) return null;
+  return (
+    <>
+      <Row label="Undo update">
+        <button className="b" disabled={undo.restarting !== null} onClick={() => void undo.start()}>
+          {undoing ? "Undoing..." : "Undo"}
+        </button>
+      </Row>
+      {undo.asking !== null && (
+        <Confirm
+          {...restartQuestion("undo", undo.asking)}
+          neutral
+          onConfirm={undo.confirm}
+          onClose={undo.cancel}
+        />
+      )}
+    </>
   );
 }

@@ -39,6 +39,7 @@ import {
   copyPreview,
   featuresCatalog,
   engineLimits,
+  engineUpdates,
   projectConfiguration,
 } from "./fixtures.ts";
 import { defined } from "./defined.ts";
@@ -141,6 +142,11 @@ export function fakeApi(): FakeApi {
     usageLimits: vi.fn<Api["usageLimits"]>().mockResolvedValue(limits()),
     refreshUsage: vi.fn<Api["refreshUsage"]>().mockResolvedValue(limits()),
     restartService: vi.fn<Api["restartService"]>().mockResolvedValue({ restarting: true }),
+    updates: vi.fn<Api["updates"]>().mockResolvedValue(engineUpdates()),
+    checkUpdates: vi.fn<Api["checkUpdates"]>().mockResolvedValue(engineUpdates()),
+    relaunchUpdate: vi.fn<Api["relaunchUpdate"]>().mockResolvedValue({ restarting: true }),
+    undoUpdate: vi.fn<Api["undoUpdate"]>().mockResolvedValue({ restarting: true }),
+    dismissUpdateNotice: vi.fn<Api["dismissUpdateNotice"]>().mockResolvedValue(engineUpdates()),
     health: vi.fn<Api["health"]>().mockResolvedValue({ status: "ok", version: "0.1.0" }),
     reportVisibility: vi.fn<Api["reportVisibility"]>().mockResolvedValue(null),
     vapidKey: vi.fn<Api["vapidKey"]>().mockResolvedValue({ public_key: "BAEC" }),

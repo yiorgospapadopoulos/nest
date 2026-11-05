@@ -6,6 +6,7 @@ import { Pairing } from "./screens/Pairing.tsx";
 import { Shell } from "./screens/Shell.tsx";
 import { useStore } from "./store/context.ts";
 import { StoreProvider } from "./store/StoreProvider.tsx";
+import { connectionLost } from "./store/updates.ts";
 import { Toast } from "./ui/Toast.tsx";
 import { usePauseWhenHidden } from "./ui/visible.ts";
 
@@ -79,7 +80,7 @@ function Root() {
 function Reconnecting() {
   const { state } = useStore();
   return (
-    <div role="status">{state.reconnecting && <p className="reconn gl">Reconnecting...</p>}</div>
+    <div role="status">{connectionLost(state) && <p className="reconn gl">Reconnecting...</p>}</div>
   );
 }
 

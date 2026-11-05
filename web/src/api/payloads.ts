@@ -4,6 +4,7 @@ import type {
   ArtifactStorageChange,
   ContextUsage,
   EngineAccount,
+  EngineUpdates,
   JsonObject,
   JsonValue,
   LocalApp,
@@ -278,6 +279,13 @@ export function pixieCallOf(approval: Approval): PixieCallRef | null {
 /** An `accounts.changed` payload's accounts (B98), or null when it is not one. */
 export function accountsOf(p: JsonObject): EngineAccount[] | null {
   return Array.isArray(p.accounts) ? (p.accounts as unknown as EngineAccount[]) : null;
+}
+
+/** An `updates.changed` payload, or null when it is not one. */
+export function updatesOf(p: JsonObject): EngineUpdates | null {
+  return typeof p.state === "string" && Array.isArray(p.engines)
+    ? (p as unknown as EngineUpdates)
+    : null;
 }
 
 // A chat's model `local:<id>` runs that local model (B106).

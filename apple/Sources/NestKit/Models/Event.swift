@@ -88,6 +88,8 @@ public enum EventType {
     public static let accountsChanged = "accounts.changed"
     /// An engine's install moved on, or its state changed (B107).
     public static let engineState = "engine.state"
+    /// Where the engine updates stand; not stored, so read on every connect (B121).
+    public static let updatesChanged = "updates.changed"
     /// A local model was added or removed, or the local engine changed (B106).
     public static let localModelsChanged = "local_models.changed"
     /// Installing Claude Code moved on.
@@ -204,6 +206,7 @@ public enum EventBody: Sendable, Hashable {
     case accountsChanged([EngineAccount])
     /// Read the engines again (B107).
     case engineState(EngineStateChange)
+    case updatesChanged(EngineUpdates)
     /// Read the local models again (B106).
     case localModelsChanged
     case claudeCodeInstall(ClaudeCodeInstallProgress)
@@ -322,6 +325,8 @@ public enum EventBody: Sendable, Hashable {
             self = .accountsChanged(try field("accounts", as: [EngineAccount].self))
         case EventType.engineState:
             self = .engineState(try payload.decode(EngineStateChange.self))
+        case EventType.updatesChanged:
+            self = .updatesChanged(try payload.decode(EngineUpdates.self))
         case EventType.localModelsChanged: self = .localModelsChanged
         case EventType.claudeCodeInstall:
             self = .claudeCodeInstall(try payload.decode(ClaudeCodeInstallProgress.self))
