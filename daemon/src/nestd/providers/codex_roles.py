@@ -118,7 +118,8 @@ class CodexRoles:
             lines.append(f"model = {_string(subagent.model)}")
         if subagent.effort:
             lines.append(f"model_reasoning_effort = {_string(subagent.effort)}")
-        own = codex_permissions(subagent.permission_mode, self._guarded, self._write_root)
+        # Guarded in any chat, so a pixie's commands reach Nest, which declines pushes (B127).
+        own = codex_permissions(subagent.permission_mode, True, self._write_root)
         if read_only(subagent) and own.approval_policy != "untrusted":
             own = replace(own, approval_policy="untrusted", reviewer="user")
         if own != caller:

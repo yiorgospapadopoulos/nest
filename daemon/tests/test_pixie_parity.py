@@ -393,11 +393,11 @@ class Caller:
         self._next = 0
         self._codex: FakeTransport | None = None
 
-    async def open(self, permission_mode: str = "default") -> None:
+    async def open(self, permission_mode: str = "default", mode: str = "in_place") -> None:
         if self.engine == "claude":
             self.api.provider.steering = True
             self.api.provider.script(self._turn)
-            chat = await create(self.api, mode="in_place", permission_mode=permission_mode)
+            chat = await create(self.api, mode=mode, permission_mode=permission_mode)
             self.chat_id = str(chat["id"])
             await until(lambda: self.run is not None)
             return
@@ -407,7 +407,7 @@ class Caller:
             self.api,
             title="Caller",
             provider="codex",
-            mode="in_place",
+            mode=mode,
             permission_mode=permission_mode,
         )
         self.chat_id = str(chat["id"])

@@ -398,6 +398,15 @@ changed = 2026-10-16
 block = "B70"
 
 [[features]]
+id = "pixie-finishes-worktree"
+group = "pixies"
+name = "Pixies that clean up"
+text = "A pixie you call can remove the chat's worktree and its merged branch when the job is done."
+where = "Composer"
+added = 2026-11-05
+block = "B127"
+
+[[features]]
 id = "pixie-project-access"
 group = "pixies"
 name = "Project access"

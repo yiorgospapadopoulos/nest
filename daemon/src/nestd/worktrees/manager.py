@@ -27,6 +27,8 @@ WORKTREE_PREFIX = "nest-"
 # Worktrees made before the rename to Nest (B43) are still its own.
 OWNED_WORKTREE_PREFIXES = (WORKTREE_PREFIX, "harness-")
 EXCLUDE_LINE = "/.claude/worktrees/"
+# What `git branch -d` says when it refuses a branch with work it cannot find elsewhere.
+NOT_MERGED = "not fully merged"
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +229,8 @@ class WorktreeManager:
     async def remove(self, repo: RepoConfig, worktree: Worktree) -> bool:
         """Remove the worktree; close its agent first, so exit hooks cannot recreate files.
         Returns whether it was Nest's own: other worktrees are never touched (B96), such as
-        Claude Code's that a chat joined. Its branch always stays: Nest deletes no branch.
+        Claude Code's that a chat joined. Its branch stays; only `delete_branch`, when a
+        chat's agent asks for it, deletes one.
 
         What is already gone (the directory) is skipped, so removing twice is fine.
         Without the repo folder git cannot run; only the leftover directory is deleted.
@@ -244,6 +247,25 @@ class WorktreeManager:
             await run_hardened_git(["worktree", "prune"], repo.path)
         await self._branches_changed(repo)
         return True
+
+    async def delete_branch(self, repo: RepoConfig, branch: str) -> str | None:
+        """Delete the local branch the way `git branch -d` does, only when git finds it
+        merged (B127); never the default branch or the one the project folder is on.
+        Returns None once it is gone, else why it stays.
+        """
+        here = await _current_branch(repo)
+        if branch == repo.default_branch:
+            return "it is the project's default branch"
+        if branch == here:
+            return "the project folder is on it"
+        try:
+            await run_hardened_git(["branch", "-d", "--", branch], repo.path)
+        except GitError as error:
+            if NOT_MERGED in error.stderr:
+                return f"not merged into {await _merge_target(repo, branch) or here or 'HEAD'}"
+            return error.stderr.strip().splitlines()[0] if error.stderr.strip() else str(error)
+        await self._branches_changed(repo)
+        return None
 
     async def _branches_changed(self, repo: RepoConfig) -> None:
         if self._bus is not None:
@@ -354,6 +376,24 @@ async def _has_branch(repo: RepoConfig, branch: str) -> bool:
     except GitError:
         return False
     return True
+
+
+async def _current_branch(repo: RepoConfig) -> str | None:
+    """The branch the project folder is on; None on a detached HEAD."""
+    try:
+        output = await run_hardened_git(["symbolic-ref", "--quiet", "--short", "HEAD"], repo.path)
+    except GitError:
+        return None
+    return output.strip() or None
+
+
+async def _merge_target(repo: RepoConfig, branch: str) -> str | None:
+    """The upstream `git branch -d` compares a branch with instead of HEAD, if it has one."""
+    args = ["for-each-ref", "--format=%(upstream:short)", f"refs/heads/{branch}"]
+    try:
+        return (await run_hardened_git(args, repo.path)).strip() or None
+    except GitError:
+        return None
 
 
 async def _base_commit(repo: RepoConfig) -> str:

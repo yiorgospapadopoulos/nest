@@ -18,7 +18,7 @@ import re
 import shlex
 from collections.abc import Iterator, Mapping
 
-from claude_agent_sdk.types import HookContext, HookInput, HookJSONOutput
+from claude_agent_sdk.types import HookCallback, HookContext, HookInput, HookJSONOutput
 
 from nestd.providers.git_commands import is_git_write
 
@@ -29,6 +29,7 @@ __all__ = [
     "block_autopilot_git",
     "block_git_writes",
     "is_git_write",
+    "pixie_git_guard",
     "tool_writes",
 ]
 
@@ -94,6 +95,21 @@ async def block_git_writes(
             "permissionDecisionReason": DENY_REASON,
         }
     }
+
+
+def pixie_git_guard(pixies: frozenset[str]) -> HookCallback:
+    """As `block_git_writes` for the pixies a run calls as subagents: the chat itself may
+    push when asked, its pixies never do (B127).
+    """
+
+    async def guard(
+        input_data: HookInput, tool_use_id: str | None, context: HookContext
+    ) -> HookJSONOutput:
+        if dict(input_data).get("agent_type") not in pixies:
+            return {}
+        return await block_git_writes(input_data, tool_use_id, context)
+
+    return guard
 
 
 async def block_autopilot_git(

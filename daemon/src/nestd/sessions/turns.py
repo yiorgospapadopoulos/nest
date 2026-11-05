@@ -33,7 +33,7 @@ from nestd.providers.base import (
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated, isolated_or
 from nestd.sessions.engines import Engine, Engines
-from nestd.sessions.errors import NoWorkspaceError
+from nestd.sessions.errors import NoWorkspaceError, SessionNotFoundError
 from nestd.sessions.extras import NestToolsSource, RunExtras, RunExtrasSource
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.limits import LimitPauses
@@ -58,7 +58,12 @@ from nestd.sessions.subagents import (
     PixieCalls,
 )
 from nestd.sessions.workspace import prepare_worktree
-from nestd.sessions.worktree_tool import WORKTREE_NOTE, worktree_tool
+from nestd.sessions.worktree_tool import (
+    WORKTREE_NOTE,
+    WORKTREE_RULE,
+    called_worktree_tool,
+    worktree_tool,
+)
 from nestd.worktrees.manager import WorktreeManager
 
 logger = logging.getLogger(__name__)
@@ -624,7 +629,7 @@ class TurnRunner:
         if live.stopped or not (normal or nudged):
             return False
         return await isolated_or(
-            "the worktree changes", live.session_id, self.moves.pending(live.session_id), False
+            "the worktree changes", live.session_id, self.moves.due(live.session_id), False
         )
 
     async def _apply_moves(
@@ -724,8 +729,9 @@ class TurnRunner:
         # Free the session before announcing the outcome, so a client reacting to the
         # new state can send the next message straight away; it starts once the hooks,
         # which make the turn's review, are done.
-        if not live.stopped:
-            # A chat that closes or restarts settles this itself (B119).
+        # A turn that ended normally with a change left recorded waits for the pixies the
+        # chat called (B127). A chat that closes or restarts settles this itself (B119).
+        if not live.stopped and state is not SessionState.IDLE:
             await isolated(
                 "the worktree changes", live.session_id, self.moves.cancel(live.session_id)
             )
@@ -816,7 +822,9 @@ class TurnRunner:
                     extras.system_prompt if extras else await self._nest_prompt(session, ports),
                 ),
                 tools=extras.tools if extras else (),
-                nest_tools=await self._run_tools(session, agents),
+                nest_tools=await self._run_tools(
+                    session, agents, extras.disallowed_tools if extras else ()
+                ),
                 write_root=extras.write_root if extras else None,
                 disallowed_tools=extras.disallowed_tools if extras else (),
                 skills=extras.skills if extras else (),
@@ -909,17 +917,33 @@ class TurnRunner:
             return NO_AGENTS
         return await self._agents(session)
 
-    async def _run_tools(self, session: Session, agents: ChatAgents) -> tuple[AgentTool, ...]:
+    async def _run_tools(
+        self, session: Session, agents: ChatAgents, denied: tuple[str, ...]
+    ) -> tuple[AgentTool, ...]:
         """The tools every run has (B79), the call tool for the pixies it calls as sessions
-        of their own (B91), and a movable chat's worktree tool (B119). Every engine takes
-        them: Claude in-process, Codex from a local MCP server.
+        of their own (B91), and the worktree tool of a movable chat (B119) or of the pixie
+        such a chat called (B127). Every engine takes them: Claude in-process, Codex from a
+        local MCP server.
         """
         tools = self._nest_tools(session) if self._nest_tools else ()
         calls = self._call_tools(session, agents) if self._call_tools else ()
-        own = (worktree_tool(self.moves, session),) if await self._moves_folders(session) else ()
+        own = () if WORKTREE_RULE in denied else await self._worktree_tools(session)
         if session.autopilot is not None:
             own += (autopilot_tool(partial(self._autopilot.finished, session.id)),)
         return tools + calls + own
+
+    async def _worktree_tools(self, session: Session) -> tuple[AgentTool, ...]:
+        if await self._moves_folders(session):
+            return (worktree_tool(self.moves, session),)
+        if session.called_by is None:
+            return ()
+        try:
+            caller = await self._store.get(session.called_by)
+        except SessionNotFoundError:
+            return ()  # the chat that called it was deleted
+        if not await self._moves_folders(caller):
+            return ()
+        return (called_worktree_tool(self.moves, caller, session),)
 
     async def _moves_folders(self, session: Session) -> bool:
         """Whether the chat can change where it works: a movable chat in a git project."""

@@ -211,3 +211,7 @@ class CallBridge(Protocol):
     async def released(self, session_id: str) -> None:
         """The session was archived: its calls end with its run."""
         ...
+
+    def calling(self, session_id: str) -> bool:
+        """Whether a pixie the session called is still working."""
+        ...

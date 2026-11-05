@@ -82,6 +82,7 @@ from nestd.providers.git_guard import (
     GIT_WRITE_RULES,
     block_autopilot_git,
     block_git_writes,
+    pixie_git_guard,
 )
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
@@ -231,6 +232,9 @@ def build_options(
     # A guarded run checks every tool, so MCP and other shell tools are checked too (D049).
     git_hook = block_autopilot_git if spec.guard_worktrees else block_git_writes
     pre_tool_use = [HookMatcher(matcher="*", hooks=[git_hook])] if spec.guard_git else []
+    if spec.subagents and not spec.guard_git:
+        pixies = frozenset(spec.subagents)
+        pre_tool_use.append(HookMatcher(matcher="*", hooks=[pixie_git_guard(pixies)]))
     pre_tool_use.append(
         HookMatcher(
             matcher=ASK_USER_QUESTION,

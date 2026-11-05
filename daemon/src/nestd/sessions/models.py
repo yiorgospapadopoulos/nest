@@ -139,6 +139,10 @@ class WorktreeChange(BaseModel):
     # A new worktree's branch and starting commit; None chooses them as for a new chat.
     branch: str | None = None
     base: str | None = None
+    # The branch to delete with the removed worktree, when git finds it merged.
+    delete_branch: str | None = None
+    # The called pixie's session that recorded it, on its caller (B127).
+    by: str | None = None
 
 
 class PendingWorktree(BaseModel):
