@@ -285,6 +285,9 @@ class PixieCallRuns:
     async def released(self, session_id: str) -> None:
         await self._stop_calls(session_id, background=True)
 
+    def calling(self, session_id: str) -> bool:
+        return any(c.caller == session_id and not c.stopped for c in self._calls.values())
+
     # Session states (StateFollower).
 
     async def state_changed(self, session: Session) -> None:
@@ -502,6 +505,8 @@ class PixieCallRuns:
         else:
             report = await self._report(call)
             state, text = "done", report or NO_REPORT.format(slug=call.slug)
+        if state != "done":
+            await self._take_back_moves(call)
         await self._store.finish(call.caller, call.tool_use_id, state)
         await self._task(
             call,
@@ -588,8 +593,15 @@ class PixieCallRuns:
             await self._sessions.stop_call(call.called, reason)
         except NestError as error:
             logger.warning("stopping called pixie @%s failed (%s)", call.slug, error)
+        await self._take_back_moves(call)
         if not call.ended.done():
             call.ended.set_result(None)
+
+    async def _take_back_moves(self, call: _Call) -> None:
+        try:
+            await self._sessions.called_stopped(call.caller, call.called)
+        except NestError as error:
+            logger.warning("taking back what @%s recorded failed (%s)", call.slug, error)
 
     async def _stop_calls(self, caller: str, background: bool) -> None:
         for call in [c for c in self._calls.values() if c.caller == caller]:

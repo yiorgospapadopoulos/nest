@@ -393,18 +393,16 @@ class Caller:
         self._next = 0
         self._codex: FakeTransport | None = None
 
-    async def open(self, permission_mode: str = "default") -> None:
+    async def open(self, permission_mode: str = "default", mode: str = "in_place") -> None:
         if self.engine == "claude":
             self.api.provider.steering = True
             self.api.provider.script(self._turn)
-            chat = await create(self.api, mode="in_place", permission_mode=permission_mode)
+            chat = await create(self.api, mode=mode, permission_mode=permission_mode)
             self.chat_id = str(chat["id"])
             await until(lambda: self.run is not None)
             return
         self.api.codex.script(note("turn/started", threadId="thread-1", turn={"id": "turn-1"}))
-        chat = await create(
-            self.api, provider="codex", mode="in_place", permission_mode=permission_mode
-        )
+        chat = await create(self.api, provider="codex", mode=mode, permission_mode=permission_mode)
         self.chat_id = str(chat["id"])
         await until(lambda: bool(self.api.codex.requests("turn/start")))
         self._codex = self.api.codex.transport

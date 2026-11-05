@@ -24,11 +24,12 @@ from nestd.pixies.team_store import TeamStore
 from nestd.providers.base import CALL_PIXIE_TOOL, CallRules, Subagent
 from nestd.sessions.models import NewSession
 from nestd.sessions.subagents import ChatAgents, OfferedPixie, TeamCall
+from nestd.sessions.worktree_tool import WORKTREE_RULE
 
 # The engine's model list names Claude Code's default model this way.
 DEFAULT_MODEL = "default"
 # What a pixie with read access never gets in a project.
-EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit", WORKTREE_RULE)
 TEAM_CALL = (
     "\n\n(The user called the team @{handle}, a team of pixies set up in Nest. Hand the"
     " whole request to its leader, {leader} and wait for"
