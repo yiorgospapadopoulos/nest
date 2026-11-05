@@ -68,7 +68,6 @@ final class WebPanes: NSObject {
         return page
     }
 
-
     /// Sends a command to the pane's page, whenever it gets there.
     func send(_ command: WebPaneBridge.Command, to target: WebPaneBridge.Target) {
         if shows(target) {
