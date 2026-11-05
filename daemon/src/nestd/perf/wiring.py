@@ -15,7 +15,7 @@ from nestd.perf.collectors import Collector
 from nestd.perf.collectors.activity import Activity
 from nestd.perf.collectors.context import ContextClientFactory, ContextCost, NewChat
 from nestd.perf.collectors.daemon import Daemon
-from nestd.perf.collectors.engines import Engines, Target, cheapest
+from nestd.perf.collectors.engines import Engines, Target
 from nestd.perf.collectors.gates import Gates
 from nestd.perf.collectors.load import InProcess, LoadSpeed
 from nestd.perf.collectors.pixies import Pixies
@@ -29,6 +29,7 @@ from nestd.perf.service import Perf
 from nestd.perf.store import PerfStore
 from nestd.perf.timing import RouteTimings
 from nestd.providers.base import AgentTool, RunAccount
+from nestd.providers.one_off import cheapest
 from nestd.sessions.engines import Engines as ChatEngines
 from nestd.storage.db import Database
 
