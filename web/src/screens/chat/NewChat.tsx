@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useState, type KeyboardEvent } from "rea
 import type { IssueRef, RepoConfig, Session, SessionMode } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { projectName, repoNamed } from "../../store/general.ts";
+import { shownTitle } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { RepoIcon } from "../projects/ProjectHeader.tsx";
@@ -102,7 +103,7 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
                   onOpen(chat.id);
                 }}
               >
-                <span className="nc-t">{chat.title}</span>
+                <span className="nc-t">{shownTitle(chat)}</span>
                 <span className="nc-a">{age(chat.updated_at, now)}</span>
               </button>
             ))}

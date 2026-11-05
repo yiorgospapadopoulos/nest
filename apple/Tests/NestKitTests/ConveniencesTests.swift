@@ -39,6 +39,19 @@ import Testing
         #expect(plain.queued == nil)
     }
 
+    @Test func aChatsNameIsBlankOnlyWhileItIsOnItsWay() throws {
+        func session(_ extra: String) throws -> Session {
+            try NestJSON.decoder.decode(Session.self, from: Data(sessionJSON(extra: extra).utf8))
+        }
+        #expect(try session("").shownTitle == "T")
+        #expect(try session(#", "title_pending": false"#).shownTitle == "T")
+        var waiting = try session(#", "title_pending": true"#)
+        #expect(waiting.shownTitle == " ")
+        // A chat that stopped waits for nothing: it shows the name it has.
+        waiting.state = .failed
+        #expect(waiting.shownTitle == "T")
+    }
+
     @Test func aSendAnswersTheSessionAndWhatWasQueued() {
         let started = Fixture.decode(SentMessage.self, json: sessionJSON(extra: ""))
         #expect(started.session.id == "s1")

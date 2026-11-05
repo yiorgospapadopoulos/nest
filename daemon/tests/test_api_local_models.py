@@ -186,7 +186,7 @@ async def test_a_local_chat_on_codex_runs_without_a_codex_login(api: Api, mac: L
     api.codex.answers["account/read"] = SIGNED_OUT
     api.codex.script(turn_completed())
 
-    session = await create(api, model=local_ref(CODER), mode="in_place")
+    session = await create(api, title="Local", model=local_ref(CODER), mode="in_place")
     await reach(api, str(session["id"]), "idle", results=1)
 
     assert (session["provider"], session["model"]) == ("codex", local_ref(CODER))

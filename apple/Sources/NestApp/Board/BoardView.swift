@@ -88,7 +88,7 @@ private struct BoardCard: View {
             }
             .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
-            Text(session.title)
+            Text(session.shownTitle)
                 .font(.ui(TypeSize.reading, .medium))
                 .foregroundStyle(Palette.t1)
                 .fixedSize(horizontal: false, vertical: true)

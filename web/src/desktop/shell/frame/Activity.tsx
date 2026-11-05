@@ -11,7 +11,13 @@ import {
   stuckLine,
 } from "../../../screens/inbox/needsLine.ts";
 import { useStore } from "../../../store/context.ts";
-import { goalEntries, inboxGroups, type CiFailure, type Tone } from "../../../store/selectors.ts";
+import {
+  goalEntries,
+  inboxGroups,
+  shownTitle,
+  type CiFailure,
+  type Tone,
+} from "../../../store/selectors.ts";
 import { Fireflies } from "../../../ui/Fireflies.tsx";
 import { Icon } from "../../../ui/Icon.tsx";
 import { ApprovalCard } from "../../chat/ApprovalCard.tsx";
@@ -359,7 +365,7 @@ export function GoalsCard({ project }: { project: string }) {
             tone={status.tone}
             openByDefault
             label={`${session.title}: ${progress}, ${status.label}`}
-            name={<ChatLink id={session.id} title={session.title} />}
+            name={<ChatLink id={session.id} title={shownTitle(session)} />}
             line={
               <span className="fr-progress">
                 <span>{progress}</span>

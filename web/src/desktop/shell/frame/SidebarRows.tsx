@@ -9,7 +9,7 @@ import {
 } from "../../../screens/chat/place.ts";
 import { useStore } from "../../../store/context.ts";
 import { repoNamed } from "../../../store/general.ts";
-import type { ChatStatus } from "../../../store/selectors.ts";
+import { shownTitle, type ChatStatus } from "../../../store/selectors.ts";
 import { Icon } from "../../../ui/Icon.tsx";
 import type { LoadedMap } from "../../chat/branchMaps.ts";
 import { Sprite } from "../../pixies/Sprite.tsx";
@@ -67,6 +67,8 @@ function More({ title, items }: { title: string; items: () => MenuEntry[] }) {
 interface FrameProps {
   pane: string;
   title: string;
+  /** What the row shows, when it is not `title`. */
+  shown?: string;
   label: string;
   tone: string;
   items: () => MenuEntry[];
@@ -83,7 +85,17 @@ interface FrameProps {
  * drags onto the workspace, a right click opens its menu at the pointer and on hover a
  * "…" opens it below.
  */
-function RowFrame({ pane, title, label, tone, items, line, finished = false, end }: FrameProps) {
+function RowFrame({
+  pane,
+  title,
+  shown = title,
+  label,
+  tone,
+  items,
+  line,
+  finished = false,
+  end,
+}: FrameProps) {
   const shell = useShell();
   const rowState = shell.state.layout.rowState(pane);
   const context = useContextMenu(`Actions for ${title}`, items);
@@ -112,7 +124,7 @@ function RowFrame({ pane, title, label, tone, items, line, finished = false, end
       >
         <span className={`dot s-${tone}`} aria-hidden="true" />
         <span className="dk-rbody">
-          <span className="dk-rt">{title}</span>
+          <span className="dk-rt">{shown}</span>
           {line}
         </span>
       </button>
@@ -182,6 +194,7 @@ export function ChatRow({ session, status, map, items }: ChatRowProps) {
     <RowFrame
       pane={session.id}
       title={session.title}
+      shown={shownTitle(session)}
       label={label}
       tone={status.tone}
       items={items}

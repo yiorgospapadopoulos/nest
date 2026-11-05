@@ -98,6 +98,8 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var repo: String
     public var title: String
+    /// The name is still on its way: `title` is the quick one, which only Needs you shows.
+    public var titlePending: Bool?
     public var prompt: String
     public var mode: SessionMode
     public var cwd: String?
@@ -172,10 +174,18 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         }
     }
 
+    /// The name to show on a chat's row and header: blank, keeping its line's height, until
+    /// the engine's name arrives. Needs you cards keep `title`.
+    public var shownTitle: String {
+        let ended = state == .failed || state == .interrupted || state == .closed
+        return titlePending == true && !ended ? " " : title
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, repo, title, prompt, mode, cwd, model, effort, provider, state, branch, pinned
         case pr, issue, review
         case tasks, agents, background, context, queued, stuck
+        case titlePending = "title_pending"
         case pixieID = "pixie_id"
         case startedByPixie = "started_by_pixie"
         case permissionMode = "permission_mode"

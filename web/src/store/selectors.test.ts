@@ -70,6 +70,7 @@ import {
   pixieWorking,
   stuckChats,
   teamList,
+  shownTitle,
 } from "./selectors.ts";
 import { initialState, type State } from "./state.ts";
 
@@ -942,5 +943,22 @@ describe("the usage bar's engines (B102 items 23, 29)", () => {
     });
     expect(usageBarLines(state).map((l) => l.provider)).toEqual(["claude", "codex"]);
     expect(usageBarChoices(state).map((c) => c.provider)).toEqual(["claude", "codex"]);
+  });
+});
+
+describe("a chat's shown name", () => {
+  const waiting = session({ title: "Quick name", title_pending: true, state: "running" });
+
+  it("stays blank, keeping its line, while the name is on its way", () => {
+    expect(shownTitle(waiting).trim()).toBe("");
+    expect(shownTitle(waiting)).not.toBe("");
+    expect(shownTitle({ ...waiting, state: "idle" }).trim()).toBe("");
+  });
+
+  it("is the title once it settles or the chat stopped", () => {
+    expect(shownTitle({ ...waiting, title_pending: false })).toBe("Quick name");
+    expect(shownTitle(session({ title: "Quick name" }))).toBe("Quick name");
+    expect(shownTitle({ ...waiting, state: "failed" })).toBe("Quick name");
+    expect(shownTitle({ ...waiting, state: "interrupted" })).toBe("Quick name");
   });
 });

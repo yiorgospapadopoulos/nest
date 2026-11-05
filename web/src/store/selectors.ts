@@ -159,6 +159,18 @@ export function pendingFor(state: State, sessionId: string): Approval[] {
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
+const NAMELESS = "\u00a0";
+
+/**
+ * The name to show on a chat's row and header: blank, keeping its line's height, until the
+ * engine's name arrives. Needs you cards keep `title`, so what they ask about stays readable.
+ */
+export function shownTitle(session: Session): string {
+  const ended =
+    session.state === "failed" || session.state === "interrupted" || session.state === "closed";
+  return session.title_pending === true && !ended ? NAMELESS : session.title;
+}
+
 export function chatStatus(session: Session, pending: Approval[]): ChatStatus {
   const kinds = new Set(pending.map((a) => a.kind));
   if (kinds.has("question")) return { tone: "wait", label: "Question" };

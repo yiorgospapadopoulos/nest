@@ -500,6 +500,41 @@ async def test_the_engine_ending_stops_the_run(tmp_path: Path) -> None:
     await run.close()
 
 
+@pytest.mark.parametrize(
+    ("listed", "name"),
+    [
+        ("Counting directory entries", "Counting directory entries"),
+        ("New session - 2026-11-05T18:06:05.951Z", None),
+    ],
+)
+async def test_a_chats_name_is_the_engines_title_not_its_placeholder(
+    tmp_path: Path, listed: str, name: str | None
+) -> None:
+    agent = FakeAgent(load("opencode-text", tmp_path))
+    agent.script(
+        "session/list",
+        [
+            Step(
+                "answer",
+                {
+                    "result": {
+                        "sessions": [
+                            {"sessionId": "another", "title": "Not this chat"},
+                            {"sessionId": RECORDED_TEXT_SESSION, "title": listed},
+                        ]
+                    }
+                },
+            )
+        ],
+    )
+    run, _, _ = await open_run(agent, tmp_path)
+
+    assert run.names_chats
+    assert await run.engine_title(RECORDED_TEXT_SESSION) == name
+    assert agent.requests("session/list")[0]["cwd"] == str(tmp_path)
+    await run.close()
+
+
 async def test_probe_reads_the_models_and_closes_the_session(tmp_path: Path) -> None:
     agent = FakeAgent(load("opencode-method-probe", tmp_path), load("opencode-text", tmp_path))
 

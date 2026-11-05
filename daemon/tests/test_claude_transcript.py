@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from nestd.claude_sessions.transcript import parse_transcript, read_transcript
+from nestd.claude_sessions.location import encode_folder
+from nestd.claude_sessions.transcript import find_title, parse_transcript, read_transcript
 from nestd.events import types
 from tests.claude_support import Entry, assistant, simple_chat, text, user
 
@@ -25,6 +26,21 @@ def message(*blocks: object) -> tuple[str, object]:
 
 def prompt(value: str) -> tuple[str, object]:
     return (types.SESSION_USER_MESSAGE, {"text": value, "attachments": []})
+
+
+def test_a_runs_title_is_read_from_its_transcript_once_it_is_there(tmp_path: Path) -> None:
+    folder = tmp_path / "repo"
+    transcript = tmp_path / "projects" / encode_folder(folder) / "sdk-1.jsonl"
+    assert find_title(tmp_path / "projects", folder, "sdk-1") is None
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(jsonl([user("u1", "Fix the login")]))
+    assert find_title(tmp_path / "projects", folder, "sdk-1") is None
+
+    transcript.write_text(
+        jsonl([user("u1", "Fix the login"), {"type": "ai-title", "aiTitle": "Login redirect loop"}])
+    )
+
+    assert find_title(tmp_path / "projects", folder, "sdk-1") == "Login redirect loop"
 
 
 def test_a_simple_chat_becomes_session_events() -> None:
