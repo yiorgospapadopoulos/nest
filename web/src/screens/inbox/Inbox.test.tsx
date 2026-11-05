@@ -79,7 +79,7 @@ describe("Needs you rows (B102 item 10)", () => {
       state: "running",
       stuck: { reason: "repeating", since: "2026-10-06T09:48:00Z", details: "Same call." },
     });
-    const api = withItems([approval(), review({ session_id: "s3" })], [session(), failing, stuck]);
+    const api = withItems([approval(), review({ session_id: "s1" })], [session(), failing, stuck]);
     await renderApp({ api });
 
     expect(screen.getByRole("heading", { level: 1, name: "Needs you" })).toBeInTheDocument();
