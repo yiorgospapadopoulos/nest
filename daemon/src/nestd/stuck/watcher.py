@@ -52,6 +52,8 @@ _ACTIVITY = frozenset(
         types.SESSION_HOOK,
         types.SESSION_RESULT,
         types.SESSION_AGENT_TASK,
+        # Autopilot answering a prompt replaces the approval events below.
+        types.SESSION_AUTOPILOT_DECISION,
         types.APPROVAL_CREATED,
         types.APPROVAL_RESOLVED,
     }

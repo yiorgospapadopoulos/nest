@@ -19,6 +19,9 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+/** A group's own id here: its key is its first call's, whose row opens apart from it. */
+export const groupRow = (key: string) => `tools:${key}`;
+
 export function isOpen(chat: string, id: string): boolean {
   return opened.has(keyOf(chat, id));
 }

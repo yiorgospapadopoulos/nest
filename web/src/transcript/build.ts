@@ -2,6 +2,8 @@ import { list, obj, str, toolArg } from "../api/payloads.ts";
 import type {
   Approval,
   ArtifactKind,
+  AutopilotDecision,
+  AutopilotReport,
   HabitSchedule,
   HabitTrigger,
   NestEvent,
@@ -10,7 +12,8 @@ import type {
   Pixie,
 } from "../api/types.ts";
 import { permissionOf } from "../api/payloads.ts";
-import { CALL_TOOL, turnLabel } from "./activity.ts";
+import { CALL_TOOL, toolKind, turnLabel } from "./activity.ts";
+import { decisionOf, reportOf } from "./decisions.ts";
 import { editDiff, type EditDiff } from "./edits.ts";
 import { githubPartOf, type GitHubPart } from "./github.ts";
 import { agentReport } from "./report.ts";
@@ -135,8 +138,24 @@ export interface PixieResultItem {
   status: "done" | "failed" | "stopped" | "interrupted";
 }
 
+/** Something Autopilot settled for the user, where it happened (B120). */
+export interface DecisionItem {
+  kind: "decision";
+  key: string;
+  decision: AutopilotDecision;
+}
+
+/** How an Autopilot run ended, where it ended; it stays in the chat (B120). */
+export interface AutopilotReportItem {
+  kind: "autopilot_report";
+  key: string;
+  report: AutopilotReport;
+}
+
 export type TranscriptItem =
   | PixieResultItem
+  | DecisionItem
+  | AutopilotReportItem
   // `from`: the pixie that sent it into this chat (B41).
   // `github`: the issue or review comments Nest wrote into it (B101), after `text`.
   | {
@@ -157,7 +176,7 @@ export type TranscriptItem =
   | ToolItem
   | ThinkingItem
   | PixieCallItem
-  // Consecutive tool calls (two or more) with the thinking between them (D045).
+  // Consecutive tool calls with the thinking between them (D045).
   | { kind: "tools"; key: string; items: (ToolItem | ThinkingItem)[] }
   | { kind: "approval"; key: string; approval: InlineAsk }
   | { kind: "system"; key: string; text: string }
@@ -192,6 +211,7 @@ const NO_PIXIES: ReadonlyMap<string, Pixie> = new Map();
 const AGENT_TOOLS = new Set(["Task", "Agent", CALL_TOOL]);
 // The tools that save artifacts (B79), with the name their rows show. Their input carries
 // the whole document, which a row never shows; a saved one shows as its card instead.
+const FINISH_TOOL = "autopilot_finished";
 const ARTIFACT_TOOLS: ReadonlyMap<string, string> = new Map([
   ["mcp__nest__create_artifact", "Save artifact"],
   ["mcp__nest__update_artifact", "Update artifact"],
@@ -333,11 +353,23 @@ export function buildTranscript(
         if (artifact !== null) items.push(artifact);
         break;
       }
+      case "session.autopilot_decision": {
+        const decision = decisionOf(p.decision);
+        if (decision !== null) items.push({ kind: "decision", key, decision });
+        break;
+      }
+      case "session.autopilot_report": {
+        const report = reportOf(p.report);
+        if (report !== null) items.push({ kind: "autopilot_report", key, report });
+        break;
+      }
       default:
         note(items, key, systemText(e));
     }
   }
-  return groupTools(items.filter((item) => item.kind !== "tool" || !saved.has(item.id)));
+  return groupTools(
+    withoutFinish(items.filter((item) => item.kind !== "tool" || !saved.has(item.id))),
+  );
 }
 
 const ARTIFACT_KINDS: ReadonlySet<unknown> = new Set<ArtifactKind>([
@@ -469,6 +501,8 @@ function userItems(key: string, p: JsonObject): TranscriptItem[] {
   if (p.origin === "report_back") return [{ kind: "report", key, text: reportLines(text) }];
   // What Nest sends to go on after a usage limit reset (B78).
   if (p.origin === "limit_resume") return [{ kind: "report", key, title: "Nest", text }];
+  // What Autopilot sends to keep the chat going (B120).
+  if (p.origin === "autopilot") return [{ kind: "report", key, title: "Autopilot", text }];
   // Its first line names the habit and the report; the report card shows the details.
   if (p.origin === "report") {
     return [{ kind: "report", key, title: "Habit report", text: text.replace(/\n[\s\S]*$/, "") }];
@@ -567,8 +601,35 @@ export function turnStart(events: NestEvent[]): string | null {
 }
 
 /**
- * Runs of two or more tool calls become one group; thinking between them joins it. An edit
- * with a diff stays on its own, so its changes show without opening a group.
+ * Autopilot's finishing call is never a row. What the agent writes after one repeats the run's
+ * summary, so it hides when a report with that summary follows before the user speaks again.
+ * Without one, say the run died, it stays: a summary is never lost.
+ */
+function withoutFinish(items: TranscriptItem[]): TranscriptItem[] {
+  const isFinish = (item: TranscriptItem) =>
+    item.kind === "tool" && item.name.endsWith(FINISH_TOOL) && !item.failed;
+  const hidden = new Set<TranscriptItem>();
+  let finished = false;
+  let echoes: TranscriptItem[] = [];
+  for (const item of items) {
+    if (isFinish(item)) {
+      finished = true;
+    } else if (item.kind === "user" || item.kind === "autopilot_report") {
+      if (item.kind === "autopilot_report" && finished && item.report.summary !== null) {
+        echoes.forEach((echo) => hidden.add(echo));
+      }
+      finished = false;
+      echoes = [];
+    } else if (finished && item.kind === "assistant") {
+      echoes.push(item);
+    }
+  }
+  return items.filter((item) => !isFinish(item) && !hidden.has(item));
+}
+
+/**
+ * Tool calls become one short group, even a single call, edits too; thinking between them
+ * joins it. Only a single call that `keepsRow` stays a full row.
  */
 function groupTools(items: TranscriptItem[]): TranscriptItem[] {
   const grouped: TranscriptItem[] = [];
@@ -577,7 +638,9 @@ function groupTools(items: TranscriptItem[]): TranscriptItem[] {
   let tail: ThinkingItem[] = [];
   let key = "";
   const flush = () => {
-    if (run.filter((item) => item.kind === "tool").length > 1) {
+    const tools = run.filter((item) => item.kind === "tool");
+    const [only] = tools;
+    if (only !== undefined && (tools.length > 1 || !keepsRow(only))) {
       grouped.push({ kind: "tools", key, items: run });
     } else {
       grouped.push(...run);
@@ -587,7 +650,7 @@ function groupTools(items: TranscriptItem[]): TranscriptItem[] {
     tail = [];
   };
   for (const item of items) {
-    if (item.kind === "tool" && item.diff === undefined) {
+    if (item.kind === "tool") {
       if (run.length === 0) key = item.key;
       run = [...run, ...tail, item];
       tail = [];
@@ -600,6 +663,11 @@ function groupTools(items: TranscriptItem[]): TranscriptItem[] {
   }
   flush();
   return grouped;
+}
+
+/** A running agent's row shows what it does and its Stop; a result's images show unopened. */
+function keepsRow(tool: ToolItem): boolean {
+  return (toolKind(tool.name) === "agent" && tool.result === null) || tool.images !== undefined;
 }
 
 function num(value: JsonValue | undefined): number | null {

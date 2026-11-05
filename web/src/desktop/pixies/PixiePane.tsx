@@ -8,7 +8,7 @@ import { useStore } from "../../store/context.ts";
 import { chatStatus, pendingFor, pixieWorking } from "../../store/selectors.ts";
 import { NO_BACKGROUND } from "../../store/state.ts";
 import { Dot } from "../../ui/bits.tsx";
-import { LimitBar, ReviewBar } from "../chat/Bars.tsx";
+import { AutopilotBar, LimitBar, ReviewBar } from "../chat/Bars.tsx";
 import type { PaneChrome } from "../chat/ChatPane.tsx";
 import { Composer } from "../chat/Composer.tsx";
 import { FileLinks } from "../chat/FileLinks.tsx";
@@ -115,6 +115,7 @@ export function PixiePane({ id, chrome, focused }: Props) {
                 <>
                   <ReviewBar session={session} />
                   <LimitBar session={session} />
+                  <AutopilotBar session={session} />
                 </>
               }
             />

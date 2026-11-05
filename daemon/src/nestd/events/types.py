@@ -96,6 +96,13 @@ SESSION_UNSTUCK: Final = "session.unstuck"
 # (the user's Stop), `archived` or `closed`. Both follow the `session.updated` of the field.
 SESSION_LIMIT_PAUSED: Final = "session.limit_paused"
 SESSION_LIMIT_CLEARED: Final = "session.limit_cleared"
+# Autopilot settled something for the user (B120), `{decision}` with the whole decision as
+# on the run; stored, at that place in the transcript. A called pixie's goes to the chat
+# that owns the run.
+SESSION_AUTOPILOT_DECISION: Final = "session.autopilot_decision"
+# An Autopilot run ended (B120), `{report}`; stored, after the agent's last message of the
+# run, and it stays in the chat like a message.
+SESSION_AUTOPILOT_REPORT: Final = "session.autopilot_report"
 
 # The approval queue; each carries the full item and its session id.
 APPROVAL_CREATED: Final = "approval.created"

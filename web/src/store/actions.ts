@@ -54,6 +54,7 @@ import type {
   SearchResults,
   SendAwayBody,
   Session,
+  SetAutopilot,
   SessionDiff,
   UpdateHabitBody,
   UpdatePixieBody,
@@ -1242,6 +1243,14 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       });
       if (done) toast("Interrupted", "info");
       return done === true;
+    },
+
+    /** Turns Autopilot on or off, or gives a run in progress a new budget (B120). */
+    async setAutopilot(id: string, body: SetAutopilot): Promise<boolean> {
+      const updated = await attempt(() => api.setAutopilot(id, body));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      return true;
     },
 
     async update(id: string, body: UpdateSessionBody, done?: string): Promise<boolean> {

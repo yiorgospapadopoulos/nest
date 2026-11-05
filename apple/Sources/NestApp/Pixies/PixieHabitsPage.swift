@@ -247,6 +247,19 @@ struct HabitEditor: View {
                         range: HabitDraft.maxMinutesRange
                     ) { draft.maxMinutes = $0 }
                     DetailNote(text: "A longer run is stopped and recorded as timed out.")
+                    HStack {
+                        Text(AutopilotText.title)
+                            .font(.ui(TypeSize.ui))
+                            .foregroundStyle(Palette.t1)
+                        Spacer(minLength: 8)
+                        Toggle(AutopilotText.title, isOn: $draft.autopilot)
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                            .labelsHidden()
+                            .pointerStyle(.link)
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: Metrics.rowHeight + 2)
 
                     if let problem = draft.problem, ready {
                         Text(problem)

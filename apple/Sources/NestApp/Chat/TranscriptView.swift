@@ -400,6 +400,12 @@ struct TranscriptRow: View {
             HabitReportRow(text: text)
         case .limitResume(let text):
             LimitResumeRow(text: text)
+        case .autopilotMessage(let text):
+            AutopilotMessageRow(text: text)
+        case .autopilotDecision(let decision):
+            DecisionLine(id: item.id, decision: decision)
+        case .autopilotReport(let report):
+            AutopilotReportCard(id: item.id, report: report)
         case .pixieResult(let line):
             PixieResultRow(line: line)
         case .hook(let run):
@@ -788,10 +794,16 @@ struct ToolGroupRow: View {
     @Environment(\.accentColors) private var accent
 
     var body: some View {
-        let expanded = shell.expandedItems.contains(group.id)
+        let expanded = !shell.expandedItems.isDisjoint(with: group.openIDs)
         VStack(alignment: .leading, spacing: 2) {
             Button {
-                toggle(group.id, in: shell)
+                withAnimation(.smooth(duration: 0.2)) {
+                    if expanded {
+                        shell.expandedItems.subtract(group.openIDs)
+                    } else {
+                        shell.expandedItems.insert(group.id)
+                    }
+                }
             } label: {
                 HStack(spacing: 7) {
                     Image(systemName: Icon.tool(dominantKind))
@@ -1294,7 +1306,7 @@ private struct AgentCallSteps: View {
     }
 }
 
-@MainActor private func toggle(_ id: String, in shell: Shell) {
+@MainActor func toggle(_ id: String, in shell: Shell) {
     withAnimation(.smooth(duration: 0.2)) {
         if shell.expandedItems.contains(id) {
             shell.expandedItems.remove(id)

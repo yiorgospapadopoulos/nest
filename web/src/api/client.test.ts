@@ -83,6 +83,13 @@ const calls: Call[] = [
     undefined,
   ],
   [
+    "set Autopilot",
+    (a) => a.setAutopilot("s/1", { on: true, weekly_cap: 70 }),
+    "PUT",
+    "/api/sessions/s%2F1/autopilot",
+    { on: true, weekly_cap: 70 },
+  ],
+  [
     "session commands",
     (a) => a.sessionCommands("s/1"),
     "GET",

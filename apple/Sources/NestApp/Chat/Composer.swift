@@ -681,6 +681,10 @@ private struct ControlRow: View {
                 .accessibilityLabel("Attach")
             }
             MicButton(listening: listening) { toggleDictation() }
+            // A pixie has no chat to run before its first message.
+            if !pixie || session != nil {
+                AutopilotButton(chat: chat, session: isDraft ? nil : session)
+            }
             if start && shell.repo?.git != false {
                 StartPlace(draft: draft, repo: shell.repo)
                     .padding(.leading, 4)
@@ -701,7 +705,7 @@ private struct ControlRow: View {
                 PermissionMenu(
                     chat: chat, model: isDraft ? draft.model : session?.model,
                     mode: isDraft ? draft.permission : session?.permissionMode ?? .default,
-                    warnsOnBypass: start)
+                    warnsOnBypass: start, onAutopilot: shell.onAutopilot(chat))
             }
             if !isDraft, let live, let context = session?.context,
                 let label = fit.context.label(context)

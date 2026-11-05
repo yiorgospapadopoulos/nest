@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
+  type SyntheticEvent,
 } from "react";
 import type {
   BackgroundSummary,
@@ -48,6 +49,7 @@ import { TeamFace } from "../pixies/TeamFace.tsx";
 import type { WorkOf } from "../projects/ChatTree.tsx";
 import { ArtifactCard } from "../artifacts/ArtifactCard.tsx";
 import { chatScopes } from "../artifacts/view.ts";
+import { AutopilotReportCard, DecisionLine } from "./Autopilot.tsx";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { PixieCard } from "./PixieCard.tsx";
 import { ResultImages, Sent } from "./ResultImages.tsx";
@@ -131,6 +133,8 @@ export function Transcript({
     () => buildTranscript(events ?? [], state.approvals, root, running, pixies),
     [events, state.approvals, root, running, pixies],
   );
+  // A report can take the row of the message it hides, so the count stays.
+  const lastItem = items.at(-1)?.key;
   const box = useRef<HTMLDivElement>(null);
   // Whether new output is followed: only the user's own scrolling changes it (D099).
   const follow = useRef(new ScrollFollow());
@@ -194,7 +198,7 @@ export function Transcript({
   useLayoutEffect(() => {
     const el = box.current;
     if (el !== null && follow.current.contentArrived()) el.scrollTop = el.scrollHeight;
-  }, [items.length, live, agentLive, working, jumps, runs]);
+  }, [items.length, lastItem, live, agentLive, working, jumps, runs]);
 
   // Once the focused event is on screen, stop following and show it highlighted.
   useLayoutEffect(() => {
@@ -207,7 +211,8 @@ export function Transcript({
     showHit(target);
   }, [focus, items.length, virtual]);
 
-  const calls: CallControls = { agentLive, running, stopper };
+  const [opened] = useState(() => new Set<string>());
+  const calls: CallControls = { agentLive, running, stopper, opened };
 
   const jump = () => {
     follow.current.jumpToLatest();
@@ -430,8 +435,11 @@ function WorkingLine({ thinking, thought, start }: WorkingProps) {
   );
 }
 
-/** Centres a search hit and highlights it until its animation ends. */
+/** Centres a search hit, opening its group of calls, and highlights it for its animation. */
 function showHit(target: HTMLElement): void {
+  if (target instanceof HTMLDetailsElement && target.classList.contains("tgroup")) {
+    target.open = true;
+  }
   target.scrollIntoView({ block: "center" });
   target.classList.add("hit");
   target.addEventListener(
@@ -611,6 +619,10 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
       );
     case "pixie_result":
       return <PixieResult item={item} ev={ev} onOpen={undefined} />;
+    case "decision":
+      return <DecisionLine decision={item.decision} ev={ev} />;
+    case "autopilot_report":
+      return <AutopilotReportCard report={item.report} ev={ev} />;
     case "answer":
       return (
         <div className="m-ans" data-ev={ev}>
@@ -651,7 +663,7 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
         <EditTool item={item} diff={item.diff} ev={ev} />
       );
     case "tools":
-      return <ToolGroup items={item.items} ev={ev} running={running} />;
+      return <ToolGroup id={item.key} items={item.items} ev={ev} running={running} />;
   }
 }
 
@@ -895,8 +907,29 @@ const STEP_CLASSES: Record<Exclude<SubStep["kind"], "images">, string> = {
   thinking: "pxthink",
 };
 
+/**
+ * What a folding row's `<details>` needs to open as the reader left it when it is drawn
+ * again. A row of `also` counts as this one, and closing this one closes it.
+ */
+function useKeptOpen(id: string, also = id) {
+  const { opened } = useContext(CallContext);
+  const [open] = useState(() => opened?.has(id) === true || opened?.has(also) === true);
+  return {
+    open,
+    onToggle: (event: SyntheticEvent<HTMLDetailsElement>) => {
+      if (event.currentTarget.open) {
+        opened?.add(id);
+      } else {
+        opened?.delete(id);
+        opened?.delete(also);
+      }
+    },
+  };
+}
+
 function Tool({ item, ev }: { item: ToolItem; ev?: string | undefined }) {
   const { agentLive, running, stopper } = useContext(CallContext);
+  const kept = useKeptOpen(item.key);
   const agent = toolKind(item.name) === "agent";
   const busy = agent && (item.result === null || running.has(item.id));
   const steps = item.steps ?? [];
@@ -922,7 +955,7 @@ function Tool({ item, ev }: { item: ToolItem; ev?: string | undefined }) {
     );
   }
   const row = (
-    <details className="tool" data-ev={ev}>
+    <details className="tool" data-ev={ev} {...kept}>
       <summary>
         {summary}
         <Icon name="chev" className="cv" />
@@ -1102,17 +1135,20 @@ function Hook({ item, ev }: { item: HookItem; ev?: string | undefined }) {
 }
 
 interface GroupProps {
+  id: string;
   items: (ToolItem | ThinkingItem)[];
   ev?: string | undefined;
   running: ReadonlySet<string>;
 }
 
 /** "Ran 3 commands, read 2 files", opening to the calls as they show on their own. */
-function ToolGroup({ items, ev, running }: GroupProps) {
+function ToolGroup({ id, items, ev, running }: GroupProps) {
   const tools = items.filter((item): item is ToolItem => item.kind === "tool");
   const summary = summarizeTools(tools, running);
+  // A lone agent opened while it ran as a row stays open once it folds to this line.
+  const kept = useKeptOpen(`tools:${id}`, tools.length === 1 ? tools[0]?.key : undefined);
   return (
-    <details className="tool tgroup" data-ev={ev}>
+    <details className="tool tgroup" data-ev={ev} {...kept}>
       <summary>
         <Icon name="list" />
         <span className={summary.running ? "tg glow" : "tg"}>{summary.text}</span>

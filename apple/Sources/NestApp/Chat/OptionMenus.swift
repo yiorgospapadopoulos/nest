@@ -259,19 +259,33 @@ struct PermissionMenu: View {
     let mode: PermissionMode
     /// Bypass in the warning colour, as the empty workspace shows it.
     var warnsOnBypass = false
+    /// Autopilot holds the chat in Bypass: plain red text, as no other mode can be chosen
+    /// (B120).
+    var onAutopilot = false
     @Environment(Shell.self) private var shell
     @Environment(\.paneFit) private var fit
 
     var body: some View {
-        let label = fit.compact ? mode.shortLabel : mode.label
-        let warns = warnsOnBypass && mode == .bypassPermissions
-        QuietMenu(
-            title: label, help: "Permission mode", tint: warns ? StatusTone.waiting.color : nil
-        ) {
-            PermissionItems(
-                modes: shell.catalog(forChat: chat).permissionModes(for: model), current: mode
+        if onAutopilot {
+            let bypass = PermissionMode.bypassPermissions
+            Text(fit.compact ? bypass.shortLabel : bypass.label)
+                .font(.ui(TypeSize.button))
+                .foregroundStyle(StatusTone.failed.color)
+                .lineLimit(1)
+                .padding(.horizontal, fit.compact ? 4 : 6)
+                .frame(height: Metrics.buttonHeight)
+                .help("Autopilot keeps the chat in Bypass")
+        } else {
+            let label = fit.compact ? mode.shortLabel : mode.label
+            let warns = warnsOnBypass && mode == .bypassPermissions
+            QuietMenu(
+                title: label, help: "Permission mode", tint: warns ? StatusTone.waiting.color : nil
             ) {
-                shell.setPermission($0, for: chat)
+                PermissionItems(
+                    modes: shell.catalog(forChat: chat).permissionModes(for: model), current: mode
+                ) {
+                    shell.setPermission($0, for: chat)
+                }
             }
         }
     }

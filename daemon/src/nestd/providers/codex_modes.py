@@ -84,10 +84,10 @@ def codex_permissions(
 
 
 def command_decision(
-    command: str, mode: PermissionMode | None, guarded: bool
+    command: str, mode: PermissionMode | None, guarded: bool, commits: bool = False
 ) -> AutoDecision | None:
     """What Nest answers a command approval itself; None asks the user."""
-    if guarded and is_git_write(command):
+    if guarded and is_git_write(command, commits=commits):
         return "decline"
     if mode == "bypassPermissions":
         return "accept"

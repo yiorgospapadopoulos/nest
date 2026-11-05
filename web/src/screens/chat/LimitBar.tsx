@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import type { LimitPause, Session } from "../../api/types.ts";
+import type { AutopilotRun, LimitPause, Session } from "../../api/types.ts";
 import { countdown, resetLabel } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
 import { Dot } from "../../ui/bits.tsx";
+import { Icon } from "../../ui/Icon.tsx";
+import { runLine, stepLine } from "./useAutopilot.ts";
 
 // The limit's words in "Paused at the 5-hour usage limit"; others read "usage" alone.
 const WINDOWS: Readonly<Record<string, string>> = {
@@ -50,6 +52,41 @@ function Bar({ id, pause }: { id: string; pause: LimitPause }) {
         </div>
         <button className="b" disabled={busy} onClick={resume}>
           Resume now
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Just above the composer while the chat runs on Autopilot (B120), with Turn off. */
+export function AutopilotBar({ session }: { session: Session }) {
+  if (session.autopilot == null) return null;
+  // A new run starts with its button ready.
+  return <RunBar key={session.autopilot.started_at} id={session.id} run={session.autopilot} />;
+}
+
+function RunBar({ id, run }: { id: string; run: AutopilotRun }) {
+  const { state, actions } = useStore();
+  const [busy, setBusy] = useState(false);
+  const now = useNow();
+  const step = stepLine(state.tracking[id]?.tasks ?? []);
+  const turnOff = () => {
+    setBusy(true);
+    void actions.setAutopilot(id, { on: false }).then(() => {
+      setBusy(false);
+    });
+  };
+  return (
+    <div className="lmw">
+      <div className="lmbar gl lmap" role="group" aria-label="Autopilot">
+        <Icon name="infinity" />
+        <div className="lmt">
+          <b>Autopilot</b>
+          {step !== null && <span>{step}</span>}
+          <span>{runLine(run, now)}</span>
+        </div>
+        <button className="b" disabled={busy} onClick={turnOff}>
+          Turn off
         </button>
       </div>
     </div>

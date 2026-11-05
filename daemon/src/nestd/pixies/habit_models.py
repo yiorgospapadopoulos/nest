@@ -97,6 +97,8 @@ class HabitIdea(_Strict):
 class CreateHabit(HabitIdea):
     max_minutes: MaxMinutes = 20
     enabled: bool = True
+    # Its runs work on without the user until done, or `max_minutes`.
+    autopilot: bool = False
 
 
 class UpdateHabit(_Strict):
@@ -108,6 +110,7 @@ class UpdateHabit(_Strict):
     triggers: list[Trigger] | None = None
     max_minutes: MaxMinutes | None = None
     enabled: bool | None = None
+    autopilot: bool | None = None
 
 
 class HabitRun(BaseModel):
@@ -134,6 +137,7 @@ class Habit(BaseModel):
     triggers: list[Trigger]
     max_minutes: int
     enabled: bool
+    autopilot: bool = False
     created_at: datetime
     updated_at: datetime
     # When the schedule runs it next; None without a schedule or while paused.

@@ -159,6 +159,10 @@ public struct APIClient: NestAPI {
         try await call("POST", ["sessions", id, "limit", "resume"])
     }
 
+    public func setAutopilot(_ id: String, _ request: SetAutopilotRequest) async throws -> Session {
+        try await call("PUT", ["sessions", id, "autopilot"], body: request)
+    }
+
     public func stopTask(_ id: String, task: String) async throws {
         try await perform("POST", ["sessions", id, "tasks", task, "stop"])
     }

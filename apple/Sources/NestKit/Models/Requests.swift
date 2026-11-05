@@ -24,13 +24,15 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
     /// The GitHub issue the chat starts from: the daemon makes it the first message, after
     /// any prompt, and the issue's title the chat's (B101).
     public var issue: Int?
+    /// Starts the chat on Autopilot, in a worktree unless `mode` says otherwise (B120).
+    public var autopilot: SetAutopilotRequest?
 
     public init(
         repo: String, prompt: String, title: String? = nil, mode: SessionMode? = nil,
         model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
         attachmentIDs: [String] = [], base: String? = nil, branch: String? = nil,
         provider: String? = nil, worktreePath: String? = nil, onBranch: String? = nil,
-        issue: Int? = nil
+        issue: Int? = nil, autopilot: SetAutopilotRequest? = nil
     ) {
         self.repo = repo
         self.prompt = prompt
@@ -46,10 +48,11 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
         self.worktreePath = worktreePath
         self.onBranch = onBranch
         self.issue = issue
+        self.autopilot = autopilot
     }
 
     enum CodingKeys: String, CodingKey {
-        case repo, prompt, title, mode, model, effort, base, branch, provider, issue
+        case repo, prompt, title, mode, model, effort, base, branch, provider, issue, autopilot
         case permissionMode = "permission_mode"
         case attachmentIDs = "attachment_ids"
         case worktreePath = "worktree_path"
@@ -379,10 +382,12 @@ public struct CreateHabitRequest: Encodable, Sendable, Hashable {
     public var triggers: [HabitTrigger]
     public var maxMinutes: Int
     public var enabled: Bool
+    /// Its runs go on Autopilot (B120).
+    public var autopilot: Bool
 
     public init(
         name: String, prompt: String, schedule: HabitSchedule?, triggers: [HabitTrigger],
-        maxMinutes: Int, enabled: Bool = true
+        maxMinutes: Int, enabled: Bool = true, autopilot: Bool = false
     ) {
         self.name = name
         self.prompt = prompt
@@ -390,10 +395,11 @@ public struct CreateHabitRequest: Encodable, Sendable, Hashable {
         self.triggers = triggers
         self.maxMinutes = maxMinutes
         self.enabled = enabled
+        self.autopilot = autopilot
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, prompt, schedule, triggers, enabled
+        case name, prompt, schedule, triggers, enabled, autopilot
         case maxMinutes = "max_minutes"
     }
 
@@ -405,6 +411,10 @@ public struct CreateHabitRequest: Encodable, Sendable, Hashable {
         try container.encode(triggers, forKey: .triggers)
         try container.encode(maxMinutes, forKey: .maxMinutes)
         try container.encode(enabled, forKey: .enabled)
+        // Off is the daemon's default.
+        if autopilot {
+            try container.encode(true, forKey: .autopilot)
+        }
     }
 }
 
@@ -418,11 +428,12 @@ public struct UpdateHabitRequest: Encodable, Sendable, Hashable {
     public var triggers: [HabitTrigger]?
     public var maxMinutes: Int?
     public var enabled: Bool?
+    public var autopilot: Bool?
 
     public init(
         name: String? = nil, prompt: String? = nil, schedule: HabitSchedule? = nil,
         clearsSchedule: Bool = false, triggers: [HabitTrigger]? = nil, maxMinutes: Int? = nil,
-        enabled: Bool? = nil
+        enabled: Bool? = nil, autopilot: Bool? = nil
     ) {
         self.name = name
         self.prompt = prompt
@@ -431,10 +442,11 @@ public struct UpdateHabitRequest: Encodable, Sendable, Hashable {
         self.triggers = triggers
         self.maxMinutes = maxMinutes
         self.enabled = enabled
+        self.autopilot = autopilot
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, prompt, schedule, triggers, enabled
+        case name, prompt, schedule, triggers, enabled, autopilot
         case maxMinutes = "max_minutes"
     }
 
@@ -450,6 +462,7 @@ public struct UpdateHabitRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(triggers, forKey: .triggers)
         try container.encodeIfPresent(maxMinutes, forKey: .maxMinutes)
         try container.encodeIfPresent(enabled, forKey: .enabled)
+        try container.encodeIfPresent(autopilot, forKey: .autopilot)
     }
 }
 

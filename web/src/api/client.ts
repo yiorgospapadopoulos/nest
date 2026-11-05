@@ -88,6 +88,7 @@ import type {
   SearchResults,
   SendResponse,
   Session,
+  SetAutopilot,
   SessionDetail,
   SessionDiff,
   UpdateHabitBody,
@@ -190,6 +191,7 @@ export interface Api {
   sendNow(id: string, queuedId: string): Promise<null>;
   // Ends a usage limit pause now (B78): the queued messages, else a continue message, go.
   resumeLimit(id: string): Promise<Session>;
+  setAutopilot(id: string, body: SetAutopilot): Promise<Session>;
   sessionCommands(id: string): Promise<CommandList>;
   repoCommands(name: string): Promise<CommandList>;
   files(id: string, query: string): Promise<{ files: string[] }>;
@@ -605,6 +607,10 @@ export class HttpApi implements Api {
 
   resumeLimit(id: string) {
     return this.json<Session>("POST", `${session(id)}/limit/resume`);
+  }
+
+  setAutopilot(id: string, body: SetAutopilot) {
+    return this.json<Session>("PUT", `${session(id)}/autopilot`, body);
   }
 
   sessionCommands(id: string) {

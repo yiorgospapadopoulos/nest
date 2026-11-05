@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from pydantic import JsonValue
 
 from nestd.artifacts.tools import ARTIFACT_NOTE
 from nestd.attachments.store import Attachment, AttachmentStore
+from nestd.autopilot.runner import AutopilotRunner
+from nestd.autopilot.tool import AUTOPILOT_NOTE, autopilot_tool
 from nestd.clock import Clock
 from nestd.config.models import PermissionMode, RepoConfig
 from nestd.events import types
@@ -81,16 +84,31 @@ _PLAN_NOTE = (
     "and completed as soon as it is done. Skip the list only for a quick question or a "
     "single command."
 )
+# Like the Claude app's agent, say what is going on while working: a long turn is otherwise
+# silent in the chat, where tool calls fold away.
+_UPDATES_NOTE = (
+    "Keep the user informed while you work: before each batch of tool calls, write one short, "
+    "plain sentence saying what you are about to do or what you just found. Do not narrate "
+    "every call."
+)
+# A long final paragraph is hard to read back; a quick answer stays a plain answer.
+_SUMMARY_NOTE = (
+    "When you finish a task that took work, end with one or two plain lines saying what was "
+    "asked and what came of it, then short bullets for what changed, the choices you made, and "
+    "anything left for the user. "
+    "Leave nothing important out, and write no long paragraphs. A quick question still gets a "
+    "plain short answer."
+)
 # A chat uses git as in the terminal (B58).
 NEST_PROMPT = (
     "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
     f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
-    f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 # A plain folder's work is never reviewed, committed or pushed by Nest (D041).
 PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
-    f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 # A chat a pixie started, which may commit but whose pushes and pull requests stay blocked
 # (D072, B58, D123); a pixie's own runs have their own prompt.
@@ -111,11 +129,11 @@ _OWN_PLAN_NOTE = (
 CODEX_PROMPT = (
     "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
     f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
-    f"{_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
-    f"{_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
+    f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_GUARDED_PROMPT = (
     "You are running inside Nest. You may commit your work. Do not run git push, "
@@ -152,6 +170,7 @@ class TurnRunner:
         clock: Clock,
         limits: LimitPauses,
         moves: WorktreeMoves,
+        autopilot: AutopilotRunner,
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
@@ -169,6 +188,7 @@ class TurnRunner:
         `local` points runs on local models at their servers (B106). `ports` tells a
         project chat's agent about its folder's ports and dev server (B108).
         """
+        self._autopilot = autopilot
         self._ports = ports
         self.moves = moves
         self._local = local
@@ -577,6 +597,9 @@ class TurnRunner:
         if not queued:
             await self._end_turn(live, state, error)
             return
+        await isolated(
+            "the Autopilot report", live.session_id, self._autopilot.turn_ended(live.session_id)
+        )
         # The next turn starts once its message is sent; Stop until then cancels it.
         live.turn_active = False
         live.interrupted = live.resume_queue = False
@@ -704,6 +727,9 @@ class TurnRunner:
         live.end_turn(held=state is SessionState.IDLE)
         live.settled.clear()
         try:
+            await isolated(
+                "the Autopilot report", live.session_id, self._autopilot.turn_ended(live.session_id)
+            )
             await self._states.set(
                 live.session_id, state, error, turn={"duration_ms": duration}, details=details
             )
@@ -778,8 +804,9 @@ class TurnRunner:
                 resume_at=session.fork_at,
                 drops_turn=session.fork_drops,
                 extra_dirs=dirs + (extras.extra_dirs if extras else ()),
-                system_prompt_append=(
-                    extras.system_prompt if extras else await self._nest_prompt(session, ports)
+                system_prompt_append=_on_autopilot(
+                    session,
+                    extras.system_prompt if extras else await self._nest_prompt(session, ports),
                 ),
                 tools=extras.tools if extras else (),
                 nest_tools=await self._run_tools(session, agents),
@@ -789,6 +816,7 @@ class TurnRunner:
                 subagents=agents.engine_subagents,
                 call_rules=agents.rules,
                 guard_git=_guarded(session),
+                guard_commits=session.autopilot is not None,
                 account=account,
                 local=local,
                 env=ports.env,
@@ -813,6 +841,7 @@ class TurnRunner:
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = mode == BYPASS
+            live.run_autopilot = session.autopilot is not None
             live.run_model = session.model
             live.run_mode = mode
             live.run_agents = agents
@@ -880,11 +909,17 @@ class TurnRunner:
         tools = self._nest_tools(session) if self._nest_tools else ()
         calls = self._call_tools(session, agents) if self._call_tools else ()
         own = (worktree_tool(self.moves, session),) if await self._moves_folders(session) else ()
+        if session.autopilot is not None:
+            own += (autopilot_tool(partial(self._autopilot.finished, session.id)),)
         return tools + calls + own
 
     async def _moves_folders(self, session: Session) -> bool:
-        """Whether the chat can change where it works: a movable chat in a git project."""
-        return session.movable and await self._repos.has_git(session.repo)
+        """Whether the chat can change where it works: a movable chat in a git project,
+        when someone is watching: Autopilot removes no worktrees.
+        """
+        if session.autopilot is not None or not session.movable:
+            return False
+        return await self._repos.has_git(session.repo)
 
     async def _folder_ports(self, session: Session) -> FolderPorts:
         """The folder's ports; bookkeeping, so without them the run opens anyway."""
@@ -908,7 +943,7 @@ class TurnRunner:
         # Only Claude Code plans with TaskCreate; other engines plan with their own tool,
         # which feeds the same task list (B112).
         claude = self._engines.of(session) is self._engines.default
-        if _guarded(session):
+        if _pixie_guarded(session):
             return GUARDED_PROMPT if claude else CODEX_GUARDED_PROMPT
         git = await self._repos.has_git(session.repo)
         if git:
@@ -916,12 +951,22 @@ class TurnRunner:
         return PLAIN_FOLDER_PROMPT if claude else CODEX_PLAIN_FOLDER_PROMPT
 
 
-def _guarded(session: Session) -> bool:
+def _pixie_guarded(session: Session) -> bool:
     """A pixie may commit but never push, open or merge a pull request (D072, D078, D123): its
     chats, habit runs (which carry its `pixie_id`) and the chats it starts keep those blocked
     (B58).
     """
     return session.pixie_id is not None or session.started_by_pixie is not None
+
+
+def _guarded(session: Session) -> bool:
+    return _pixie_guarded(session) or session.autopilot is not None
+
+
+def _on_autopilot(session: Session, prompt: str | None) -> str | None:
+    if session.autopilot is None:
+        return prompt
+    return AUTOPILOT_NOTE if prompt is None else f"{prompt} {AUTOPILOT_NOTE}"
 
 
 def _keep_unsent(live: LiveSession, unsent: Unsent) -> None:
@@ -950,6 +995,7 @@ def _fits(
         and live.run_effort == session.effort
         and live.run_agents.fingerprint == agents.fingerprint
         and live.run_account == account
+        and live.run_autopilot == (session.autopilot is not None)
     )
     return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 

@@ -6,6 +6,7 @@ import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { RepoIcon } from "../projects/ProjectHeader.tsx";
 import type { ChatNav } from "./CommandSheets.tsx";
+import { useAutopilot } from "./useAutopilot.ts";
 import { Composer, type NewChatPlace } from "./Composer.tsx";
 import { IssuesSection } from "./IssuesSection.tsx";
 import type { Option } from "./options.ts";
@@ -36,6 +37,7 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
   const { state } = useStore();
   const repo = repoNamed(state.repos, name);
   const [workIn, setWorkIn] = useState<NewChatPlace>({});
+  const autopilot = useAutopilot(undefined);
   // A new worktree's optional branch name.
   const [typed, setTyped] = useState("");
   const worktree = workIn.mode === "worktree";
@@ -138,7 +140,12 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
           ...(worktree && branch !== "" ? { branch } : {}),
           ...(issue === null ? {} : { issue: issue.number }),
         }}
-        place={repo?.git === true && <PlaceChoice repo={repo} onChange={choose} />}
+        place={
+          repo?.git === true && (
+            <PlaceChoice repo={repo} autopilot={autopilot.on} onChange={choose} />
+          )
+        }
+        autopilot={autopilot}
         placeholder="Ask, build, / for commands…"
         onCreated={onCreated}
         nav={nav}
@@ -192,9 +199,12 @@ function BranchName({ value, onChange }: { value: string; onChange: (value: stri
  */
 function PlaceChoice({
   repo,
+  autopilot,
   onChange,
 }: {
   repo: RepoConfig;
+  // A chat on Autopilot works in a worktree unless the user chose otherwise (B120).
+  autopilot: boolean;
   onChange: (place: NewChatPlace) => void;
 }) {
   const { state, actions } = useStore();
@@ -209,7 +219,13 @@ function PlaceChoice({
   const own = repo.worktree.default;
   const shownMode =
     mode ??
-    (own === null ? (state.agentDefaults?.mode ?? "in_place") : own ? "worktree" : "in_place");
+    (autopilot
+      ? "worktree"
+      : own === null
+        ? (state.agentDefaults?.mode ?? "in_place")
+        : own
+          ? "worktree"
+          : "in_place");
   const worktree = shownMode === "worktree";
   const base = repo.current_branch;
 

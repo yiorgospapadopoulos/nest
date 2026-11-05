@@ -25,6 +25,7 @@ from nestd.providers.base import (
     PlanStep,
     ResultInfo,
     TokenUsage,
+    ToolUseBlock,
     UsageInfo,
 )
 from nestd.sessions.bookkeeping import isolated, isolated_or
@@ -119,6 +120,8 @@ class SessionSink:
 
     async def message(self, blocks: list[MessageBlock], parent_tool_use_id: str | None) -> None:
         await self._isolated("starting a turn", self._turns.agent_active(self._live))
+        if any(isinstance(block, ToolUseBlock) for block in blocks):
+            self._live.worked = True
         if self._attachments is not None:
             await self._isolated(
                 "the tool result images",

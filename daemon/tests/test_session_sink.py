@@ -476,6 +476,9 @@ class BrokenHooks:
     async def rewound(self, session: Session, *, conversation: bool, files: bool) -> None:
         raise LookupError("rewound")
 
+    async def autopilot_ended(self, session: Session, text: str) -> None:
+        raise LookupError("autopilot")
+
     async def moved(self, session: Session) -> None:
         raise LookupError("moved")
 

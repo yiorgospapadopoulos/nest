@@ -434,6 +434,14 @@ final class FakeAPI: NestAPI {
         return answer
     }
 
+    func setAutopilot(_ id: String, _ request: SetAutopilotRequest) async throws -> Session {
+        try call("setAutopilot", "\(id) \(request.on)") { state in
+            session(id, in: &state) {
+                $0.autopilot = request.on ? AutopilotRun(startedAt: Date()) : nil
+            }
+        }
+    }
+
     func stopTask(_ id: String, task: String) async throws {
         try call("stopTask", "\(id) \(task)") { _ in }
     }

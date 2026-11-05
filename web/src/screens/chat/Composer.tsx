@@ -35,6 +35,8 @@ import {
 import { draftKey, NO_DRAFT } from "../../store/state.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
+import { AutopilotButton } from "./Autopilot.tsx";
+import { useAutopilot, type AutopilotControl } from "./useAutopilot.ts";
 import { ConnectorsSheet, ResumeSheet, type ChatNav } from "./CommandSheets.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
 import { prepareImage } from "./images.ts";
@@ -56,6 +58,7 @@ import { dropThumbnail, keepThumbnail, useThumbnail } from "./thumbnails.ts";
 import { useSuggestions } from "./useSuggestions.ts";
 
 const BUSY = new Set<Session["state"]>(["starting", "running", "waiting"]);
+const BYPASS: PermissionMode = "bypassPermissions";
 
 /**
  * Whether Return adds a line: on a touch screen with no fine pointer and no hover, as a
@@ -103,6 +106,7 @@ type Props =
       placeholder?: undefined;
       pixie?: undefined;
       chat?: undefined;
+      autopilot?: undefined;
     }
   | {
       session?: undefined;
@@ -115,6 +119,8 @@ type Props =
       placeholder?: string;
       pixie?: undefined;
       chat?: undefined;
+      // Kept by the new chat's screen, as where the chat works follows it.
+      autopilot: AutopilotControl;
     }
   // A pixie's chat, if it has one yet: messages go through the pixie, which starts a new run
   // when needed. Its settings live on its page, so the selectors and suggestions stay out (D072).
@@ -128,6 +134,7 @@ type Props =
       place?: undefined;
       workIn?: undefined;
       placeholder?: undefined;
+      autopilot?: undefined;
     };
 
 /**
@@ -148,6 +155,7 @@ export function Composer({
   placeholder,
   pixie,
   chat,
+  autopilot,
 }: Props) {
   const { state, actions } = useStore();
   // The message lives in the store, per chat, so it waits there while another chat is open.
@@ -156,6 +164,8 @@ export function Composer({
   );
   // The chat that runs: an open chat, or the pixie's.
   const live = session ?? chat;
+  const ownAutopilot = useAutopilot(live);
+  const pilot = autopilot ?? ownAutopilot;
   const { text, files } = state.drafts[key] ?? NO_DRAFT;
   // Why the Mac refused the last message, until the text changes (B46).
   const [refused, setRefused] = useState<string | null>(null);
@@ -263,7 +273,7 @@ export function Composer({
         break;
       }
       case "permissions":
-        setPicker("permission");
+        if (!pilot.on) setPicker("permission");
         break;
       case "mcp":
         setSheet({ kind: "mcp" });
@@ -340,6 +350,7 @@ export function Composer({
               ...(choices.effort === null ? {} : { effort: choices.effort }),
               permission_mode: choices.permission,
             }),
+        ...pilot.create,
         ...workIn,
       });
       setSending(false);
@@ -445,7 +456,7 @@ export function Composer({
   const selector = (kind: Picker, label: string, unavailable = false) => {
     return (
       <button
-        className="qt"
+        className={kind === "permission" && pilot.on ? "qt ap" : "qt"}
         aria-haspopup="dialog"
         aria-expanded={picker === kind}
         // "Thinking: not available" names its menu already (B116).
@@ -602,7 +613,7 @@ export function Composer({
             </button>
           )}
         </div>
-        {/* +, the mic and where the chat works; then the model, thinking and mode. */}
+        {/* +, the mic, Autopilot and where the chat works; then the model, thinking and mode. */}
         <div className="crow">
           {pixie === undefined && (
             <>
@@ -637,6 +648,9 @@ export function Composer({
           >
             <Icon name="mic" />
           </button>
+          {(pixie === undefined || live !== undefined) && (
+            <AutopilotButton control={pilot} disabled={closed} />
+          )}
           {place}
           <span className="flex" />
           {pixie === undefined && choices !== null && (
@@ -651,8 +665,9 @@ export function Composer({
                   )}
               {selector(
                 "permission",
-                PERMISSIONS.find((o) => o.value === choices.permission)?.label ??
-                  choices.permission,
+                PERMISSIONS.find((o) => o.value === (pilot.on ? BYPASS : choices.permission))
+                  ?.label ?? choices.permission,
+                pilot.on,
               )}
             </>
           )}

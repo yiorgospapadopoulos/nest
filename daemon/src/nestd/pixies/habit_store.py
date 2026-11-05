@@ -37,6 +37,7 @@ class StoredHabit(BaseModel):
     triggers: list[Trigger]
     max_minutes: int
     enabled: bool
+    autopilot: bool
     # Scheduled times up to here are handled.
     scheduled_through: datetime
     created_at: datetime
@@ -262,6 +263,7 @@ def _habit(row: sqlite3.Row) -> StoredHabit:
     data["schedule"] = None if data["schedule"] is None else json.loads(data["schedule"])
     data["triggers"] = json.loads(data["triggers"])
     data["enabled"] = bool(data["enabled"])
+    data["autopilot"] = bool(data["autopilot"])
     return StoredHabit.model_validate(data)
 
 

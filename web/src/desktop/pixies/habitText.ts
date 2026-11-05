@@ -182,6 +182,7 @@ export interface HabitDraft {
   weekday: number;
   triggers: HabitTrigger[];
   maxMinutes: number;
+  autopilot: boolean;
 }
 
 export function newDraft(): HabitDraft {
@@ -195,6 +196,7 @@ export function newDraft(): HabitDraft {
     weekday: 0,
     triggers: [],
     maxMinutes: 20,
+    autopilot: false,
   };
 }
 
@@ -206,6 +208,7 @@ export function draftOf(habit: Habit): HabitDraft {
     prompt: habit.prompt,
     triggers: [...habit.triggers],
     maxMinutes: habit.max_minutes,
+    autopilot: habit.autopilot,
   };
   const schedule = habit.schedule;
   if (schedule === null) return { ...draft, repeats: "never" };
@@ -295,6 +298,7 @@ export function createBody(draft: HabitDraft): HabitBody {
     schedule: scheduleOf(draft),
     triggers: ordered(draft.triggers),
     max_minutes: draft.maxMinutes,
+    autopilot: draft.autopilot,
   };
 }
 
@@ -315,5 +319,6 @@ export function updateBody(draft: HabitDraft, habit: Habit): UpdateHabitBody {
   if (!sameSchedule(schedule, habit.schedule)) body.schedule = schedule;
   if (triggers.join(" ") !== habit.triggers.join(" ")) body.triggers = triggers;
   if (draft.maxMinutes !== habit.max_minutes) body.max_minutes = draft.maxMinutes;
+  if (draft.autopilot !== habit.autopilot) body.autopilot = draft.autopilot;
   return body;
 }

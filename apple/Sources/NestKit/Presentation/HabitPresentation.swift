@@ -194,6 +194,7 @@ public struct HabitDraft: Sendable, Hashable {
     public var weekday = 0
     public var triggers: Set<HabitTrigger> = []
     public var maxMinutes = 20
+    public var autopilot = false
 
     public init() {}
 
@@ -202,6 +203,7 @@ public struct HabitDraft: Sendable, Hashable {
         prompt = habit.prompt
         triggers = Set(habit.triggers)
         maxMinutes = habit.maxMinutes
+        autopilot = habit.autopilot ?? false
         use(habit.schedule)
     }
 
@@ -270,7 +272,7 @@ public struct HabitDraft: Sendable, Hashable {
     public var create: CreateHabitRequest {
         CreateHabitRequest(
             name: trimmedName, prompt: trimmedPrompt, schedule: schedule,
-            triggers: orderedTriggers, maxMinutes: maxMinutes)
+            triggers: orderedTriggers, maxMinutes: maxMinutes, autopilot: autopilot)
     }
 
     /// Only what changed from the habit.
@@ -284,6 +286,7 @@ public struct HabitDraft: Sendable, Hashable {
         }
         if orderedTriggers != habit.triggers { request.triggers = orderedTriggers }
         if maxMinutes != habit.maxMinutes { request.maxMinutes = maxMinutes }
+        if autopilot != (habit.autopilot ?? false) { request.autopilot = autopilot }
         return request
     }
 

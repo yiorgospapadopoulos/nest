@@ -91,6 +91,7 @@ async def test_habit_crud(api: Api) -> None:
         "updated_at",
         "next_due_at",
         "last_run",
+        "autopilot",
     }
     assert created.json()["max_minutes"] == 20
     assert created.json()["next_due_at"] == "2026-01-02T09:00:00Z"

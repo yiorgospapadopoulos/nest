@@ -15,7 +15,7 @@ import type { BackgroundSummary, Restore, Session } from "../../api/types.ts";
 import { reviewWaitingLine } from "../../transcript/github.ts";
 import { ScrollFollow } from "../../screens/chat/scrollFollow.ts";
 import { useStopTask } from "../../screens/chat/useStopTask.ts";
-import { nearestItem, VIRTUAL_FROM } from "../../screens/chat/virtualRows.ts";
+import { itemIndexAt, nearestItem, VIRTUAL_FROM } from "../../screens/chat/virtualRows.ts";
 import { workRoot } from "../../screens/approvals/hooks.ts";
 import { asDraftFiles } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
@@ -29,7 +29,7 @@ import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { Button } from "../ui/controls.tsx";
 import { onRewindLast } from "./composerFocus.ts";
-import { hoverTurn, setOpen, turnEnds, useOpen } from "./expanded.ts";
+import { groupRow, hoverTurn, setOpen, turnEnds, useOpen } from "./expanded.ts";
 import { Disclosure, Glyph } from "./glyphs.tsx";
 import { RewindSheet } from "./RewindSheet.tsx";
 import { BashRow, TranscriptRow } from "./Rows.tsx";
@@ -115,6 +115,8 @@ export function Transcript({
     () => buildTranscript(events ?? [], state.approvals, root, running, pixies),
     [events, state.approvals, root, running, pixies],
   );
+  // A report can take the row of the message it hides, so the count stays.
+  const lastItem = items.at(-1)?.key;
   const ends = useMemo(() => turnEnds(items), [items]);
   const box = useRef<HTMLDivElement>(null);
   const follow = useRef(new ScrollFollow());
@@ -158,17 +160,15 @@ export function Transcript({
   useLayoutEffect(() => {
     const el = box.current;
     if (el !== null && follow.current.contentArrived()) el.scrollTop = el.scrollHeight;
-  }, [items.length, live, agentLive, working, jumps, runs]);
+  }, [items.length, lastItem, live, agentLive, working, jumps, runs]);
 
-  // A hit inside a collapsed group of tool calls opens the group first.
+  // A hit inside a collapsed group of tool calls opens the group first; a tool result's
+  // event shows with its call, so the hit's item is the last at or before it.
   useLayoutEffect(() => {
     if (focus === null) return;
-    const group = items.find(
-      (item) =>
-        item.kind === "tools" &&
-        item.items.some((child) => Number.parseInt(child.key, 10) === focus),
-    );
-    if (group !== undefined) setOpen(id, group.key, true);
+    const index = itemIndexAt(items, focus);
+    const item = index === null ? undefined : items[index];
+    if (item?.kind === "tools") setOpen(id, groupRow(item.key), true);
   }, [focus, items, id]);
 
   useLayoutEffect(() => {

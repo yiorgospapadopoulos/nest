@@ -307,8 +307,8 @@ describe("a long chat draws only what is on screen (B117)", () => {
     const box = defined(document.querySelector<HTMLElement>(".dc-tx"));
     expect(box).toHaveClass("virt");
     await scrollTo(box, 0);
-    const row = await within(box).findByRole("button", { name: /Bash/ });
-    fireEvent.click(row);
+    fireEvent.click(await within(box).findByRole("button", { name: "Ran 1 command" }));
+    fireEvent.click(await within(box).findByRole("button", { name: /Bash/ }));
     expect(box.querySelector(".dc-out pre")?.textContent).toBe("a\nb\nc");
     // Scrolled far away the row is not drawn at all; back at the top it is open.
     await scrollTo(box, 20_000);
@@ -319,6 +319,69 @@ describe("a long chat draws only what is on screen (B117)", () => {
       "true",
     );
     expect(box.querySelector(".dc-out pre")?.textContent).toBe("a\nb\nc");
+  });
+});
+
+describe("a call folded to its line", () => {
+  const call = event({
+    id: 1,
+    type: "session.message",
+    payload: {
+      blocks: [
+        { type: "tool_use", id: "t1", name: "Agent", input: { description: "Find call sites" } },
+      ],
+      parent_tool_use_id: null,
+    },
+  });
+  const steps = event({
+    id: 2,
+    type: "session.message",
+    payload: { blocks: [{ type: "text", text: "Looking" }], parent_tool_use_id: "t1" },
+  });
+  const answer = (id: number) =>
+    event({
+      id,
+      type: "session.message",
+      payload: {
+        blocks: [{ type: "tool_result", tool_use_id: "t1", content: "Three places" }],
+        parent_tool_use_id: null,
+      },
+    });
+
+  it("opens to its row, which opens and closes apart from the line", async () => {
+    const chat = session({ state: "idle", title: "Short chat" });
+    await openDesktop({ chats: [chat], panes: ["s1"], events: [call, steps, answer(3)] });
+
+    const line = await screen.findByRole("button", { name: "Ran 1 agent" });
+    fireEvent.click(line);
+    const row = await screen.findByRole("button", { name: /Find call sites/ });
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(line).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("stays open when a lone agent opened while it ran ends and folds", async () => {
+    const chat = session({ state: "running", title: "Short chat" });
+    const { push } = await openDesktop({
+      chats: [chat],
+      panes: ["s1"],
+      events: [call, steps],
+    });
+
+    fireEvent.click(await screen.findByText("Find call sites"));
+    push({ ...answer(3), session_id: "s1" });
+
+    expect(await screen.findByRole("button", { name: "Ran 1 agent" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(document.querySelector(".dc-gitems .dc-line.tool")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 });
 

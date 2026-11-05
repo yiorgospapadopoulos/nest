@@ -25,6 +25,7 @@ const DESKTOP_SHARED = [
   "screens/chat/scrollFollow.ts",
   "screens/chat/start.ts",
   "screens/chat/thumbnails.ts",
+  "screens/chat/useAutopilot.ts",
   "screens/chat/useStopTask.ts",
   "screens/chat/useSuggestions.ts",
   "screens/chat/virtualRows.ts",

@@ -23,6 +23,7 @@ import type {
   Session,
 } from "../../api/types.ts";
 import { localEngineName } from "../../screens/settings/accountText.ts";
+import { useAutopilot } from "../../screens/chat/useAutopilot.ts";
 import { prepareImage } from "../../screens/chat/images.ts";
 import { localCommand, namedModel, type LocalCommand } from "../../screens/chat/localCommands.ts";
 import { effortLabel, PERMISSIONS } from "../../screens/chat/options.ts";
@@ -65,6 +66,7 @@ import { takeNextDraftChoice } from "../shell/frame/draftChoice.ts";
 import { Button, TextField } from "../ui/controls.tsx";
 import { Menu, QuietMenu } from "../ui/Menu.tsx";
 import type { MenuEntry } from "../ui/menuItems.ts";
+import { AutopilotButton } from "./Autopilot.tsx";
 import { askRewindLast, onComposerFocus } from "./composerFocus.ts";
 import { EscapeRepeat, keyAction, type ComposerKey } from "./composerKeys.ts";
 import { useWholeItems } from "./wholeItems.ts";
@@ -147,6 +149,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
         : { session: session.id },
   );
   const { text, files } = state.drafts[key] ?? NO_DRAFT;
+  const pilot = useAutopilot(session);
   const [refused, setRefused] = useState<string | null>(null);
   const [elsewhere, setElsewhere] = useState(false);
   const [uploads, setUploads] = useState(0);
@@ -245,11 +248,13 @@ export function Composer({ target }: { target: ComposerTarget }) {
   const shownPlace: NewChatChoice =
     place ??
     choiceOfMode(
-      repo?.worktree.default === undefined || repo.worktree.default === null
-        ? (state.agentDefaults?.mode ?? "in_place")
-        : repo.worktree.default
-          ? "worktree"
-          : "in_place",
+      pilot.on
+        ? "worktree"
+        : repo?.worktree.default === undefined || repo.worktree.default === null
+          ? (state.agentDefaults?.mode ?? "in_place")
+          : repo.worktree.default
+            ? "worktree"
+            : "in_place",
     );
 
   const pickModel = (model: string, provider: string) => {
@@ -284,7 +289,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
         break;
       }
       case "permissions":
-        setPicker("permissions");
+        if (!pilot.on) setPicker("permissions");
         break;
       case "mcp":
         shell?.openSettings({ page: "configuration" });
@@ -357,6 +362,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
               ...(choices.effort === null ? {} : { effort: choices.effort }),
               permission_mode: choices.permission,
             }),
+        ...pilot.create,
         ...(repo?.git === true ? placeBody(shownPlace, branch, repo) : {}),
       });
       setSending(false);
@@ -476,7 +482,8 @@ export function Composer({ target }: { target: ComposerTarget }) {
         : fit.compact
           ? shortEffort(choices.effort, effortLabel(choices.effort))
           : effortLabel(choices.effort);
-  const permissionLabel = PERMISSIONS.find((o) => o.value === choices?.permission)?.label ?? "Ask";
+  const shownPermission = pilot.on ? "bypassPermissions" : choices?.permission;
+  const permissionLabel = PERMISSIONS.find((o) => o.value === shownPermission)?.label ?? "Ask";
 
   const modelEntries = (): MenuEntry[] => {
     const sections = modelSections(state, choices?.provider ?? null, session === undefined);
@@ -802,6 +809,9 @@ export function Composer({ target }: { target: ComposerTarget }) {
             )}
           </Menu>
         )}
+        {(pixie === null || session !== undefined) && (
+          <AutopilotButton control={pilot} disabled={closed} />
+        )}
         {target.kind === "start" && repo?.git === true && (
           <span className="dc-startplace">
             <PlaceButton repo={repo} choice={shownPlace} onChoose={setPlace} quiet />
@@ -849,16 +859,19 @@ export function Composer({ target }: { target: ComposerTarget }) {
             <span className="dc-dropi" data-drop="3">
               <QuietMenu
                 title={
-                  fit.compact && choices.permission === "acceptEdits"
-                    ? shortPermission(choices.permission, permissionLabel)
+                  fit.compact && shownPermission === "acceptEdits"
+                    ? shortPermission(shownPermission, permissionLabel)
                     : permissionLabel
                 }
                 help="Permission mode"
                 items={permissionEntries}
                 align="end"
-                {...(target.kind === "start" && choices.permission === "bypassPermissions"
-                  ? { tint: "var(--wait)" }
-                  : {})}
+                disabled={pilot.on}
+                {...(pilot.on
+                  ? { tint: "var(--bad)" }
+                  : target.kind === "start" && choices.permission === "bypassPermissions"
+                    ? { tint: "var(--wait)" }
+                    : {})}
               />
             </span>
           </>

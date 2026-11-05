@@ -252,6 +252,32 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("POST", "/api/sessions/s1/limit/resume", response: sessionJSON) {
             _ = try await $0.resumeLimit("s1")
         },
+        RouteCase(
+            "PUT", "/api/sessions/s1/autopilot",
+            body: #"{"on":true,"stop_after_minutes":120,"weekly_cap":null}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.setAutopilot(
+                "s1",
+                SetAutopilotRequest(on: true, budget: AutopilotBudget(stopAfterMinutes: 120)))
+        },
+        RouteCase(
+            "PUT", "/api/sessions/s1/autopilot",
+            body: #"{"on":false,"stop_after_minutes":null,"weekly_cap":null}"#,
+            response: sessionJSON
+        ) { _ = try await $0.setAutopilot("s1", SetAutopilotRequest(on: false)) },
+        RouteCase(
+            "POST", "/api/sessions",
+            body:
+                #"{"attachment_ids":[],"autopilot":{"on":true,"stop_after_minutes":null,"weekly_cap":70},"prompt":"Go","repo":"todo-ui"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(
+                    repo: "todo-ui", prompt: "Go",
+                    autopilot: SetAutopilotRequest(
+                        on: true, budget: AutopilotBudget(weeklyCap: 70))))
+        },
         RouteCase("POST", "/api/sessions/s1/tasks/toolu_01/stop", response: "") {
             try await $0.stopTask("s1", task: "toolu_01")
         },

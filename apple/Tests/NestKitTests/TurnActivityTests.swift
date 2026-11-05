@@ -127,6 +127,38 @@ private func end(_ id: String) -> TranscriptItem {
 }
 
 @Suite struct TranscriptGroupingTests {
+    private func report(_ id: String, summary: String? = "Done") -> TranscriptItem {
+        let report = AutopilotReport(ended: .done, summary: summary, decisions: [])
+        return TranscriptItem(id: id, content: .autopilotReport(report), eventID: 1)
+    }
+
+    @Test func theTextAfterAFinishCallHidesWithAReportAndStaysWithoutOne() {
+        let items = [tool("mcp__nest__autopilot_finished", "f"), text("a")]
+        let hidden = TranscriptGrouping.entries(items + [report("r")], live: false)
+        let shown = TranscriptGrouping.entries(items, live: false)
+        let noSummary = TranscriptGrouping.entries(
+            items + [report("r", summary: nil)], live: false)
+        #expect(hidden.map(\.id) == ["r"])
+        #expect(shown.map(\.id) == ["a"])
+        #expect(noSummary.map(\.id) == ["a", "r"])
+    }
+
+    @Test func theTextStaysWhenTheUserSpokeBeforeTheReport() {
+        let user = TranscriptItem(
+            id: "u", content: .user(text: "One more", attachments: []), eventID: 1)
+        let items = [
+            tool("mcp__nest__autopilot_finished", "f"), text("a"), user, text("b"), report("r"),
+        ]
+        #expect(TranscriptGrouping.entries(items, live: false).map(\.id) == ["a", "u", "b", "r"])
+    }
+
+    @Test func eachReportKeepsItsPlaceOutOfToolGroups() {
+        let items = [tool("Read", "t1"), report("r1"), tool("Read", "t2"), report("r2")]
+        #expect(
+            shape(TranscriptGrouping.entries(items, live: false))
+                == ["[t1]", "r1", "[t2]", "r2"])
+    }
+
     func shape(_ entries: [TranscriptEntry]) -> [String] {
         entries.map { entry in
             switch entry {
@@ -143,7 +175,7 @@ private func end(_ id: String) -> TranscriptItem {
             text("b"), tool("Read", "t3"), text("c"),
         ]
         let entries = TranscriptGrouping.entries(items, live: false)
-        #expect(shape(entries) == ["a", "[t1 th t2]", "tail", "b", "t3", "c"])
+        #expect(shape(entries) == ["a", "[t1 th t2]", "tail", "b", "[t3]", "c"])
         #expect(entries[1].id == "tools-t1")
         guard case .tools(let group) = entries[1] else { throw Unexpected(entries[1]) }
         #expect(group.calls.map(\.id) == ["t1", "t2"])
@@ -152,10 +184,54 @@ private func end(_ id: String) -> TranscriptItem {
         #expect(entries[0].id == "a")
     }
 
-    @Test func aLoneToolKeepsItsThinkingAsPlainRows() {
+    @Test func aLoneToolFoldsAndLeavesItsThinkingOut() {
         let items = [tool("Bash", "t1"), thought("th"), text("a")]
-        #expect(shape(TranscriptGrouping.entries(items, live: true)) == ["t1", "th", "a"])
+        #expect(shape(TranscriptGrouping.entries(items, live: true)) == ["[t1]", "th", "a"])
         #expect(shape(TranscriptGrouping.entries([], live: true)).isEmpty)
+    }
+
+    @Test func aLoneAgentKeepsItsRowOnlyWhileItsCallRuns() throws {
+        let running = [tool("Agent", "a1", result: nil)]
+        #expect(shape(TranscriptGrouping.entries(running, live: true)) == ["a1"])
+        // Cut off, it is stopped and folds; its background task keeps it running.
+        #expect(shape(TranscriptGrouping.entries(running, live: false)) == ["[a1]"])
+        #expect(
+            shape(TranscriptGrouping.entries(running, live: false, background: ["a1"])) == ["a1"])
+        // A background agent's call returned at once: it folds while it goes on working.
+        let returned = TranscriptGrouping.entries(
+            [tool("Agent", "a1")], live: false, background: ["a1"])
+        #expect(shape(returned) == ["[a1]"])
+        guard case .tools(let group) = returned[0] else { throw Unexpected(returned) }
+        #expect(group.isRunning)
+    }
+
+    @Test func aLoneCallWithImagesKeepsItsRow() {
+        var shot = call("Screenshot", "s1")
+        shot.images = [ToolImage(attachmentID: "i1", mediaType: "image/png")]
+        let item = TranscriptItem(id: "s1", content: .tool(shot), eventID: 1)
+        #expect(shape(TranscriptGrouping.entries([item], live: false)) == ["s1"])
+        // In a run of calls they stay in the group.
+        #expect(
+            shape(TranscriptGrouping.entries([item, tool("Bash", "t1")], live: false))
+                == ["[s1 t1]"])
+    }
+
+    @Test func aFailedLoneCallFoldsAndSaysItFailed() throws {
+        let entries = TranscriptGrouping.entries(
+            [tool("Bash", "t1", result: "boom", isError: true)], live: false)
+        guard case .tools(let group) = entries[0] else { throw Unexpected(entries) }
+        #expect(group.summary == "Ran 1 command, 1 failed")
+    }
+
+    /// A lone agent's row, opened while it ran, keeps the line open once it folds.
+    @Test func aGroupOfOneOpensWithItsCall() throws {
+        let one = TranscriptGrouping.entries([tool("Agent", "a1")], live: false)
+        guard case .tools(let lone) = one[0] else { throw Unexpected(one) }
+        #expect(lone.openIDs == ["tools-a1", "a1"])
+        let two = TranscriptGrouping.entries(
+            [tool("Agent", "a1"), tool("Bash", "t1")], live: false)
+        guard case .tools(let run) = two[0] else { throw Unexpected(two) }
+        #expect(run.openIDs == ["tools-a1"])
     }
 
     @Test func otherItemsBreakAGroup() {
@@ -167,7 +243,7 @@ private func end(_ id: String) -> TranscriptItem {
         ]
         #expect(
             shape(TranscriptGrouping.entries(items, live: false))
-                == ["[t1 t2]", "ap", "t3", "end", "[t4 t5]"])
+                == ["[t1 t2]", "ap", "[t3]", "end", "[t4 t5]"])
     }
 
     @Test func onlyToolsOfTheOpenTurnRunWhileLive() throws {

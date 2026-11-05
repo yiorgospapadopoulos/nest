@@ -439,6 +439,27 @@
                 return sessionList[index]
             }
         }
+
+        func setAutopilot(_ id: String, _ request: SetAutopilotRequest) async throws -> Session {
+            try lock.withLock {
+                guard let index = sessionList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound(id)
+                }
+                let start = sessionList[index].autopilot?.startedAt ?? now
+                sessionList[index].autopilot =
+                    request.on
+                    ? AutopilotRun(
+                        startedAt: start,
+                        until: request.budget.stopAfterMinutes.map {
+                            start.addingTimeInterval(Double($0) * 60)
+                        },
+                        weeklyCap: request.budget.weeklyCap,
+                        decisions: sessionList[index].autopilot?.decisions ?? [])
+                    : nil
+                return sessionList[index]
+            }
+        }
+
         func stopTask(_ id: String, task: String) async throws {}
 
         func rewindPreview(_ id: String, message: Int, restore: RewindRestore) async throws
@@ -1234,6 +1255,7 @@
                 changed.triggers = request.triggers ?? changed.triggers
                 changed.maxMinutes = request.maxMinutes ?? changed.maxMinutes
                 changed.enabled = request.enabled ?? changed.enabled
+                changed.autopilot = request.autopilot ?? changed.autopilot
                 changed.updatedAt = Date()
                 habitList[index] = changed
                 return changed

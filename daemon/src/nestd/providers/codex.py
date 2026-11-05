@@ -146,7 +146,13 @@ class CodexRun:
         access holds, and one the call guard refused is allowed nothing.
         """
         spec = self._spec
-        run = RunPermissions(self._mode, spec.guard_git, spec.write_root, _nest_servers(spec))
+        run = RunPermissions(
+            self._mode,
+            spec.guard_git,
+            spec.write_root,
+            _nest_servers(spec),
+            commits=spec.guard_commits,
+        )
         agents = self.stream.agents
         chain: list[Subthread] = []
         thread = agents.thread(thread_id)

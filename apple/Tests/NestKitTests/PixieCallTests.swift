@@ -97,7 +97,7 @@ private func call(_ id: String, _ subagent: String?, name: String = "Agent", res
             call("a1", "Explore", result: "ok"),
         ]
         let entries = TranscriptGrouping.entries(items, live: false, pixies: ["reviewer"])
-        #expect(entries.map(\.id) == ["t1", "p1", "tools-t2"])
+        #expect(entries.map(\.id) == ["tools-t1", "p1", "tools-t2"])
         guard case .pixieCall(let pixieCall) = entries[1] else { throw Unexpected(entries) }
         #expect(pixieCall.slug == "reviewer")
         #expect(pixieCall.call.result == "Done.")

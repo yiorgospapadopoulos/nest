@@ -1953,6 +1953,155 @@ button.dc-line:disabled {
 .dc-attach {
   color: var(--t3) !important;
 }
+/* Autopilot (B120): red when on, as Bypass beside it. */
+.dk-btn.k-plain.dc-apb {
+  color: var(--t3);
+}
+.dk-btn.k-plain.dc-apb.on {
+  color: var(--bad);
+  background: var(--fail-soft);
+}
+.dc-crow .dk-quiet:disabled {
+  cursor: default;
+  background: transparent;
+}
+.dc-apop {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 280px;
+  padding: 12px;
+  font-size: var(--dc-ui);
+}
+.dc-apop-on {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: stretch;
+}
+.dc-apop-on b {
+  font-weight: 500;
+}
+.dc-apop .dc-label {
+  margin: 6px 0 0;
+}
+.dc-apop .dk-switch[aria-checked="true"] {
+  background: var(--bad);
+}
+.dc-apr {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px 12px 10px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  font-size: var(--dc-ui);
+  color: var(--t2);
+}
+.dc-apr-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dc-apr-h b {
+  font-weight: 500;
+  color: var(--t1);
+}
+.dc-apr .dc-label {
+  margin: 2px 0 -2px;
+}
+.dc-apr ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* What Autopilot decided (B120): one line that opens, in the chat and in the report. */
+.dc-dec {
+  min-width: 0;
+}
+.dc-dec .dc-line {
+  align-items: flex-start;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+.dc-dec .dc-line > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.dc-deci {
+  color: var(--fail-t);
+}
+.dc-dect {
+  min-width: 0;
+}
+.dc-dect b {
+  margin-left: 2px;
+  font-weight: 600;
+  color: var(--fail-t);
+}
+.dc-dect b svg {
+  margin-right: 3px;
+}
+.dc-decb {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 6px 5px;
+  padding: 2px 0 2px 12px;
+  border-left: 1px solid var(--fail-t);
+  font-size: var(--dc-meta);
+  overflow-wrap: anywhere;
+}
+.dc-decb ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dc-decb li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-left: 16px;
+  color: var(--t3);
+}
+.dc-decb li b {
+  flex: none;
+  max-width: 60%;
+  font-weight: 500;
+  color: var(--t2);
+}
+.dc-decb li.on {
+  padding-left: 0;
+}
+.dc-decb li.on,
+.dc-decb li.on b {
+  color: var(--fail-t);
+}
+.dc-decb li.on > svg {
+  flex: none;
+  align-self: center;
+}
+.dc-decb p {
+  margin: 0;
+  color: var(--t3);
+}
+.dc-line-bar > .dc-apstep {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dc-meta);
+  color: var(--t2);
+}
 .dc-place {
   display: inline-flex;
   align-items: center;

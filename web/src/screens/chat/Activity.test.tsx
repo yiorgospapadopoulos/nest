@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   Approval,
@@ -156,6 +156,37 @@ describe("a running turn", () => {
     expect(screen.getByText("Ran 2 commands, read 1 file")).not.toHaveClass("glow");
   });
 
+  it("keeps a lone agent's row open when it ends and folds to its line", async () => {
+    const steps = at(4, "session.message", {
+      parent_tool_use_id: "a1",
+      blocks: [{ type: "text", text: "Looking around" }],
+    });
+    const { user, push } = await openChat(session({ state: "running" }), [
+      ...turnStarted,
+      blocks(3, [call("a1", "Agent", { description: "Find call sites" })]),
+      steps,
+    ]);
+
+    const row = defined(screen.getByText("Find call sites").closest("details"));
+    expect(row).not.toHaveClass("tgroup");
+    await user.click(screen.getByText("Find call sites"));
+    await waitFor(() => {
+      expect(row.open).toBe(true);
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    push({
+      id: 5,
+      session_id: "s1",
+      type: "session.message",
+      ts: START,
+      payload: { blocks: [result("a1", "Three places")] },
+    });
+    const line = defined(screen.getByText("Ran 1 agent").closest("details"));
+    expect(line.open).toBe(true);
+    expect(within(line).getByText("Find call sites")).toBeInTheDocument();
+  });
+
   it("counts agents that are done, including background ones still running", async () => {
     const background: BackgroundSummary = {
       running: 1,
@@ -273,7 +304,7 @@ describe("screen reader announcements", () => {
 });
 
 describe("a finished turn", () => {
-  it("shows thinking rows and plain calls, not how long the turn worked", async () => {
+  it("shows thinking rows and a call's line, not how long the turn worked", async () => {
     const { user } = await openChat(session({ state: "idle" }), [
       ...turnStarted,
       blocks(3, [
@@ -297,7 +328,7 @@ describe("a finished turn", () => {
     // Left out by the engine: nothing to expand.
     expect(screen.getByText("Thought for 3s").closest("details")).toBeNull();
     expect(screen.getByText("Thought").closest("details")).not.toBeNull();
-    expect(screen.getByText("Read").closest(".tool")).not.toHaveClass("tgroup");
+    expect(screen.getByText("Read 1 file").closest("details")).toHaveClass("tgroup");
     expect(screen.queryByText("Worked for 1m 12s", { selector: ".tx *" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
   });
@@ -345,8 +376,7 @@ describe("a finished turn", () => {
         { background },
       );
 
-      const row = defined((await screen.findByText("Bash")).closest<HTMLElement>(".tool"));
-      expect(within(row).getByText("running")).toBeInTheDocument();
+      expect(await screen.findByText("Running 1 command")).toHaveClass("glow");
     });
   });
 

@@ -25,6 +25,7 @@ struct PaneView: View {
                                     BackgroundBar(chat: chat)
                                     PendingReviewBar(chat: chat)
                                     LimitPauseBar(chat: chat)
+                                    AutopilotBar(chat: chat)
                                 }
                             }
                         }
