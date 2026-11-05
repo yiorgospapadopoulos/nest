@@ -1,4 +1,4 @@
-/* The chat pane (B117 wave 2A), as the Mac's PaneView, TranscriptView and Composer: the
+/* The chat pane (B117 wave 2A), as the Mac's PaneView and Composer: the
    Mac's sizes (TypeSize ui 12, reading 12.5, meta 11; Inter runs as wide as SF at a size),
    flat soft fills, 1 px dividers and the accent bubble. */
 html.desk {
@@ -33,6 +33,35 @@ html.desk {
 }
 .dc-pane.dimmed > .dc-body {
   opacity: 0.5;
+}
+/* One transcript alone, as a pane of the Mac app shows it (B124): the app's own pane shows
+   through, in the system font. */
+html.desk.pane {
+  --sf: -apple-system, system-ui, sans-serif;
+  --mono: ui-monospace, Menlo, monospace;
+  background: transparent;
+}
+html.desk.pane body {
+  background: transparent;
+  overflow: hidden;
+}
+html.desk.pane .dc-txin {
+  line-height: 1.56;
+}
+html.desk.pane .dc-md .md code {
+  background: var(--soft);
+  padding: 0 2px;
+}
+html.desk.pane .dc-md .md pre code {
+  background: none;
+  padding: 0;
+}
+.dc-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--t1);
 }
 .dc-g {
   flex: none;
@@ -384,10 +413,11 @@ a.dk-btn {
   display: flex;
   flex-direction: column-reverse;
 }
-.dc-tx::-webkit-scrollbar {
+/* A pane of the Mac app keeps the system's overlay scrollers. */
+html:not(.pane) .dc-tx::-webkit-scrollbar {
   width: 8px;
 }
-.dc-tx::-webkit-scrollbar-thumb {
+html:not(.pane) .dc-tx::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--t1) 18%, transparent);
   border-radius: 8px;
   border: 2px solid transparent;

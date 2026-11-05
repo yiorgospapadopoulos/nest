@@ -16,6 +16,7 @@ import {
 } from "./devicePrefs.ts";
 import { StoreContext } from "./context.ts";
 import { deviceStorage } from "./legacyKeys.ts";
+import { streamOfAnother } from "./paneStream.ts";
 import { reduce } from "./reducer.ts";
 import { initialState } from "./state.ts";
 
@@ -24,6 +25,8 @@ interface Props {
   connect: SocketFactory;
   storage?: () => Storage;
   location?: { protocol: string; host: string };
+  // The one chat a pane of the Mac app shows (B124).
+  pane?: string;
   children: ReactNode;
 }
 
@@ -33,6 +36,7 @@ export function StoreProvider({
   connect,
   storage = deviceStorage,
   location = window.location,
+  pane,
   children,
 }: Props) {
   const [state, dispatch] = useReducer(reduce, storage, (from) => ({
@@ -62,6 +66,8 @@ export function StoreProvider({
     if (!ready) return;
     const stream = new EventStream(connect, (after) => eventsUrl(location, after), {
       onEvent: (event) => {
+        // Half of a busy page's work would be the text of chats it never shows.
+        if (pane !== undefined && streamOfAnother(event, pane)) return;
         actions.receive(event);
         if (event.type === "claude_chats.updated") void actions.loadClaudeChats();
       },
@@ -100,12 +106,13 @@ export function StoreProvider({
       window.removeEventListener("online", wake);
       stream.stop();
     };
-  }, [ready, connect, location, actions]);
+  }, [ready, connect, location, actions, pane]);
 
   useEffect(() => {
-    if (!ready) return;
+    // The app around a pane reports for the device; a hidden pane says nothing of it.
+    if (!ready || pane !== undefined) return;
     return reportVisibility({ document, report: (visible) => api.reportVisibility(visible) });
-  }, [ready, api]);
+  }, [ready, api, pane]);
 
   useEffect(() => {
     if (ready) void actions.checkUpdates();

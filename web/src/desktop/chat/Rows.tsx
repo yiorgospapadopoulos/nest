@@ -1,4 +1,4 @@
-// A chat's transcript rows as the Mac's TranscriptView draws them (TranscriptRow and the
+// A chat's transcript rows (TranscriptRow and the
 // rows it switches to): the user's accent bubble with its actions on hover, the reply as
 // text with Copy on hover, quiet lines for thinking, tools, hooks and notes that open in
 // place, pixie calls, and the approvals answered where they ask.
@@ -31,6 +31,7 @@ import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { terminalLine } from "../layout/tools.ts";
 import { Sprite, TeamFace } from "../pixies/Sprite.tsx";
+import { useBridge } from "../context.ts";
 import { ShellContext } from "../shell/context.ts";
 import { runInTerminal } from "../shell/frame/terminal.ts";
 import { Menu } from "../ui/Menu.tsx";
@@ -164,6 +165,7 @@ export function HoverCopy({
 }
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const bridge = useBridge();
   const [done, setDone] = useState(false);
   useEffect(() => {
     if (!done) return;
@@ -180,9 +182,11 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
       title={label}
       aria-label={label}
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setDone(true);
-        });
+        void (bridge.pane?.({ kind: "copy", text }) ?? navigator.clipboard.writeText(text)).then(
+          () => {
+            setDone(true);
+          },
+        );
       }}
     >
       <Glyph name={done ? "check" : "copy"} size={11} />
@@ -325,7 +329,7 @@ export function AssistantText({ text, copyable = true }: { text: string; copyabl
 /** A shell command from a reply in mono, with Copy and, for one line, Run in terminal. */
 function CommandBlock({ command }: { command: string }) {
   const { state, actions } = useStore();
-  const { terminalPane } = useRows();
+  const { terminalPane, host } = useRows();
   const shell = use(ShellContext);
   // A command of several lines would run line by line; Copy still offers it.
   const runs = terminalLine(command) !== null;
@@ -333,12 +337,17 @@ function CommandBlock({ command }: { command: string }) {
     <div className="dc-cmd">
       <code>{command}</code>
       <CopyButton text={command} label="Copy the command" />
-      {runs && shell?.project != null && terminalPane !== null && (
+      {runs && (host !== null || (shell?.project != null && terminalPane !== null)) && (
         <button
           className="dc-copy dk-btn k-plain icon"
           title="Run the command in a terminal pane in the chat's folder"
           aria-label="Run in terminal"
           onClick={() => {
+            if (host !== null) {
+              host.runInTerminal(command);
+              return;
+            }
+            if (shell === null || terminalPane === null) return;
             runInTerminal(
               shell,
               { sessions: state.sessions, claudeChats: state.claudeChats, repos: state.repos },
@@ -882,6 +891,7 @@ function ToolImages({ images, indent = true }: { images: ResultImage[]; indent?:
 }
 
 function Thumbnail({ id }: { id: string }) {
+  const { host } = useRows();
   const url = useImage(id);
   const [open, setOpen] = useState(false);
   if (url === undefined) return <Fireflies size={10} />;
@@ -893,7 +903,8 @@ function Thumbnail({ id }: { id: string }) {
         title="Open full size"
         aria-label="Image from the tool"
         onClick={() => {
-          setOpen(true);
+          if (host === null) setOpen(true);
+          else host.openImage(id);
         }}
       >
         <img src={url} alt="" />

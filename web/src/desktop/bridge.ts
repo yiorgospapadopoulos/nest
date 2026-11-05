@@ -79,6 +79,8 @@ export const BROWSER_CLOSED_EVENT = "nest://browser-closed";
 export interface Bridge {
   // Whether this runs in the desktop app; the browser stub has no shell or windows.
   native: boolean;
+  // In a pane of the Mac app: its way to the app around it.
+  pane?: PanePost;
   daemon(): Promise<DaemonConnection>;
   // Starts or restarts the daemon's user service; "not_installed" without its unit.
   startService(): Promise<"started" | "not_installed">;
@@ -156,9 +158,32 @@ interface TauriGlobal {
   };
 }
 
+/**
+ * What a transcript pane's page asks of the Mac app (B124). The app checks each one
+ * (WebPaneBridge.swift); `daemon` answers with the connection, all others with nothing.
+ */
+export type PaneMessage =
+  | { kind: "daemon" }
+  | { kind: "ready" }
+  | { kind: "openExternal"; url: string }
+  | { kind: "openFile"; path: string }
+  | { kind: "open"; target: OpenTarget }
+  | { kind: "copy"; text: string }
+  | { kind: "toast"; text: string; tone: string }
+  | { kind: "teamWork"; team: string }
+  | { kind: "pixieWork"; pixie: string }
+  | { kind: "message"; action: "edit" | "rewind" | "fork"; event: number }
+  | { kind: "artifact"; id: string; version: number | null }
+  | { kind: "terminal"; command: string }
+  | { kind: "image"; id: string }
+  | { kind: "saveFile"; name: string; base64: string };
+
+export type PanePost = (message: PaneMessage) => Promise<unknown>;
+
 declare global {
   interface Window {
     __TAURI__?: TauriGlobal;
+    webkit?: { messageHandlers?: { nestPane?: { postMessage: PanePost } } };
   }
 }
 
@@ -482,6 +507,35 @@ export function browserBridge(
 }
 
 /**
+ * A transcript pane inside the Mac app: the daemon's address and token come from the app
+ * when asked, so they stay out of the page's address and globals; no shell or windows.
+ */
+export function paneBridge(post: PanePost): Bridge {
+  const send = async (message: PaneMessage) => {
+    await post(message);
+  };
+  return {
+    ...browserBridge({ search: "" }, null),
+    native: true,
+    pane: post,
+    async daemon() {
+      const found = (await post({ kind: "daemon" })) as { base: string; token: string };
+      return { base: trimmed(found.base), token: found.token };
+    },
+    openExternal: (url) => send({ kind: "openExternal", url }),
+    // The app holds the chat's folder; the page's word for it does not count.
+    openTextFile: (path) => send({ kind: "openFile", path }),
+    openInMain: (target) => send({ kind: "open", target }),
+    async saveFile(suggestedName, contents) {
+      if ("base64" in contents) {
+        await send({ kind: "saveFile", name: suggestedName, base64: contents.base64 });
+      }
+      return null;
+    },
+  };
+}
+
+/**
  * The Tauri bridge inside the desktop app. Outside it, the browser stub only in a dev build
  * or a test: the daemon serves the production build too, and a link to that page must not
  * send a token anywhere.
@@ -491,6 +545,10 @@ export function platformBridge(
 ): Bridge {
   const tauri = window.__TAURI__;
   if (tauri !== undefined) return tauriBridge(tauri);
+  const pane = window.webkit?.messageHandlers?.nestPane;
+  if (pane !== undefined) {
+    return paneBridge((message) => pane.postMessage(message));
+  }
   if (!build.dev && build.mode !== "test") return refusingBridge();
   const storage = (() => {
     try {

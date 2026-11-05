@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, HttpApi, type Api } from "../api/client.ts";
 import { browserSockets, type SocketFactory } from "../api/events.ts";
 import { AppearanceProvider } from "../appearance/AppearanceProvider.tsx";
@@ -10,6 +10,8 @@ import { connectionLost } from "../store/updates.ts";
 import { DesktopToast } from "./ui/Toast.tsx";
 import type { Bridge, DaemonConnection } from "./bridge.ts";
 import { ApiContext, BridgeContext } from "./context.ts";
+import { TranscriptPage } from "./chat/TranscriptPage.tsx";
+import type { TranscriptTarget } from "./chat/transcriptTarget.ts";
 import { Pill } from "./Pill.tsx";
 import { ConnectionBanner, Connecting } from "./shell/ConnectionBanner.tsx";
 import { DesktopShell } from "./shell/DesktopShell.tsx";
@@ -54,11 +56,14 @@ async function answers(api: Api): Promise<boolean> {
 export function DesktopRoot({
   bridge,
   pill = false,
+  transcript = null,
   open = httpDaemon,
   storage,
 }: {
   bridge: Bridge;
   pill?: boolean;
+  // One chat's transcript alone, for a pane in the Mac app (B124).
+  transcript?: TranscriptTarget | null;
   // The daemon's API and event socket at an address; tests give fakes.
   open?: (found: DaemonConnection) => Daemon;
   storage?: () => Storage;
@@ -66,7 +71,7 @@ export function DesktopRoot({
   // Unsent text lives only while the app runs, as the Mac's DraftBook: the shared store
   // keeps it on the device, so the window forgets it at launch. The pill only reads it.
   useState(() => {
-    if (!pill) forgetDrafts(storage ?? deviceStorage);
+    if (!pill && transcript === null) forgetDrafts(storage ?? deviceStorage);
   });
   const [daemon, setDaemon] = useState<DaemonConnection | null>(null);
   const current = useRef<DaemonConnection | null>(null);
@@ -95,7 +100,7 @@ export function DesktopRoot({
   if (daemon === null || app === null) {
     return (
       <BridgeContext value={bridge}>
-        <Launch pill={pill} found={found} />
+        <Launch pill={pill || transcript !== null} found={found} />
       </BridgeContext>
     );
   }
@@ -107,13 +112,14 @@ export function DesktopRoot({
       connect={app.connect}
       location={app.location}
       pill={pill}
+      transcript={transcript}
       refresh={refresh}
       {...(storage === undefined ? {} : { storage })}
     />
   );
 }
 
-/** Before the daemon first answers: the frame and the banner; the pill stays hidden. */
+/** Before the daemon first answers: the frame and the banner; a small window stays empty. */
 function Launch({ pill, found }: { pill: boolean; found: () => Promise<boolean> }) {
   const reconnect = useReconnect(true, found);
   if (pill) return null;
@@ -139,6 +145,8 @@ interface Props {
   storage?: () => Storage;
   // The pixie pill's window instead of the main one.
   pill?: boolean;
+  // One chat's transcript instead of the main window.
+  transcript?: TranscriptTarget | null;
   // Asks the platform for the daemon's token again; "changed" builds the app again.
   refresh?: Refresh;
 }
@@ -153,6 +161,7 @@ export function DesktopApp({
   location,
   storage,
   pill = false,
+  transcript = null,
   refresh = same,
 }: Props) {
   return (
@@ -164,8 +173,11 @@ export function DesktopApp({
             connect={connect}
             location={location}
             {...(storage === undefined ? {} : { storage })}
+            {...(transcript !== null ? { pane: paneChat(transcript) } : {})}
           >
-            {pill ? (
+            {transcript !== null ? (
+              <PaneRoot target={transcript} api={api} refresh={refresh} />
+            ) : pill ? (
               <PillRoot />
             ) : (
               <>
@@ -183,6 +195,37 @@ export function DesktopApp({
       </ApiContext>
     </BridgeContext>
   );
+}
+
+const paneChat = (target: TranscriptTarget) => {
+  if ("chat" in target) return target.chat;
+  return "claude" in target ? target.claude : target.work.session;
+};
+
+// How often a pane asks the app for a token again after the daemon refused one.
+const TOKEN_RETRY_MS = 3000;
+
+/** A transcript pane: nothing of the window around it, and it finds the daemon by itself. */
+function PaneRoot({
+  target,
+  api,
+  refresh,
+}: {
+  target: TranscriptTarget;
+  api: Api;
+  refresh: Refresh;
+}) {
+  const { state } = useStore();
+  useDaemonReconnect(api, refresh);
+  const refused = state.auth === "unpaired";
+  useEffect(() => {
+    if (!refused) return;
+    const timer = window.setInterval(() => void refresh(), TOKEN_RETRY_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [refused, refresh]);
+  return <TranscriptPage target={target} />;
 }
 
 function Root({ refresh }: { refresh: Refresh }) {
@@ -279,10 +322,14 @@ function Notice({
  * at once rather than after its own wait.
  */
 function DaemonBanner({ api, refresh }: { api: Api; refresh: Refresh }) {
+  return <ConnectionBanner reconnect={useDaemonReconnect(api, refresh)} />;
+}
+
+function useDaemonReconnect(api: Api, refresh: Refresh) {
   const { state, actions } = useStore();
   const offline = state.auth === "offline";
   const lost = state.auth === "ready" && connectionLost(state);
-  const reconnect = useReconnect(offline || lost, async () => {
+  return useReconnect(offline || lost, async () => {
     if ((await refresh()) === "changed") return true;
     if (!(await answers(api))) return false;
     if (offline) await actions.retry();
@@ -290,5 +337,4 @@ function DaemonBanner({ api, refresh }: { api: Api; refresh: Refresh }) {
     else window.dispatchEvent(new Event("online"));
     return true;
   });
-  return <ConnectionBanner reconnect={reconnect} />;
 }

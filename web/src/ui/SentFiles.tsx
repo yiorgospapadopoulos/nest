@@ -5,6 +5,8 @@ import type { SentFile } from "../transcript/build.ts";
 import { isImage, typeTag, useSentImage } from "./sentFile.ts";
 
 export interface ImageViewer {
+  // The attachment, for a viewer outside the page.
+  id?: string | undefined;
   url: string;
   alt: string;
   onClose: () => void;
@@ -58,6 +60,7 @@ function SentImage({ file, Viewer }: { file: SentFile; Viewer: Props["Viewer"] }
       </button>
       {open && (
         <Viewer
+          id={file.id ?? ""}
           url={image.url}
           alt={file.filename}
           onClose={() => {

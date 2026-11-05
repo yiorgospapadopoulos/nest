@@ -2,6 +2,14 @@ import { createContext, use } from "react";
 import type { Session } from "../../api/types.ts";
 import type { Stopper } from "../../screens/chat/useStopTask.ts";
 
+/** What a row leaves to the Mac app around it, in a pane there (B124). */
+export interface RowsHost {
+  messageAction: (action: "edit" | "rewind" | "fork", event: number) => void;
+  openArtifact: (id: string, version: number) => void;
+  runInTerminal: (command: string) => void;
+  openImage: (id: string) => void;
+}
+
 /** What a chat's transcript rows need beyond their item. */
 export interface ChatRows {
   // The chat the rows are in: their open state is kept under it.
@@ -23,6 +31,8 @@ export interface ChatRows {
   messageActions: ((event: number) => MessageActions | null) | null;
   // The pane a shell command's Run in terminal runs from (its folder); null where it does not show.
   terminalPane: string | null;
+  // The app around the rows; null in the desktop window, which does these itself.
+  host: RowsHost | null;
 }
 
 export interface MessageActions {
@@ -43,6 +53,7 @@ const NONE: ChatRows = {
   openChat: () => undefined,
   messageActions: null,
   terminalPane: null,
+  host: null,
 };
 
 export const RowsContext = createContext<ChatRows>(NONE);

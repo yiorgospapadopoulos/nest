@@ -44,6 +44,7 @@ function ReadOnly({ session, children }: { session: string; children: ReactNode 
     stopper: null,
     messageActions: null,
     terminalPane: null,
+    host: null,
     openPixie: (id) => {
       shell.closeSheet();
       shell.openPixie(id);
