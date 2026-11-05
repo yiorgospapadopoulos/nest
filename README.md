@@ -221,6 +221,8 @@ Nest also reads the pull request's review comments with its status (one read-onl
 
 ## Search
 
+A new chat has no name at first. A few seconds after your first message it gets the engine's own, live on every device: the title Claude Code generates, or the one in OpenCode's session list. Codex and Gemini give Nest no name, so Nest asks them once, on the same account and their cheapest model, in a call with no tools or history that stays out of the chat. A name you set yourself, a chat named after an issue, pixie chats and habit runs keep their names, and so do chats from before this. If no name comes within about a minute, or the chat fails, it shows a short name cut from your first message, which is also what Needs you cards, notifications and a worktree's branch use from the start. See D152.
+
 The search field at the top of the Projects tab finds chats across every project by title and by what was said: your messages, Claude's replies, tool calls (name and main argument) and the start of tool output, plus the titles of Claude Code and Codex chats from outside Nest. Words must all match; `"quoted phrases"` match in order and `word*` matches a prefix. Results are grouped by chat, best match first; tapping one opens the chat scrolled to that message, highlighted for a moment. The index lives in the daemon's SQLite database (FTS5) and is filled from stored events; on the first start after the upgrade it indexes the existing history in the background. See D035.
 
 ## Models, account and agent defaults
