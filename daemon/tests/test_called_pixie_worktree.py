@@ -255,9 +255,9 @@ async def test_a_called_pixie_cannot_move_its_caller(scene: Scene) -> None:
             await tool_of(pixie.run).handler({"action": action, "worktree": "project"})
 
 
-async def test_a_caller_on_autopilot_gives_its_pixie_no_tool(scene: Scene) -> None:
-    pixie = Pixie(scene.api, None)
-    await opened(scene)
+async def test_a_caller_on_autopilot_keeps_its_worktree_from_its_pixie(scene: Scene) -> None:
+    pixie = Pixie(scene.api, {"action": "remove"})
+    folder = await opened(scene)
     switched = await scene.api.http.put(
         f"/api/sessions/{scene.caller.chat_id}/autopilot", json={"on": True}
     )
@@ -265,8 +265,9 @@ async def test_a_caller_on_autopilot_gives_its_pixie_no_tool(scene: Scene) -> No
     await soon(scene.caller.call(pixie="coder", task="Finish it", run_in_background=True))
     await soon(pixie.recorded.wait())
 
-    assert pixie.run is not None
-    assert tools_of(pixie.run) == []
+    assert pixie.refusal is not None
+    assert await no_pending(scene)
+    assert folder.exists()
 
 
 async def test_a_read_only_pixie_gets_no_worktree_tool(api: Api) -> None:
