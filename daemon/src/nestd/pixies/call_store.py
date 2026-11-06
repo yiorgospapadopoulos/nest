@@ -86,6 +86,14 @@ class CallStore:
     async def finish(self, call_id: str, state: CallState, **changes: object) -> None:
         await self.update(call_id, state=state, finished_at=self._clock.now(), **changes)
 
+    async def finish_agent(self, session_id: str, agent_id: str, state: CallState) -> int:
+        """End every running background call of the agent; how many there were."""
+        return await self._db.execute(
+            "UPDATE pixie_calls SET state = ?, finished_at = ? WHERE session_id = ?"
+            " AND agent_id = ? AND state = 'running' AND background = 1",
+            (state, self._clock.now().isoformat(), session_id, agent_id),
+        )
+
     async def in_group(self, session_id: str, pixie_id: str | None = None) -> list[PixieCall]:
         """The chat's calls not sent away, newest first; with `pixie_id`, only its."""
         pixie = "" if pixie_id is None else " AND pixie_id = ?"

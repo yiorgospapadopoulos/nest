@@ -28,6 +28,7 @@ import { elapsed, summarizeTools, thoughtLabel, toolKind } from "../../transcrip
 import {
   buildTranscript,
   turnStart,
+  WAITING_TITLE,
   type HookItem,
   type PixieCallItem,
   type PixieResultItem,
@@ -608,7 +609,10 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
     }
     case "report":
       return (
-        <div className="m-sys m-rep" data-ev={ev}>
+        <div
+          className={item.title === WAITING_TITLE ? "m-sys m-rep waiting" : "m-sys m-rep"}
+          data-ev={ev}
+        >
           <b>{item.title ?? "Chats finished"}</b>
           <span>{item.text}</span>
         </div>

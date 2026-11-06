@@ -2,7 +2,7 @@
 token usage, connector status, slash command lists and the engine's models and account.
 """
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
 
 from nestd.connectors.registry import ConnectorRegistry
@@ -17,11 +17,14 @@ from nestd.providers.base import (
     UsageInfo,
 )
 from nestd.repos.service import RepoService
+from nestd.review.hold import ReviewHold
 from nestd.review.watch import ReviewWatcher
 from nestd.sessions.commands import CommandStore
+from nestd.sessions.errors import SessionNotFoundError
 from nestd.sessions.models import LimitPause, Session, SessionState
 from nestd.tracking.service import Tracking
 from nestd.tracking.steps import one_line
+from nestd.tracking.tracker import SessionTracker
 from nestd.usage.store import UsageStore
 
 MAX_NOTICE_LENGTH = 200
@@ -55,8 +58,11 @@ class SessionReactions:
         commands: CommandStore,
         engine: EngineInfo,
         repos: RepoService,
+        session: Callable[[str], Awaitable[Session]],
         followers: Sequence[StateFollower] = (),
     ) -> None:
+        self._holds = ReviewHold(self._settle)
+        self._session = session
         self._followers = followers
         self._repos = repos
         self._commands = commands
@@ -71,16 +77,7 @@ class SessionReactions:
         tracker = await self._tracking.sync(session.id)
         quiet = _quiet(session)
         if session.state is SessionState.IDLE and not quiet:
-            # A review announces itself; otherwise the user hears the turn finished.
-            reviewed = (
-                await self._reviewable(session)
-                and await self._reviews.turn_ended(session) is not None
-            )
-            if session.limit_pause is not None:
-                # The usage limit cut the turn off: the chat goes on by itself (B78).
-                await self._notify(session, "usage_limit", _limit_text(session.limit_pause))
-            elif not reviewed:
-                await self._notify(session, "finished", tracker.summary or "The turn finished.")
+            await self._turn_ended(session, tracker, notify=True)
         elif session.state is SessionState.FAILED and not quiet:
             await self._notify(session, "failed", session.last_error or "The session failed.")
         # After the review: a follower sees whether the turn's work is ready for review.
@@ -93,24 +90,38 @@ class SessionReactions:
         """
         if session.habit_run_id is not None or session.called_by is not None:
             return
-        if session.state is SessionState.IDLE and await self._reviewable(session):
-            await self._reviews.turn_ended(session)
+        if session.state is SessionState.IDLE:
+            if (await self._tracking.sync(session.id)).agents.helpers_working():
+                await self._hold(session, notify=False)
+            elif await self._reviewable(session):
+                await self._reviews.turn_ended(session)
         await self._notify(session, "finished", text)
 
     async def turn_starting(self, session: Session) -> None:
         """Note the work before the agent gets the message, for the turn's end to compare
         with (B56). Queued turns that follow without an idle between are one run: the first
         start counts. A turn the agent starts on its own, say after background work changed
-        files, has no start and is reviewed as it is.
+        files, has no start and is reviewed as it is. So is a chat waiting for its helpers,
+        whose work is not this turn's alone (B133).
         """
         quiet = _quiet(session)
-        if quiet or self._reviews.has_start(session.id):
+        if quiet or self._reviews.has_start(session.id) or self._holds.holds(session.id):
             return
         if await self._reviewable(session):
             await self._reviews.turn_started(session)
 
     async def message(self, session_id: str) -> None:
-        await self._tracking.sync(session_id)
+        tracker = await self._tracking.sync(session_id)
+        if not tracker.agents.helpers_working():
+            self._holds.helpers_ended(session_id)
+
+    async def helpers_lost(self, session_ids: Sequence[str]) -> None:
+        """On start: these chats' helpers ended with the previous process (B133)."""
+        for session_id in session_ids:
+            await self._settle(session_id, True)
+
+    def shutdown(self) -> None:
+        self._holds.shutdown()
 
     async def turn_result(self, session_id: str, info: ResultInfo) -> None:
         await self._usage.record_turn(session_id, info.tokens)
@@ -148,10 +159,49 @@ class SessionReactions:
             await self._reviews.moved(session)
 
     async def purged(self, session_id: str) -> None:
+        self._holds.release(session_id)
         self._tracking.forget(session_id)
         self._reviews.forget(session_id)
         for follower in self._followers:
             await follower.purged(session_id)
+
+    async def _turn_ended(self, session: Session, tracker: SessionTracker, *, notify: bool) -> None:
+        """A review announces itself; otherwise the user hears the turn finished. While
+        helpers work the chat is not done, so both wait for them (B133).
+        """
+        helpers = tracker.agents.helpers_working()
+        if helpers:
+            await self._hold(session, notify=notify)
+        else:
+            self._holds.release(session.id)
+        reviewed = (
+            not helpers
+            and await self._reviewable(session)
+            and await self._reviews.turn_ended(session) is not None
+        )
+        if session.limit_pause is not None:
+            # The usage limit cut the turn off: the chat goes on by itself (B78).
+            await self._notify(session, "usage_limit", _limit_text(session.limit_pause))
+        elif notify and not helpers and not reviewed:
+            await self._notify(session, "finished", tracker.summary or "The turn finished.")
+
+    async def _hold(self, session: Session, *, notify: bool) -> None:
+        self._holds.hold(session.id, notify=notify)
+        if await self._reviewable(session):
+            await self._reviews.held(session)
+
+    async def _settle(self, session_id: str, notify: bool) -> None:
+        """The chat's helpers ended and no turn followed. A running turn settles the chat
+        when it ends, as does the turn that follows a usage limit's reset.
+        """
+        try:
+            session = await self._session(session_id)
+        except SessionNotFoundError:
+            return
+        if session.state is not SessionState.IDLE or session.limit_pause is not None:
+            return
+        if not _quiet(session):
+            await self._turn_ended(session, await self._tracking.sync(session_id), notify=notify)
 
     async def _reviewable(self, session: Session) -> bool:
         """The agent may have made a plain folder a git repository (D041); a plain folder

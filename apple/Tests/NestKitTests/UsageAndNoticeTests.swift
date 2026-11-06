@@ -89,7 +89,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
                 "Approvals", "Questions", "Work ready for review", "Agent errors",
                 "Finished turns", "Pull request checks failed", "Pull requests ready to merge",
                 "Chats that look stuck", "Pixie reports",
-                "Usage limit pauses", "Sound",
+                "Pixies waiting on you", "Usage limit pauses", "Sound",
             ])
     }
 

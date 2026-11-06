@@ -258,7 +258,7 @@ import Testing
         #expect(
             NotificationPolicy.content(forWarning: "x", notify: false, preferences: preferences)
                 == nil)
-        #expect(NotificationPreferences.kindToggles.count == 10)
+        #expect(NotificationPreferences.kindToggles.count == 11)
         #expect(!NotificationPreferences.kindToggles.contains { $0.title == "Sound" })
     }
 }

@@ -184,6 +184,11 @@ class PixieCallLog:
         for session_id in await self._store.interrupt_all():
             await self._announce(session_id)
 
+    async def working(self, session_id: str, pixie_id: str) -> bool:
+        """Whether a call of the pixie in the chat's group runs."""
+        calls = await self._store.in_group(session_id, pixie_id)
+        return any(call.state == "running" for call in calls)
+
     async def group(self, session_id: str) -> list[GroupEntry]:
         """The chat's solo pixies and teams, in the order first called."""
         calls = list(reversed(await self._store.in_group(session_id)))
@@ -393,13 +398,10 @@ class PixieCallLog:
 
     async def _task_finished(self, session_id: str, update: AgentTask) -> bool:
         """A background call or a SendMessage ends with its task; a foreground call with
-        its result.
+        its result. Messages to a working agent all share its one task (B133).
         """
-        call = await self._store.by_agent(session_id, update.task_id, running=True)
-        if call is None or not call.background:
-            return False
-        await self._store.finish(call.id, _ENDED.get(update.status, "interrupted"))
-        return True
+        state = _ENDED.get(update.status, "interrupted")
+        return await self._store.finish_agent(session_id, update.task_id, state) > 0
 
     async def _leader_call(self, session_id: str, call: PixieCall) -> PixieCall | None:
         """The running call of the leader of the member's team; None for a solo pixie or

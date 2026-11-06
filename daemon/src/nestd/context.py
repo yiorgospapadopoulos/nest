@@ -191,6 +191,7 @@ class AppContext:
     sessions: SessionManager
     approvals: ApprovalQueue
     tracking: Tracking
+    reactions: SessionReactions
     reviews: ReviewActions
     usage: UsageStore
     connectors: ConnectorRegistry
@@ -539,6 +540,18 @@ class AppContext:
         issues = IssueService(
             repo=repos.get, run=runner, clock=clock, cwd=paths.data_dir, chats=store.issue_chats
         )
+        reactions = SessionReactions(
+            tracking,
+            ReviewWatcher(approvals, tracking),
+            notifier,
+            usage,
+            connectors,
+            commands,
+            engine,
+            repos,
+            store.get,
+            followers=followers,
+        )
         sessions = SessionManager(
             store=store,
             bus=bus,
@@ -559,17 +572,7 @@ class AppContext:
                 claude_dir=paths.claude_dir,
             ),
             approvals=approvals,
-            hooks=SessionReactions(
-                tracking,
-                ReviewWatcher(approvals, tracking),
-                notifier,
-                usage,
-                connectors,
-                commands,
-                engine,
-                repos,
-                followers=followers,
-            ),
+            hooks=reactions,
             # Read for each new session, so edits through the API apply at once.
             defaults=lambda: context.settings.agents,
             idle_close=timedelta(minutes=settings.agents.idle_close_minutes),
@@ -631,6 +634,7 @@ class AppContext:
             defaults=lambda: context.settings.agents,
             store=bridged_calls,
             log=pixie_calls,
+            notifier=notifier,
             usage=usage.record_subagent,
         )
         sessions.bridge(call_runs)
@@ -871,6 +875,7 @@ class AppContext:
             sessions=sessions,
             approvals=approvals,
             tracking=tracking,
+            reactions=reactions,
             reviews=reviews,
             usage=usage,
             connectors=connectors,

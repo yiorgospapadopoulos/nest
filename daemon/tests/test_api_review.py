@@ -1102,8 +1102,9 @@ async def test_background_work_a_killed_daemon_left_running_is_stopped_on_start(
 
     async with running_api(tmp_path, clock, secrets) as second:
         after = (await second.http.get(f"/api/sessions/{session_id}")).json()
-        events = (await second.http.get(f"/api/sessions/{session_id}/events")).json()
+        stored = (await second.http.get(f"/api/sessions/{session_id}/events")).json()
 
+    events = [e for e in stored if e["type"] != types.NOTIFY]
     assert before["background"]["running"] == 1
     assert after["background"]["running"] == 0
     assert [i["status"] for i in after["background"]["items"]] == ["failed"]

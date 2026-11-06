@@ -507,6 +507,24 @@ where = "Everywhere"
 added = 2026-10-16
 block = "B48"
 
+[[features]]
+id = "pixie-updates"
+group = "pixies"
+name = "Pixies tell you how it goes"
+text = "On a long job a pixie you called shows a short line in the chat at each milestone, without you asking. When it stops for your decision, the chat says so and you get a notification."
+where = "Chat"
+added = 2026-11-07
+block = "B133"
+
+[[features]]
+id = "review-waits-for-helpers"
+group = "chats"
+name = "Ready for review means ready"
+text = "A chat is not put up for review, and does not say it finished, while a pixie or helper it started is still working. The review appears once they have all ended."
+where = "Chat"
+added = 2026-11-07
+block = "B133"
+
 # Artifacts
 
 [[features]]

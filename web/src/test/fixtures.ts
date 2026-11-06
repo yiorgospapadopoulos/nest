@@ -665,6 +665,7 @@ export function notificationSettings(
       ready_to_merge: false,
       stuck: false,
       pixie_report: true,
+      pixie_waiting: true,
       usage_limit: true,
     },
     pixie_report_level: "action",

@@ -2097,6 +2097,9 @@ html.desk .md td {
   font-weight: 600;
   color: var(--t2);
 }
+.m-rep.waiting b {
+  color: var(--wait);
+}
 /* A card a pixie posted: a chat it started, or that chat's pull request. */
 .pxcard {
   display: flex;

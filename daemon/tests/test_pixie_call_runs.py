@@ -14,6 +14,7 @@ import pytest
 from pydantic import JsonValue
 
 from nestd.events import types
+from nestd.pixies.tell_chat import TELL_CHAT_TOOL
 from nestd.providers.base import (
     CALL_PIXIE_TOOL,
     AgentTool,
@@ -157,6 +158,35 @@ async def test_a_codex_chat_calls_a_claude_pixie_through_its_mcp_server(api: Api
     assert run.spec.cwd == api.ctx.repos.get("repo").path
     assert run.spec.guard_git
     assert run.spec.subagents == {}
+
+
+async def test_a_pixie_called_across_engines_tells_the_chat_that_called_it(api: Api) -> None:
+    """B133: the line and the wait show in the caller, whose run hears nothing of them."""
+    await _pixie(api, "Helper")
+
+    async def working(run: FakeRun) -> None:
+        tell = next(tool for tool in run.spec.nest_tools if tool.name == TELL_CHAT_TOOL)
+        await tell.handler({"text": "Backend done, starting web"})
+        await tell.handler({"text": "Which database?", "waiting": True})
+        await reply("Stopped: which database?")(run)
+
+    api.provider.script(working)
+    api.codex.script(note("turn/started", threadId="thread-1", turn={"id": "turn-1"}))
+    chat_id = str((await create(api, title="Caller", provider="codex", mode="in_place"))["id"])
+    await until(lambda: bool(api.codex.requests("turn/start")))
+    [start] = api.codex.requests("thread/start")
+    nest = cast("JsonObject", cast("JsonObject", start["config"])["mcp_servers.nest"])
+    [launch] = [launch for launch in api.codex.launches if launch.cwd is not None]
+
+    await _mcp_call(str(nest["url"]), launch.env[TOKEN_ENV], "helper")
+
+    events = (await api.http.get(f"/api/sessions/{chat_id}/events")).json()
+    assert [e["payload"] for e in events if e["type"] == types.SESSION_NOTICE] == [
+        {"kind": "pixie_update", "text": "@helper: Backend done, starting web"},
+        {"kind": "pixie_waiting", "text": "@helper: Which database?"},
+    ]
+    assert [e["payload"]["kind"] for e in events if e["type"] == types.NOTIFY] == ["pixie_waiting"]
+    assert len(api.codex.requests("turn/start")) == 1
 
 
 async def _mcp_call(url: str, token: str, slug: str) -> JsonObject:

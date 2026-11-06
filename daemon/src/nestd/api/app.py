@@ -71,7 +71,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         await ctx.devices.ensure_local_device()
         await ctx.approvals.expire_stale()
         await ctx.sessions.recover()
-        await ctx.tracking.stop_stale()
+        await ctx.reactions.helpers_lost(await ctx.tracking.stop_stale())
         await ctx.pixie_calls.stop_stale()
         # After the sessions: a background call's caller hears it was interrupted (B112).
         await ctx.pixie_call_runs.recover()
@@ -125,6 +125,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             await ctx.branch_watch.stop()
             await ctx.claude_chats.stop()
             await ctx.sessions.shutdown()
+            ctx.reactions.shutdown()
             await ctx.pixie_call_runs.shutdown()
             # After the agents, which may use the dev servers until they stop.
             await ctx.runs.shutdown()

@@ -97,9 +97,12 @@ class ApprovalQueue:
             raise ApprovalNotPendingError(msg)
         return approval
 
-    async def supersede(self, session_id: str, kind: ApprovalKind) -> None:
-        for approval in await self._store.pending((kind,), session_id):
+    async def supersede(self, session_id: str, kind: ApprovalKind) -> bool:
+        """Whether any was pending."""
+        pending = await self._store.pending((kind,), session_id)
+        for approval in pending:
             await self._close(approval.id, ApprovalStatus.SUPERSEDED, None)
+        return bool(pending)
 
     async def expire(self, session_id: str, kinds: Sequence[ApprovalKind], reason: str) -> None:
         for approval in await self._store.pending(kinds, session_id):

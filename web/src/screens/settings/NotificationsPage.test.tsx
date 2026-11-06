@@ -157,6 +157,7 @@ describe("notification rules", () => {
           ready_to_merge: false,
           stuck: false,
           pixie_report: true,
+          pixie_waiting: true,
           usage_limit: true,
         },
       }),

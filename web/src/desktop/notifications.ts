@@ -17,6 +17,7 @@ export const NOTIFY_TOGGLES: { kind: NotifyKind; title: string }[] = [
   { kind: "ready_to_merge", title: "Pull requests ready to merge" },
   { kind: "stuck", title: "Chats that look stuck" },
   { kind: "pixie_report", title: "Pixie reports" },
+  { kind: "pixie_waiting", title: "Pixies waiting on you" },
   { kind: "usage_limit", title: "Usage limit pauses" },
 ];
 
