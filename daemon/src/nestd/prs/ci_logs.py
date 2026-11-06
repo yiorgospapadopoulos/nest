@@ -1,9 +1,9 @@
 """The failing checks of a pull request as a message for the agent (IMP-08).
 
-The daemon reads each failed GitHub Actions job's log with its own `gh` login, so the agent
-needs no GitHub access of its own (D013 layer 3). Only logs of the pull request's own repository are
-read (SEC-18), and only the end of each, without escape sequences, control characters or
-anything that looks like a credential (SEC-20), in a code block the log cannot close (SEC-19).
+The daemon reads each failed GitHub Actions job's log with its own `gh` login. Only logs of
+the pull request's own repository are read (SEC-18), and only the end of each, without
+escape sequences, control characters or anything that looks like a credential (SEC-20), in
+a code block the log cannot close (SEC-19).
 """
 
 import re

@@ -1,7 +1,8 @@
 """Pull requests Nest opened: listing, reading now, and merging after the user
 approves, which also closes a session that is not movable (D034, B119).
 
-Only the daemon merges: agents stay blocked from `gh pr merge` by the git guard (D004).
+The daemon merges for the user's click; while the user has not let agents push, the git guard
+keeps pixies and subagents from `gh pr merge` (D004, D160).
 """
 
 import asyncio
