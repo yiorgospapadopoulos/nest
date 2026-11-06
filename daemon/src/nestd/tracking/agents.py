@@ -94,6 +94,8 @@ class AgentBoard:
         self._bash: dict[str, tuple[str, str | None]] = {}
         # Tasks the engine started and has not finished, by task id.
         self._tasks: dict[str, AgentTask] = {}
+        # The call whose row shows a subagent's task, by task id.
+        self._first_calls: dict[str, str] = {}
         # The session's working directory, for showing paths relative to it.
         self.root: str | None = None
 
@@ -132,6 +134,12 @@ class AgentBoard:
         running = sum(1 for item in items if item.status == "running")
         return BackgroundSummary(running=running, completed=len(items) - running, items=items)
 
+    def helpers_working(self) -> bool:
+        """Whether a subagent still works in the background (B133). Background commands
+        do not count: a dev server can run for days.
+        """
+        return any(a.background and a.status == "running" for a in self._agents.values())
+
     def started(self, at: datetime) -> None:
         self._agents[MAIN].started_at = at
 
@@ -163,6 +171,11 @@ class AgentBoard:
 
     def task(self, update: AgentTask, at: datetime) -> Change:
         if update.phase == "started":
+            first = self._first_calls.get(update.task_id)
+            if first is not None and update.tool_use_id not in self._agents:
+                return self._continued(update, first)
+            if update.tool_use_id in self._agents:
+                self._first_calls[update.task_id] = update.tool_use_id
             self._tasks[update.task_id] = update
             return self._to_background(update, at) if update.background else Change.NONE
         if update.phase == "backgrounded":
@@ -262,6 +275,18 @@ class AgentBoard:
         if started is None or (started.background and not block.is_error):
             return Change.ACTIVITY
         started.finish("failed" if block.is_error else "done", at)
+        return Change.LIFECYCLE
+
+    def _continued(self, update: AgentTask, first: str) -> Change:
+        """A message continued a subagent: its task starts again, named after the message,
+        and its first call's row is at work until that task ends (B133).
+        """
+        self._tasks[update.task_id] = update.model_copy(update={"tool_use_id": first})
+        agent = self._agents[first]
+        agent.background = agent.moved = True
+        if agent.status == "running":
+            return Change.NONE
+        agent.status, agent.finished_at = "running", None
         return Change.LIFECYCLE
 
     def _to_background(self, task: AgentTask, at: datetime) -> Change:

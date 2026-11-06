@@ -68,6 +68,13 @@ class ReviewWatcher:
             f"{stats.files} files changed, +{stats.additions} -{stats.deletions}",
         )
 
+    async def held(self, session: Session) -> None:
+        """Helpers go on after the turn (B133), so the work is not ready: a pending review
+        is withdrawn, and without a start the work is reviewed as it is when they end.
+        """
+        if await self._approvals.supersede(session.id, ApprovalKind.REVIEW):
+            self._starts.pop(session.id, None)
+
     async def refresh(self, session: Session) -> None:
         """The work changed outside a turn (files restored, B59): review it as it is now."""
         self._starts.pop(session.id, None)
