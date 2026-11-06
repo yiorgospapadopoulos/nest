@@ -792,6 +792,24 @@ describe("notices", () => {
       { kind: "system", key: "2", text: "Claude's API is busy. Retrying" },
     ]);
   });
+
+  it("show a called pixie's lines, and make its waiting plain (B133)", () => {
+    const notice = (id: number, payload: JsonObject) =>
+      event({ id, type: "session.notice", payload });
+    const items = buildTranscript(
+      [
+        notice(1, { kind: "pixie_update", text: "@builder: Backend done, starting web" }),
+        notice(2, { kind: "pixie_waiting", text: "@builder: Which database?" }),
+      ],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([
+      { kind: "system", key: "1", text: "@builder: Backend done, starting web" },
+      { kind: "report", key: "2", title: "Waiting on you", text: "@builder: Which database?" },
+    ]);
+  });
 });
 
 describe("bash mode and images (B59)", () => {

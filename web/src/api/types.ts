@@ -781,6 +781,7 @@ export type NotifyKind =
   | "ready_to_merge"
   | "stuck"
   | "pixie_report"
+  | "pixie_waiting"
   | "usage_limit";
 
 export type SearchHitKind =
@@ -2040,4 +2041,7 @@ export type NoticeKind =
   | "loading_model"
   // A chat's worktree change, done or refused, at the end of its turn (B119).
   | "worktree_changed"
-  | "worktree_failed";
+  | "worktree_failed"
+  // A pixie a chat called shows a short line, or that it waits for the user (B133).
+  | "pixie_update"
+  | "pixie_waiting";

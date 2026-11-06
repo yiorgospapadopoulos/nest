@@ -138,6 +138,9 @@ export interface PixieResultItem {
   status: "done" | "failed" | "stopped" | "interrupted";
 }
 
+/** The title of the line that says a called pixie stopped for the user's decision (B133). */
+export const WAITING_TITLE = "Waiting on you";
+
 /** Something Autopilot settled for the user, where it happened (B120). */
 export interface DecisionItem {
   kind: "decision";
@@ -341,6 +344,13 @@ export function buildTranscript(
           endTurn(items, key, p, num(p.duration_ms) ?? result?.ms ?? null);
           result = null;
           settle();
+        }
+        break;
+      case "session.notice":
+        if (p.kind === "pixie_waiting") {
+          items.push({ kind: "report", key, title: WAITING_TITLE, text: str(p.text) ?? "" });
+        } else {
+          note(items, key, systemText(e));
         }
         break;
       case "session.hook": {

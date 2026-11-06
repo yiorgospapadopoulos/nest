@@ -24,6 +24,7 @@ import type {
   ToolItem,
   TranscriptItem,
 } from "../../transcript/build.ts";
+import { WAITING_TITLE } from "../../transcript/build.ts";
 import type { EditDiff } from "../../transcript/edits.ts";
 import type { GitHubPart } from "../../transcript/github.ts";
 import { mentionLabels, mentionParts } from "../../transcript/mentions.ts";
@@ -680,6 +681,15 @@ function NoteRow({ title, text, ev }: { title: string | undefined; text: string;
           <Glyph name="checklist" size={10} />
           Chats you started finished
         </span>
+        <span className="dc-notet">{text}</span>
+      </div>
+    );
+  }
+  if (title === WAITING_TITLE) {
+    return (
+      <div className="dc-note waiting" data-ev={ev}>
+        <Glyph name="bell" size={10} />
+        <span className="dc-noteh">{title}</span>
         <span className="dc-notet">{text}</span>
       </div>
     );

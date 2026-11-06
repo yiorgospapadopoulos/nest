@@ -975,6 +975,9 @@ button.dc-line:disabled {
   flex-direction: column;
   gap: 4px;
 }
+.dc-note.waiting .dc-noteh {
+  color: var(--wait);
+}
 .dc-note.link:hover {
   background: var(--sel);
 }
