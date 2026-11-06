@@ -112,8 +112,12 @@ class PixieAgents:
         files: PixieFiles,
         teams: TeamStore,
         inline: InlineEngines = native_subagents,
+        can_push: Callable[[], bool] = lambda: False,
     ) -> None:
-        """`inline` says which engines run Nest-defined subagents of their own."""
+        """`inline` says which engines run Nest-defined subagents of their own; `can_push`
+        whether the user lets agents push, which their prompts follow.
+        """
+        self._can_push = can_push
         self._pixies = pixies
         self._files = files
         self._teams = teams
@@ -150,6 +154,7 @@ class PixieAgents:
                 item,
                 _note(offered[item.pixie.slug]),
                 self._team_section(led.get(item.pixie.id), available),
+                can_push=self._can_push(),
             )
             for item in available
         }
@@ -180,12 +185,13 @@ class PixieAgents:
             raise PixieNotFoundError(msg)
         team = await self._led_team(pixie.id)
         section = self._team_section(team, await self._available()) if team else None
-        return call_prompt(pixie, item.soul, item.memory, section)
+        return call_prompt(pixie, item.soul, item.memory, section, can_push=self._can_push())
 
     async def _for_pixie_chat(self, pixie_id: str, provider: str) -> ChatAgents:
         """The pixie calls every other pixie, and those it calls call none."""
         available = [item for item in await self._available() if item.pixie.id != pixie_id]
-        subagents = {item.pixie.slug: _subagent(item) for item in available}
+        can_push = self._can_push()
+        subagents = {item.pixie.slug: _subagent(item, can_push=can_push) for item in available}
         everyone = frozenset(subagents)
         return ChatAgents(
             subagents,
@@ -203,7 +209,7 @@ class PixieAgents:
         members = _members(team, await self._available())
         slugs = frozenset(item.pixie.slug for item in members)
         return ChatAgents(
-            {item.pixie.slug: _subagent(item) for item in members},
+            {item.pixie.slug: _subagent(item, can_push=self._can_push()) for item in members},
             pixies={
                 item.pixie.slug: OfferedPixie(
                     item.pixie.id, item.pixie.slug, item.pixie.name, team.id, team.handle
@@ -312,13 +318,15 @@ def _model(model: str | None) -> str | None:
     return None if model is None or model.lower() == DEFAULT_MODEL else model
 
 
-def _subagent(item: _Available, note: str = "", team: str | None = None) -> Subagent:
+def _subagent(
+    item: _Available, note: str = "", team: str | None = None, *, can_push: bool
+) -> Subagent:
     """`note` ends its description; `team` is a leader's team section."""
     pixie = item.pixie
     denied = EDIT_TOOLS if pixie.project_access == "read" else ()
     return Subagent(
         description=item.description + note,
-        prompt=call_prompt(pixie, item.soul, item.memory, team),
+        prompt=call_prompt(pixie, item.soul, item.memory, team, can_push=can_push),
         permission_mode=pixie.permission_mode,
         model=_model(pixie.model),
         effort=pixie.effort,

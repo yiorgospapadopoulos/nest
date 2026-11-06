@@ -35,9 +35,13 @@ class PixieRuntime:
         clock: Clock,
         nest_tools: NestToolsSource,
         called_prompt: CalledPrompt | None = None,
+        can_push: Callable[[], bool] = lambda: False,
     ) -> None:
-        """`called_prompt` builds a called pixie's prompt; without it none is called."""
+        """`called_prompt` builds a called pixie's prompt; without it none is called.
+        `can_push` is whether the user lets agents push, which its prompts follow.
+        """
         self._nest_tools = nest_tools
+        self._can_push = can_push
         self._called_prompt = called_prompt
         self._store = store
         self._files = files
@@ -63,10 +67,14 @@ class PixieRuntime:
         memory = self._files.read(pid, "memory").text
         if session.habit_run_id is not None:
             # A habit run starts from its habit's prompt, not from the chat (B42).
-            prompt = habit_system_prompt(pixie, soul, memory, self._files.notes(pid))
+            prompt = habit_system_prompt(
+                pixie, soul, memory, self._files.notes(pid), can_push=self._can_push()
+            )
         else:
             recent = await recent_conversation(self._bus, session.id)
-            prompt = system_prompt(pixie, soul, memory, self._files.notes(pid), recent)
+            prompt = system_prompt(
+                pixie, soul, memory, self._files.notes(pid), recent, can_push=self._can_push()
+            )
         return RunExtras(
             system_prompt=prompt,
             extra_dirs=dirs,

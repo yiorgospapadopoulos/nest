@@ -64,6 +64,7 @@ class Env:
         self.defaults = DEFAULTS
         # The engine's model list; None while unknown, so effort is not checked.
         self.models: list[ModelOption] | None = None
+        self.can_push = False
         self.manager = self.build(timedelta(hours=1))
 
     def build(
@@ -101,6 +102,7 @@ class Env:
             ports=ports,
             names_dir=self.paths.data_dir / "names",
             name_waits=(0,),
+            can_push=lambda: self.can_push,
         )
 
     def use_worktrees(self) -> None:

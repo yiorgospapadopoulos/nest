@@ -110,7 +110,7 @@ async def test_a_chat_a_pixie_starts_records_it_on_the_session_and_first_message
 
     assert (stored.started_by_pixie, stored.pixie_batch) == ("p1", "b1")
     assert stored.worktree_path is not None
-    # A pixie may never commit or push (D072, B58), nor the chats it starts.
+    # While the setting is off a pixie may not push, nor the chats it starts (D072, D160).
     (run,) = env.provider.runs
     assert run.spec.guard_git is True
     assert run.spec.system_prompt_append == GUARDED_PROMPT

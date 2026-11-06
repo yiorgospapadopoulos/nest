@@ -52,6 +52,8 @@ class LiveSession:
     run_bypass: bool = False
     # Whether the run opened on Autopilot: its git guard, tools and prompt come with that.
     run_autopilot: bool = False
+    # Whether agents could push when the run opened: its git guard and prompts follow.
+    run_can_push: bool = False
     # The agent called a tool since Autopilot last asked.
     worked: bool = False
     # The model and permission mode the run has now, to bring it to the saved ones (D048).

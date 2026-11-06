@@ -13,7 +13,7 @@ from pydantic import JsonValue
 from nestd.artifacts.tools import ARTIFACT_NOTE
 from nestd.attachments.store import Attachment, AttachmentStore
 from nestd.autopilot.runner import AutopilotRunner
-from nestd.autopilot.tool import AUTOPILOT_NOTE, autopilot_tool
+from nestd.autopilot.tool import autopilot_note, autopilot_tool
 from nestd.clock import Clock
 from nestd.config.models import PermissionMode, RepoConfig
 from nestd.events import types
@@ -107,8 +107,7 @@ _SUMMARY_NOTE = (
 )
 # A chat uses git as in the terminal (B58).
 NEST_PROMPT = (
-    "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
-    f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
+    f"You are running inside Nest. Commit when the user asks. {_CONNECTORS_NOTE} "
     f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 # A plain folder's work is never reviewed, committed or pushed by Nest (D041).
@@ -116,8 +115,12 @@ PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
     f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
-# A chat a pixie started, which may commit but whose pushes and pull requests stay blocked
-# (D072, B58, D123); a pixie's own runs have their own prompt.
+# A chat a pixie started, which may commit; a pixie's own runs have their own prompt.
+STARTED_PROMPT = (
+    "You are running inside Nest. You may commit your work. "
+    f"{_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
+)
+# The same while the user has not let agents push (D072, B58, D123, D160).
 GUARDED_PROMPT = (
     "You are running inside Nest. You may commit your work. Do not run git push, "
     "gh pr create or gh pr merge: the user pushes and opens or merges pull requests. "
@@ -133,13 +136,16 @@ _OWN_PLAN_NOTE = (
 # The same for Codex and the other engines, which have no TaskCreate but Nest's artifact
 # tools (B91).
 CODEX_PROMPT = (
-    "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
-    f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
+    f"You are running inside Nest. Commit when the user asks. {_CONNECTORS_NOTE} "
     f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
     f"{_UPDATES_NOTE} {_SUMMARY_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
+)
+CODEX_STARTED_PROMPT = (
+    "You are running inside Nest. You may commit your work. "
+    f"{_CONNECTORS_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_GUARDED_PROMPT = (
     "You are running inside Nest. You may commit your work. Do not run git push, "
@@ -185,6 +191,7 @@ class TurnRunner:
         call_tools: CallToolsSource | None = None,
         local: LocalSource | None = None,
         ports: PortsSource | None = None,
+        can_push: Callable[[], bool] = lambda: False,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself; `limits`
         holds the chats paused at the usage limit (B78); `moves` the worktree changes that
@@ -193,10 +200,12 @@ class TurnRunner:
         `nest_tools` gives every run the tools all chats and pixies have (B79), and
         `call_tools` the tool that calls the pixies its engine cannot run inside (B91).
         `local` points runs on local models at their servers (B106). `ports` tells a
-        project chat's agent about its folder's ports and dev server (B108).
+        project chat's agent about its folder's ports and dev server (B108). `can_push` is
+        whether the user lets pixies, subagents and Autopilot push (D160).
         """
         self._autopilot = autopilot
         self._ports = ports
+        self._can_push = can_push
         self.moves = moves
         self._local = local
         self._nest_tools = nest_tools
@@ -788,12 +797,14 @@ class TurnRunner:
         agents = await self.chat_agents(session)
         engine = self._engines.of(session)
         while (run := live.run) is None or not _fits(
-            live, session, dirs, agents, _account(engine, session)
+            live, session, dirs, agents, _account(engine, session), self._can_push()
         ):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
             # sets it again, and the loop opens another run with that change.
             live.rotate = False
+            # Read first as well: a change while the run opens opens another.
+            can_push = self._can_push()
             extras = await self._pixie_extras(session)
             # A pixie's own runs work in no project folder.
             ports = NO_PORTS if extras else await self._folder_ports(session)
@@ -819,7 +830,10 @@ class TurnRunner:
                 extra_dirs=dirs + (extras.extra_dirs if extras else ()),
                 system_prompt_append=_on_autopilot(
                     session,
-                    extras.system_prompt if extras else await self._nest_prompt(session, ports),
+                    extras.system_prompt
+                    if extras
+                    else await self._nest_prompt(session, ports, can_push),
+                    can_push,
                 ),
                 tools=extras.tools if extras else (),
                 nest_tools=await self._run_tools(
@@ -830,7 +844,8 @@ class TurnRunner:
                 skills=extras.skills if extras else (),
                 subagents=agents.engine_subagents,
                 call_rules=agents.rules,
-                guard_git=_guarded(session),
+                guard_git=_guarded(session) and not can_push,
+                guard_subagents=not can_push,
                 guard_worktrees=session.autopilot is not None,
                 account=account,
                 local=local,
@@ -858,6 +873,7 @@ class TurnRunner:
             live.run_effort = session.effort
             live.run_bypass = mode == BYPASS
             live.run_autopilot = session.autopilot is not None
+            live.run_can_push = can_push
             live.run_model = session.model
             live.run_mode = mode
             live.run_agents = agents
@@ -906,7 +922,12 @@ class TurnRunner:
         """Whether the live run takes a message with files in `folders` as it is (B59)."""
         engine = self._engines.of(session)
         return _fits(
-            live, session, folders, await self.chat_agents(session), _account(engine, session)
+            live,
+            session,
+            folders,
+            await self.chat_agents(session),
+            _account(engine, session),
+            self._can_push(),
         )
 
     async def chat_agents(self, session: NewSession) -> ChatAgents:
@@ -957,23 +978,25 @@ class TurnRunner:
             return NO_PORTS
         return await isolated_or("the folder's ports", session.id, self._ports(session), NO_PORTS)
 
-    async def _nest_prompt(self, session: Session, ports: FolderPorts) -> str:
+    async def _nest_prompt(self, session: Session, ports: FolderPorts, can_push: bool) -> str:
         """Without Claude Code's task list (Codex, B91), the prompt leaves out what it says
         about it. A chat that can change where it works hears so, and where it works after
         it moved: a resumed conversation still names the old folders (B119). The folder's
         ports end it (B108).
         """
-        parts: list[str | None] = [await self._base_prompt(session)]
+        parts: list[str | None] = [await self._base_prompt(session, can_push)]
         if await self._moves_folders(session):
             parts += [WORKTREE_NOTE, place_note(session)]
         parts.append(ports.prompt)
         return " ".join(part for part in parts if part is not None)
 
-    async def _base_prompt(self, session: Session) -> str:
+    async def _base_prompt(self, session: Session, can_push: bool) -> str:
         # Only Claude Code plans with TaskCreate; other engines plan with their own tool,
         # which feeds the same task list (B112).
         claude = self._engines.of(session) is self._engines.default
-        if _pixie_guarded(session):
+        if _pixie_run(session):
+            if can_push:
+                return STARTED_PROMPT if claude else CODEX_STARTED_PROMPT
             return GUARDED_PROMPT if claude else CODEX_GUARDED_PROMPT
         git = await self._repos.has_git(session.repo)
         if git:
@@ -981,22 +1004,23 @@ class TurnRunner:
         return PLAIN_FOLDER_PROMPT if claude else CODEX_PLAIN_FOLDER_PROMPT
 
 
-def _pixie_guarded(session: Session) -> bool:
-    """A pixie may commit but never push, open or merge a pull request (D072, D078, D123): its
-    chats, habit runs (which carry its `pixie_id`) and the chats it starts keep those blocked
-    (B58).
-    """
+def _pixie_run(session: Session) -> bool:
+    """A pixie's chats, its habit runs (which carry its `pixie_id`) and the chats it starts."""
     return session.pixie_id is not None or session.started_by_pixie is not None
 
 
 def _guarded(session: Session) -> bool:
-    return _pixie_guarded(session) or session.autopilot is not None
+    """A pixie may commit, but pushing and opening or merging a pull request stay blocked for
+    it and for Autopilot while the user has not let agents push (D072, D078, D123, D160).
+    """
+    return _pixie_run(session) or session.autopilot is not None
 
 
-def _on_autopilot(session: Session, prompt: str | None) -> str | None:
+def _on_autopilot(session: Session, prompt: str | None, can_push: bool) -> str | None:
     if session.autopilot is None:
         return prompt
-    return AUTOPILOT_NOTE if prompt is None else f"{prompt} {AUTOPILOT_NOTE}"
+    note = autopilot_note(can_push=can_push)
+    return note if prompt is None else f"{prompt} {note}"
 
 
 def _keep_unsent(live: LiveSession, unsent: Unsent) -> None:
@@ -1011,12 +1035,13 @@ def _fits(
     dirs: tuple[Path, ...],
     agents: ChatAgents,
     account: str | None,
+    can_push: bool,
 ) -> bool:
     """Whether the live run can take the session's next message as it is."""
     # A new attachment folder, a new effort, another set of subagents (B40), another
-    # active account (B98), or bypass for a run that did not open in it needs a new run
-    # (D046), but waits while background tasks run: closing would stop them. Until then
-    # the agent asks before reading a new folder's files.
+    # active account (B98), a change to whether agents may push (D160), or bypass for a run
+    # that did not open in it needs a new run (D046), but waits while background tasks run:
+    # closing would stop them. Until then the agent asks before reading a new folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = (
         not crosses_local(live.run_model, session.model)
@@ -1026,6 +1051,7 @@ def _fits(
         and live.run_agents.fingerprint == agents.fingerprint
         and live.run_account == account
         and live.run_autopilot == (session.autopilot is not None)
+        and live.run_can_push == can_push
     )
     return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 
