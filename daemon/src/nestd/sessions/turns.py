@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -75,6 +75,8 @@ ROTATE_PERCENT = 60
 # of the agent's messages. The SDK takes control answers in its own reader, which stops
 # only once 100 messages wait unread (I-L).
 CONTROL_TIMEOUT_SECONDS = 10.0
+# How long a Stop waits for the engine to end a turn the agent started on its own.
+STOP_ANSWER_SECONDS = 5.0
 
 _CONNECTORS_NOTE = (
     "Mention MCP servers that need authorization or failed to connect only when the user "
@@ -388,8 +390,29 @@ class TurnRunner:
             return
         # The agent started a turn on its own, e.g. after a background task finished.
         live.turn_active = True
+        live.agent_started = True
         live.cancel_idle_close()
         await self._start_turn(live)
+
+    def stop_sent(self, live: LiveSession) -> None:
+        """A Stop went to the engine. A turn the agent started on its own may be only a
+        background agent working: the Stop ends that agent, but the chat has no turn of
+        its own for the engine to report an end of, so the turn would stay open for good.
+        """
+        if live.agent_started and live.stop_wait is None:
+            live.stop_wait = asyncio.create_task(self._end_unanswered(live, live.turn_started))
+
+    async def _end_unanswered(self, live: LiveSession, started: datetime | None) -> None:
+        try:
+            await asyncio.sleep(STOP_ANSWER_SECONDS)
+        finally:
+            live.stop_wait = None
+        unanswered = live.turn_active and live.interrupted and live.turn_started == started
+        if unanswered and not live.stopped:
+            end: TurnEnd = "handoff" if live.resume_queue else "stopped"
+            await isolated(
+                "ending the stopped turn", live.session_id, self.turn_finished(live, None, end)
+            )
 
     async def _start_turn(self, live: LiveSession) -> Session:
         """The agent gets a message or starts on its own; clients time the turn from here."""

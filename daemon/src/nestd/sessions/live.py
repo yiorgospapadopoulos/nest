@@ -75,6 +75,9 @@ class LiveSession:
     turn_active: bool = False
     # When the agent was given the current turn's message or started one on its own (D045).
     turn_started: datetime | None = None
+    # The agent started the current turn on its own. When only a background agent was
+    # working, the engine reports no result after a Stop, so Nest ends the turn.
+    agent_started: bool = False
     interrupted: bool = False
     # The turn was interrupted to deliver a queued message (a nudge) right after it.
     resume_queue: bool = False
@@ -108,6 +111,8 @@ class LiveSession:
     # The usage limit the engine reported in the current turn, until the turn ends (B78).
     limit_hit: LimitHit | None = None
     idle_task: asyncio.Task[None] | None = None
+    # Waits for the engine to answer a Stop of a turn the agent started on its own.
+    stop_wait: asyncio.Task[None] | None = None
     # Reports that wait on the run's answer to a control request, off the reader of the
     # agent's messages (I-L); they end with the run.
     reports: set[asyncio.Task[None]] = field(default_factory=set[asyncio.Task[None]])
@@ -200,6 +205,7 @@ class LiveSession:
         """
         self.turn_active = False
         self.turn_started = None
+        self.agent_started = False
         self.interrupted = False
         self.resume_queue = False
         self.engine_next = False
@@ -248,6 +254,8 @@ class LiveSession:
         self.stopped = True
         self.resume_queue = False
         self.unsent = None
+        if self.stop_wait is not None:
+            self.stop_wait.cancel()
         task = self.task
         if task is not None:
             task.cancel()
