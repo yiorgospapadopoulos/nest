@@ -2,7 +2,7 @@
 // rows it switches to): the user's accent bubble with its actions on hover, the reply as
 // text with Copy on hover, quiet lines for thinking, tools, hooks and notes that open in
 // place, pixie calls, and the approvals answered where they ask.
-import { use, useEffect, useMemo, useState, type ReactNode } from "react";
+import { use, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { GroupEntry, Pixie, PixieTeam, TeamMember } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import {
@@ -26,7 +26,7 @@ import type {
 } from "../../transcript/build.ts";
 import type { EditDiff } from "../../transcript/edits.ts";
 import type { GitHubPart } from "../../transcript/github.ts";
-import { mentionColors, mentionParts } from "../../transcript/mentions.ts";
+import { mentionLabels, mentionParts } from "../../transcript/mentions.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { terminalLine } from "../layout/tools.ts";
@@ -214,12 +214,12 @@ interface BubbleProps {
   event: number | null;
 }
 
-/** The solid accent bubble (B80), its mentions semibold, with its actions on hover. */
+/** The solid accent bubble (B80), its mentions named in colour, with its actions on hover. */
 function UserBubble({ text, attachments, github, event }: BubbleProps) {
   const { state } = useStore();
   const rows = useRows();
-  const colors = useMemo(
-    () => mentionColors(state.pixies, state.teams),
+  const labels = useMemo(
+    () => mentionLabels(state.pixies, state.teams),
     [state.pixies, state.teams],
   );
   const actions =
@@ -240,8 +240,18 @@ function UserBubble({ text, attachments, github, event }: BubbleProps) {
         <div className="dc-ubub-w">
           {actions !== null && <MessageActionsMenu actions={actions} />}
           <div className="dc-ubub">
-            {mentionParts(text, colors).map((part, index) =>
-              part.color === null ? part.text : <b key={index}>{part.text}</b>,
+            {mentionParts(text, labels).map((part, index) =>
+              part.color === null ? (
+                part.text
+              ) : (
+                <span
+                  key={index}
+                  className="mention"
+                  style={{ "--px": part.color } as CSSProperties}
+                >
+                  {part.text}
+                </span>
+              ),
             )}
             {github !== undefined && <GitHubText part={github} after={text !== ""} />}
           </div>

@@ -524,8 +524,10 @@ html:not(.pane) .dc-tx::-webkit-scrollbar-thumb {
   -webkit-user-select: text;
   user-select: text;
 }
-.dc-ubub b {
+/* Pulled toward the bubble's text colour, as on the iPhone, so it reads on any bubble. */
+.dc-ubub .mention {
   font-weight: 600;
+  color: color-mix(in srgb, var(--px) 50%, var(--on-bubble));
 }
 .dc-mact {
   position: absolute;

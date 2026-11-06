@@ -36,7 +36,7 @@ import {
   type ToolItem,
   type TranscriptItem,
 } from "../../transcript/build.ts";
-import { mentionColors, mentionParts } from "../../transcript/mentions.ts";
+import { mentionLabels, mentionParts } from "../../transcript/mentions.ts";
 import type { DiffLine, EditDiff } from "../../transcript/edits.ts";
 import { outputPreview } from "../../transcript/output.ts";
 import { Icon } from "../../ui/Icon.tsx";
@@ -846,14 +846,14 @@ function FromPixie({ id }: { id: string }) {
   );
 }
 
-/** A sent message, its @ mentions of known pixies and teams in the pixie's colour (B40). */
+/** A sent message, its @ mentions of known pixies and teams shown by name in colour (B40). */
 function UserText({ text }: { text: string }) {
   const { state } = useStore();
-  const colors = useMemo(
-    () => mentionColors(state.pixies, state.teams),
+  const labels = useMemo(
+    () => mentionLabels(state.pixies, state.teams),
     [state.pixies, state.teams],
   );
-  return mentionParts(text, colors).map((part, index) =>
+  return mentionParts(text, labels).map((part, index) =>
     part.color === null ? (
       part.text
     ) : (

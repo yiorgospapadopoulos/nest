@@ -103,10 +103,10 @@ describe("pixie calls in the chat", () => {
     expect(screen.getByRole("group", { name: "Tester's steps" })).toHaveTextContent("stopped");
   });
 
-  it("draws known mentions in sent messages in the pixie's colour", async () => {
+  it("shows known mentions in sent messages by name, in the pixie's colour", async () => {
     const api = fakeApi();
     api.teams.mockResolvedValue([
-      team({ id: "qa", handle: "qa", leader_id: "p1" }),
+      team({ id: "qa", name: "QA crew", handle: "qa", leader_id: "p1" }),
       team({ id: "x", handle: "nobody-leads", leader_id: null }),
     ]);
     await openChat(
@@ -121,15 +121,14 @@ describe("pixie calls in the chat", () => {
       api,
     );
 
-    const slug = await screen.findByText("@tester", { selector: ".m-u span" });
-    expect(slug).toHaveClass("mention");
-    expect(slug.style.getPropertyValue("--px")).toBe(tester.color);
-    expect(screen.getByText("@qa", { selector: ".m-u span" }).style.getPropertyValue("--px")).toBe(
-      tester.color,
-    );
-    // The bubble still reads as the message typed.
-    expect(slug.closest(".m-u")).toHaveTextContent(
-      "Ask @tester, then @qa and @nobody-leads or @stranger",
+    const name = await screen.findByText("@Tester", { selector: ".m-u span" });
+    expect(name).toHaveClass("mention");
+    expect(name.style.getPropertyValue("--px")).toBe(tester.color);
+    expect(
+      screen.getByText("@QA crew", { selector: ".m-u span" }).style.getPropertyValue("--px"),
+    ).toBe(tester.color);
+    expect(name.closest(".m-u")).toHaveTextContent(
+      "Ask @Tester, then @QA crew and @nobody-leads or @stranger",
     );
     expect(screen.getByText(/and @nobody-leads or @stranger/, { selector: ".m-u" })).toBeVisible();
     expect(screen.queryByText("@stranger", { selector: ".m-u span" })).not.toBeInTheDocument();

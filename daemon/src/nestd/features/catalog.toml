@@ -360,9 +360,10 @@ block = "B35"
 id = "pixie-calls"
 group = "pixies"
 name = "Call with @"
-text = "Hand part of any chat to a pixie. Calling it again picks up where it left off."
+text = "Hand part of any chat to a pixie. Calling it again picks up where it left off. Sent messages show the pixie or team by name, in its colour."
 where = "Composer"
 added = 2026-10-14
+changed = 2026-11-05
 block = "B40"
 
 [[features]]
