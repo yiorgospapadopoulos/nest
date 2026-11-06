@@ -64,6 +64,38 @@ describe("pixie list", () => {
   });
 });
 
+describe("Pixies and subagents can push", () => {
+  const toggle = () => screen.findByRole("switch", { name: "Pixies and subagents can push" });
+
+  it("shows the saved value and saves a change", async () => {
+    const api = fakeApi();
+    api.limitSettings.mockResolvedValue({ can_push: true });
+    const { user } = await openPixies(api);
+
+    await waitFor(async () => {
+      expect(await toggle()).toBeChecked();
+    });
+    await user.click(await toggle());
+
+    expect(api.saveLimitSettings).toHaveBeenLastCalledWith({ can_push: false });
+    expect(await toggle()).not.toBeChecked();
+  });
+
+  it("puts back a refused change and says why", async () => {
+    const api = fakeApi();
+    api.saveLimitSettings.mockRejectedValueOnce(new ApiError(409, "settings.toml broke"));
+    const { user } = await openPixies(api);
+
+    await waitFor(async () => {
+      expect(await toggle()).toBeEnabled();
+    });
+    await user.click(await toggle());
+
+    expect(await screen.findByText("settings.toml broke")).toBeInTheDocument();
+    expect(await toggle()).not.toBeChecked();
+  });
+});
+
 describe("new pixie defaults", () => {
   it("shows and saves what new pixies start with", async () => {
     const api = fakeApi();

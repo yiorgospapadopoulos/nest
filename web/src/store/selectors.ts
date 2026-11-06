@@ -546,8 +546,9 @@ const ENGINE_STATE: Record<Exclude<ProviderInfo["state"], "ready">, string> = {
 };
 
 /**
- * Whether a pixie can be set to run on the engine: installed, and one whose git commands
- * Nest can block, since a pixie's runs promise no commits (B107). Its sign-in can follow.
+ * Whether a pixie can be set to run on the engine: installed, and one whose pushes Nest
+ * can block unless the user lets agents push, which the daemon reports as `git_guard`
+ * (B107, D160). Its sign-in can follow.
  */
 export function pixieCanRunOn(state: State, provider: string): boolean {
   const listed = engineList(state).find((p) => p.name === provider);
