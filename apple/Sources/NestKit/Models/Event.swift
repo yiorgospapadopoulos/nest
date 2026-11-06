@@ -664,6 +664,8 @@ public enum NoticeKind: String, UnknownSafeEnum {
     case stuck
     /// A pixie's report (B42); the Mac posts these from `pixie.report` events.
     case pixieReport = "pixie_report"
+    /// A pixie a chat called stopped for the user's decision (B133).
+    case pixieWaiting = "pixie_waiting"
     /// A chat paused at the usage limit, in place of `finished` for that turn (B78).
     case usageLimit = "usage_limit"
     case unknown
