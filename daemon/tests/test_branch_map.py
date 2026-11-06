@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
-from nestd.repos.branch_map import Candidate, MapWorktree, arrange
+from nestd.config.models import RepoConfig
+from nestd.repos.branch_map import BranchMap, Candidate, MapWorktree, arrange, read_branch_map
+from tests.git_support import git, init_repo
 
 
 def nest(name: str) -> MapWorktree:
@@ -131,3 +133,87 @@ def test_a_branch_behind_the_root_hangs_from_the_root() -> None:
 
 def test_a_lone_root() -> None:
     assert arrange("main", [Candidate("main", "m")], {("main", "main"): 0}) == [("main", None)]
+
+
+def test_siblings_start_with_the_folders_branch_then_busy_ones_then_by_name() -> None:
+    names = ["z-here", "n-parent", "child", "a-plain", "b-plain"]
+    candidates = [
+        Candidate("main", "m"),
+        *(Candidate(name, name) for name in names),
+        Candidate("m-worktree", "w", other("w")),
+    ]
+    names.append("m-worktree")
+    table = {name: {"main": 1} for name in names} | {"main": {}}
+    table["child"] = {"main": 2, "n-parent": 1}
+    ahead = distances(table)
+    ahead |= {(b, c): 9 for b in names for c in names if (b, c) not in ahead}
+
+    assert [name for name, _ in arrange("main", candidates, ahead, "z-here")] == [
+        "main",
+        "z-here",
+        "m-worktree",
+        "n-parent",
+        "child",
+        "a-plain",
+        "b-plain",
+    ]
+
+
+def test_with_no_folder_branch_nothing_goes_first() -> None:
+    candidates = [Candidate("main", "m"), Candidate("a", "a"), Candidate("b", "b")]
+    ahead = distances({"main": {}, "a": {"main": 1, "b": 1}, "b": {"main": 1, "a": 1}})
+
+    assert arrange("main", candidates, ahead)[1:] == [("a", "main"), ("b", "main")]
+
+
+def test_a_branch_past_the_cap_can_only_hang_from_the_kept_bases() -> None:
+    candidates = [Candidate("main", "m"), Candidate("near", "n"), Candidate("kept", "k")]
+    # `near` is not a base: `kept`, further away, is the nearest one left.
+    ahead = {
+        ("main", "main"): 0,
+        ("main", "kept"): 0,
+        ("near", "main"): 9,
+        ("near", "kept"): 5,
+        ("kept", "main"): 4,
+        ("kept", "kept"): 0,
+    }
+
+    assert arrange("main", candidates, ahead) == [
+        ("main", None),
+        ("kept", "main"),
+        ("near", "kept"),
+    ]
+
+
+def behind(found: BranchMap) -> dict[str, int]:
+    return {branch.name: branch.behind for branch in found.branches}
+
+
+def commit_on(repo: Path, parent: str, message: str) -> str:
+    """A new commit on top of `parent`, on no branch."""
+    return git(repo, "commit-tree", f"{parent}^{{tree}}", "-p", parent, "-m", message).strip()
+
+
+async def test_branch_map_counts_commits_behind_the_remote(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    for name in ("late", "both", "free", "lost", "on-local"):
+        git(repo, "branch", name)
+    git(repo, "worktree", "add", "-q", str(tmp_path / "tree"), "late")
+    # The count comes from what is on disk: this remote cannot be reached.
+    git(repo, "remote", "add", "origin", "ssh://nonexistent.invalid/x.git")
+    for name in ("main", "late", "both", "lost"):
+        git(repo, "config", f"branch.{name}.remote", "origin")
+        git(repo, "config", f"branch.{name}.merge", f"refs/heads/{name}")
+    newer = commit_on(repo, "main", "theirs")
+    for name in ("main", "late", "both"):
+        git(repo, "update-ref", f"refs/remotes/origin/{name}", newer)
+    # Ahead of its remote branch as well as behind it.
+    git(repo, "update-ref", "refs/heads/both", commit_on(repo, "both", "ours"))
+    git(repo, "config", "branch.on-local.remote", ".")
+    git(repo, "config", "branch.on-local.merge", "refs/heads/late")
+    before = git(repo, "for-each-ref")
+
+    found = behind(await read_branch_map(RepoConfig(name="repo", path=repo), {}))
+
+    assert found == {"main": 1, "late": 1, "both": 1, "free": 0, "lost": 0, "on-local": 0}
+    assert git(repo, "for-each-ref") == before

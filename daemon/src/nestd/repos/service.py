@@ -25,6 +25,7 @@ from nestd.paths import AppPaths
 
 FALLBACK_BRANCH = "main"
 BRANCH_REF = "refs/heads/"
+REMOTE_REF = "refs/remotes/"
 # Project settings outside `[worktree]` that `edit` sets.
 _TOP_LEVEL_KEYS = frozenset({"icon", "icon_color", "default_branch", "remote_url"})
 # Settings only a git repository has (D104).

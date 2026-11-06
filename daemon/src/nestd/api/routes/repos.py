@@ -122,9 +122,8 @@ async def repo_branches(name: str, ctx: Context) -> BranchList:
 
 @router.get("/{name}/branch-map")
 async def repo_branch_map(name: str, ctx: Context) -> BranchMap:
-    """The default branch, the project folder's branch and the branches of linked
-    worktrees, each with the branch it comes from (B96); `repo.branches_changed` says when
-    to read it again.
+    """Every local branch with the branch it comes from (B96, B131), and the branches only
+    a remote has; `repo.branches_changed` says when to read it again.
     """
     repo = await ctx.repos.git_repo(name)
     return await read_branch_map(repo, await ctx.sessions.worktree_bases(name))

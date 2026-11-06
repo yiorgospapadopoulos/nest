@@ -98,7 +98,7 @@ async def _fork_point(repo: RepoConfig, branch: str, bases: Mapping[Path, str]) 
     """Where `branch` forks from its parent in the branch map, else from the default
     branch; None when neither can tell.
     """
-    branch_map = await read_branch_map(repo, bases)
+    branch_map = await read_branch_map(repo, bases, fork_points=True)
     parent = next((b.parent for b in branch_map.branches if b.name == branch), None)
     for other in (parent, repo.default_branch):
         if other is None:

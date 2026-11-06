@@ -10,6 +10,7 @@ import pytest
 from pydantic import JsonValue
 
 from nestd.events import types
+from nestd.repos import branch_map as branch_map_module
 from tests.api_client import Api, running_api
 from tests.api_support import as_old_chats
 from tests.async_support import until
@@ -19,6 +20,14 @@ from tests.git_support import commit_file, git, init_repo
 from tests.test_api_sessions import reach
 
 NOT_GIT = {"detail": "notes is not a git repository", "code": "not_a_git_repository"}
+MAIN_ROW = {
+    "name": "main",
+    "parent": None,
+    "worktree": None,
+    "here": True,
+    "behind": 0,
+    "remote": None,
+}
 
 
 @pytest.fixture
@@ -38,6 +47,14 @@ def repo(tmp_path: Path) -> Path:
 
 def worktrees(repo: Path) -> Path:
     return repo / ".claude" / "worktrees"
+
+
+def add_remote(repo: Path, path: Path, name: str = "origin") -> Path:
+    """A bare copy of `repo` as its remote `name`, fetched, like a project on GitHub."""
+    git(repo, "clone", "-q", "--bare", ".", str(path))
+    git(repo, "remote", "add", name, str(path))
+    git(repo, "fetch", "-q", name, f"+refs/heads/*:refs/remotes/{name}/*")
+    return path
 
 
 def add_worktree(repo: Path, path: Path, branch: str, start: str) -> Path:
@@ -68,7 +85,9 @@ async def test_a_repo_with_only_its_default_branch(api: Api) -> None:
     assert await branch_map(api) == {
         "default_branch": "main",
         "current_branch": "main",
-        "branches": [{"name": "main", "parent": None, "worktree": None, "here": True}],
+        "detached": False,
+        "branches": [MAIN_ROW],
+        "remote_branches": [],
     }
 
 
@@ -97,19 +116,22 @@ async def test_worktrees_hang_from_the_branch_they_come_from(
     assert payload["current_branch"] == "wip"
     assert rows(payload) == [
         ("main", None, None, False),
-        ("hotfix", "main", "other", False),
         ("wip", "main", None, True),
         ("agent/icons", "wip", "nest", False),
         ("agent/nested", "agent/icons", "nest", False),
         ("worktree-cozy-otter", "wip", "claude", False),
+        ("hotfix", "main", "other", False),
+        ("stale", "main", None, False),
     ]
     branches = payload["branches"]
     assert isinstance(branches, list)
-    assert branches[3] == {
+    assert branches[2] == {
         "name": "agent/icons",
         "parent": "wip",
         "worktree": {"path": str(icons), "owner": "nest"},
         "here": False,
+        "behind": 0,
+        "remote": None,
     }
 
 
@@ -125,10 +147,10 @@ async def test_fresh_worktrees_from_a_branch_hang_from_it_not_from_each_other(
 
     assert rows(await branch_map(api)) == [
         ("main", None, None, False),
-        ("agent/c", "main", "nest", False),
         ("wip", "main", None, True),
         ("agent/a", "wip", "nest", False),
         ("agent/b", "wip", "nest", False),
+        ("agent/c", "main", "nest", False),
     ]
 
 
@@ -152,18 +174,29 @@ async def test_a_nest_worktree_chat_hangs_from_the_branch_it_started_from(
     session = response.json()
     await reach(api, str(session["id"]), "idle", results=1)
 
-    # `feature` is not checked out anywhere: the chat hangs from main.
     assert rows(await branch_map(api)) == [
         ("main", None, None, True),
-        ("fix/login", "main", "nest", False),
+        ("feature", "main", None, False),
+        ("fix/login", "feature", "nest", False),
     ]
-    # Once `feature` is checked out in the project folder, it is shown, and the parent.
     git(repo, "checkout", "-q", "feature")
     assert rows(await branch_map(api)) == [
         ("main", None, None, False),
         ("feature", "main", None, True),
         ("fix/login", "feature", "nest", False),
     ]
+
+
+async def test_only_a_really_detached_folder_says_so(api: Api, repo: Path) -> None:
+    async def read() -> object:
+        return (await api.http.get("/api/repos/repo/branch-map")).json()["detached"]
+
+    assert await read() is False
+    git(repo, "checkout", "-q", "--orphan", "unborn")
+    assert await read() is False
+    git(repo, "checkout", "-q", "main")
+    git(repo, "checkout", "-q", "--detach")
+    assert await read() is True
 
 
 async def test_a_detached_project_folder_has_no_current_branch(api: Api, repo: Path) -> None:
@@ -209,7 +242,10 @@ async def test_a_worktree_whose_folder_was_deleted_is_left_out(
     gone = add_worktree(repo, (tmp_path / "gone").resolve(), "gone", "main")
     shutil.rmtree(gone)
 
-    assert rows(await branch_map(api)) == [("main", None, None, True)]
+    assert rows(await branch_map(api)) == [
+        ("main", None, None, True),
+        ("gone", "main", None, False),
+    ]
 
 
 async def test_a_branch_shows_once_and_one_without_commits_not_at_all(
@@ -222,7 +258,9 @@ async def test_a_branch_shows_once_and_one_without_commits_not_at_all(
     assert await branch_map(api) == {
         "default_branch": "main",
         "current_branch": "main",
-        "branches": [{"name": "main", "parent": None, "worktree": None, "here": True}],
+        "detached": False,
+        "branches": [MAIN_ROW],
+        "remote_branches": [],
     }
 
 
@@ -235,8 +273,199 @@ async def test_a_repo_without_commits_has_no_branches(api: Api, tmp_path: Path) 
     assert await branch_map(api, "empty") == {
         "default_branch": "main",
         "current_branch": None,
+        "detached": False,
         "branches": [],
+        "remote_branches": [],
     }
+
+
+async def test_every_local_branch_shows_each_under_the_one_it_comes_from(
+    api: Api, repo: Path
+) -> None:
+    git(repo, "checkout", "-q", "-b", "feat/a")
+    commit_file(repo, "a.txt")
+    git(repo, "checkout", "-q", "-b", "feat/b")
+    commit_file(repo, "b.txt")
+    git(repo, "checkout", "-q", "main")
+
+    assert rows(await branch_map(api)) == [
+        ("main", None, None, True),
+        ("feat/a", "main", None, False),
+        ("feat/b", "feat/a", None, False),
+    ]
+
+
+async def test_a_worktree_on_the_default_branch_keeps_its_mark(api: Api, repo: Path) -> None:
+    # The folder moves away, so main can be checked out in a linked worktree.
+    git(repo, "checkout", "-q", "-b", "wip")
+    git(repo, "worktree", "add", "-q", str(worktrees(repo) / "nest-12345678"), "main")
+
+    assert rows(await branch_map(api)) == [
+        ("main", None, "nest", False),
+        ("wip", "main", None, True),
+    ]
+
+
+async def test_past_the_cap_all_branches_show_and_worktrees_stay_bases(
+    api: Api, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(branch_map_module, "MAX_BASES", 2)
+    old = add_worktree(repo, worktrees(repo) / "nest-12345678", "old", "main")
+    commit_file(old, "old.txt")
+    git(old, "checkout", "-q", "-b", "child")
+    commit_file(old, "child.txt")
+    git(old, "checkout", "-q", "old")
+    git(repo, "checkout", "-q", "-b", "newer")
+    commit_file(repo, "newer.txt")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "branch", "newest", "newer")
+
+    assert rows(await branch_map(api)) == [
+        ("main", None, None, True),
+        ("old", "main", "nest", False),
+        ("child", "old", None, False),
+        # `newer` is past the cap, so its twin cannot hang from it.
+        ("newer", "main", None, False),
+        ("newest", "main", None, False),
+    ]
+
+
+async def test_a_local_main_tops_the_map_whatever_the_folder_and_default_are_on(
+    api: Api, repo: Path
+) -> None:
+    git(repo, "checkout", "-q", "-b", "wip")
+    commit_file(repo, "wip.txt")
+    add_worktree(repo, worktrees(repo) / "nest-12345678", "agent/x", "wip")
+    edited = await api.http.patch("/api/repos/repo", json={"default_branch": "wip"})
+    assert edited.status_code == 200
+
+    payload = await branch_map(api)
+
+    assert payload["default_branch"] == "wip"
+    assert payload["current_branch"] == "wip"
+    assert rows(payload) == [
+        ("main", None, None, False),
+        ("wip", "main", None, True),
+        ("agent/x", "wip", "nest", False),
+    ]
+
+
+async def test_main_only_on_remotes_tops_the_map_from_origin_and_leaves_its_list(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    add_remote(repo, tmp_path / "backup.git", "backup")
+    add_remote(repo, tmp_path / "origin.git")
+    git(repo, "checkout", "-q", "-b", "wip")
+    commit_file(repo, "wip.txt")
+    git(repo, "branch", "-D", "main")
+
+    payload = await branch_map(api)
+
+    assert rows(payload) == [("main", None, None, False), ("wip", "main", None, True)]
+    branches = payload["branches"]
+    assert isinstance(branches, list)
+    assert branches[0] == {
+        "name": "main",
+        "parent": None,
+        "worktree": None,
+        "here": False,
+        "behind": 0,
+        "remote": "origin",
+    }
+    assert payload["remote_branches"] == [{"remote": "backup", "name": "main"}]
+
+
+async def test_a_remotes_head_tops_the_map_when_there_is_no_main(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    git(repo, "branch", "-m", "main", "trunk")
+    git(repo, "branch", "develop")
+    add_remote(repo, tmp_path / "origin.git")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+
+    local = await branch_map(api)
+    git(repo, "branch", "-D", "develop")
+    remote_only = await branch_map(api)
+
+    assert rows(local) == [("develop", None, None, False), ("trunk", "develop", None, True)]
+    assert rows(remote_only) == [("develop", None, None, False), ("trunk", "develop", None, True)]
+    branches = remote_only["branches"]
+    assert isinstance(branches, list)
+    top = branches[0]
+    assert isinstance(top, dict)
+    assert top["remote"] == "origin"
+
+
+async def test_a_head_at_a_gone_branch_counts_as_unknown(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    git(repo, "branch", "-m", "main", "trunk")
+    git(repo, "branch", "master")
+    add_remote(repo, tmp_path / "origin.git")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/gone")
+
+    assert rows(await branch_map(api))[0] == ("master", None, None, False)
+
+
+async def test_a_local_master_goes_ahead_of_the_default_setting(api: Api, repo: Path) -> None:
+    git(repo, "branch", "-m", "main", "trunk")
+    git(repo, "branch", "master")
+    git(repo, "checkout", "-q", "-b", "wip")
+    await api.http.patch("/api/repos/repo", json={"default_branch": "trunk"})
+
+    top = rows(await branch_map(api))[0]
+    git(repo, "branch", "-D", "master")
+
+    assert top == ("master", None, None, False)
+    assert rows(await branch_map(api))[0] == ("trunk", None, None, False)
+
+
+async def test_a_chats_base_stays_measured_from_the_default_branch(api: Api, repo: Path) -> None:
+    git(repo, "checkout", "-q", "-b", "wip")
+    commit_file(repo, "wip.txt")
+    fork_point = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "checkout", "-q", "-b", "feature")
+    commit_file(repo, "one.txt")
+    # Nearer to `feature` than `wip` is, and to the map its parent.
+    git(repo, "branch", "backup")
+    commit_file(repo, "two.txt")
+    git(repo, "checkout", "-q", "wip")
+    await api.http.patch("/api/repos/repo", json={"default_branch": "wip"})
+    assert ("feature", "backup", None, False) in rows(await branch_map(api))
+    api.provider.script(reply("Done"))
+
+    chat = await api.http.post(
+        "/api/sessions", json={"repo": "repo", "prompt": "Do it", "on_branch": "feature"}
+    )
+
+    assert chat.json()["base_ref"] == fork_point
+    await reach(api, str(chat.json()["id"]), "idle", results=1)
+
+
+async def test_remote_only_branches_are_listed_once_per_remote(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    git(repo, "branch", "feat/x")
+    git(repo, "branch", "local")
+    add_remote(repo, tmp_path / "origin.git")
+    add_remote(repo, tmp_path / "other.git", "other")
+    git(repo, "branch", "-D", "feat/x")
+    # Gone from the config, and origin's own pointer: neither is a branch to pick.
+    git(repo, "update-ref", "refs/remotes/former/old", "main")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    # `git remote add` refuses these two together, but a config can hold them, and a name
+    # can start with another's.
+    git(repo, "config", "remote.team.url", "/nowhere")
+    git(repo, "config", "remote.team/one.url", "/nowhere")
+    git(repo, "update-ref", "refs/remotes/team/fix", "main")
+    git(repo, "update-ref", "refs/remotes/team/one/fix", "main")
+
+    assert (await branch_map(api))["remote_branches"] == [
+        {"remote": "origin", "name": "feat/x"},
+        {"remote": "other", "name": "feat/x"},
+        {"remote": "team", "name": "fix"},
+        {"remote": "team/one", "name": "fix"},
+    ]
 
 
 async def test_branch_map_errors(api: Api, tmp_path: Path) -> None:
