@@ -117,6 +117,8 @@ private struct BranchTreeRows: View {
             } action: { _, new in
                 viewport = new
             }
+            // A short list would sit in the middle of a taller box, away from the top row.
+            .frame(maxHeight: total)
             .padding(.horizontal, 2)
             .task(
                 id: RevealTrigger(
