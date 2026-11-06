@@ -136,6 +136,7 @@ from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
 from nestd.reactions import SessionReactions, StateFollower
 from nestd.repos.branch_watch import BranchWatch
+from nestd.repos.fetching import RepoFetcher
 from nestd.repos.places import PlaceBook
 from nestd.repos.service import GENERAL, RepoService
 from nestd.review.actions import ReviewActions
@@ -184,6 +185,8 @@ class AppContext:
     repos: RepoService
     # Where new chats start in each project (B131).
     places: PlaceBook
+    # The branch map's reload (B131).
+    fetcher: RepoFetcher
     attachments: AttachmentStore
     sessions: SessionManager
     approvals: ApprovalQueue
@@ -871,6 +874,7 @@ class AppContext:
             claude_chats=claude_chats,
             branch_watch=BranchWatch(repos=repos, bus=bus),
             places=places,
+            fetcher=RepoFetcher(bus),
             usage_refresher=usage_refresher,
             commands=commands,
             prs=PullRequests(

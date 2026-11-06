@@ -8,6 +8,7 @@ from nestd.api.deps import Context, RequireDevice
 from nestd.config.models import Color, Mascot
 from nestd.events import types
 from nestd.repos.branch_map import BranchMap, read_branch_map
+from nestd.repos.fetching import RefreshReport
 from nestd.repos.service import RepoView
 from nestd.sessions.commands import CommandList
 from nestd.sessions.repo_removal import remove_repo
@@ -161,6 +162,14 @@ async def clear_gone_place(name: str, ctx: Context) -> RepoView:
     await ctx.places.forget_gone(name)
     await ctx.repos.announce(types.REPO_UPDATED, repo)
     return await ctx.repos.view(repo)
+
+
+@router.post("/{name}/refresh")
+async def refresh_repo(name: str, ctx: Context) -> RefreshReport:
+    """Fetch every remote, each reporting its own failure (B131). It waits for the slowest
+    remote; `repo.branches_changed` follows. 409 for a repo git cannot read.
+    """
+    return await ctx.fetcher.refresh(await ctx.repos.git_repo(name))
 
 
 @router.get("/{name}/link-suggestions")
