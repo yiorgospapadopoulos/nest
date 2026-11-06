@@ -373,6 +373,12 @@ export interface WorktreeConfig {
   setup_timeout_seconds: number;
 }
 
+export interface SelectedPlace {
+  branch: string;
+  // Set when a worktree was selected; a selected worktree that changes branch is followed.
+  worktree_path: string | null;
+}
+
 export interface RepoConfig {
   name: string;
   path: string;
@@ -383,6 +389,10 @@ export interface RepoConfig {
   // The branch checked out in the folder when the repo was read; null when HEAD is
   // detached, the branch has no commits yet, or the folder is not git (B55).
   current_branch: string | null;
+  // Where new chats of the project start (B131); never where an open chat works.
+  selected_place: SelectedPlace | null;
+  // The name of a selected place that went: shown once, then cleared with an empty selection.
+  selected_place_gone: string | null;
   // The only address Nest pushes origin to (D050); null when none is recorded.
   remote_url: string | null;
   // A pixie sprite as the project's icon; null shows its initials (B36).
@@ -592,19 +602,41 @@ export interface CreateSessionBody {
 /** A git project's branch map (B96): each branch under the branch it comes from. */
 export interface BranchMap {
   default_branch: string | null;
-  // Null when the project folder is on a detached HEAD.
+  // Null when the project folder is on a detached HEAD or a branch with no commits.
   current_branch: string | null;
-  // Depth first from the root, siblings by name.
+  // The project folder is on a detached HEAD, as git says.
+  detached: boolean;
+  // Depth first from the top row, which has no parent.
   branches: BranchMapBranch[];
+  // Branches only a remote has: origin's first, then the other remotes' by name.
+  remote_branches: RemoteBranch[];
+}
+
+export interface RemoteBranch {
+  remote: string;
+  name: string;
 }
 
 export interface BranchMapBranch {
   name: string;
-  // Null for the root only.
+  // Null for the top row only.
   parent: string | null;
   worktree: { path: string; owner: "nest" | "claude" | "other" } | null;
   // The branch the project folder is on.
   here: boolean;
+  // Commits on its remote the last fetch saw and this branch does not have.
+  behind: number;
+  // Set only on a top row that exists on this remote alone.
+  remote: string | null;
+}
+
+// Empty clears it.
+export type SelectPlaceBody =
+  { branch: string } | { worktree_path: string } | Record<string, never>;
+
+export interface RemotesRefresh {
+  // `error` is null for a remote that fetched.
+  remotes: { name: string; error: string | null }[];
 }
 
 export interface UpdateSessionBody {

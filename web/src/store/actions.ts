@@ -40,6 +40,7 @@ import type {
   PixieSearchHit,
   PixieSkill,
   PixieTeam,
+  RemotesRefresh,
   RepoConfig,
   ResolveBody,
   ForkReply,
@@ -52,6 +53,7 @@ import type {
   RunStatus,
   RunVerb,
   SearchResults,
+  SelectPlaceBody,
   SendAwayBody,
   Session,
   SetAutopilot,
@@ -1023,6 +1025,29 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     async refreshRepo(name: string): Promise<void> {
       const fresh = await quietly(() => api.repo(name));
       if (fresh !== null) dispatch({ type: "repo", repo: fresh });
+    },
+
+    /** Sets where the project's new chats start (B131). Nothing open moves. */
+    async selectPlace(name: string, body: SelectPlaceBody): Promise<void> {
+      const updated = await attempt(() => api.selectPlace(name, body));
+      if (updated !== null) dispatch({ type: "repo", repo: updated });
+    },
+
+    /** Clears a selected place the daemon reports gone; the toast has told the user already. */
+    async clearGonePlace(name: string): Promise<void> {
+      const updated = await quietly(() => api.clearGonePlace(name));
+      if (updated !== null) dispatch({ type: "repo", repo: updated });
+    },
+
+    /** Fetches the project's remotes; null, after a toast, when the daemon cannot answer. */
+    refreshRemotes(name: string): Promise<RemotesRefresh | null> {
+      return attempt(() => api.refreshRemotes(name));
+    },
+
+    /** The local branch made for a remote-only one; null, after a toast, when it failed. */
+    async trackRemoteBranch(repo: string, remote: string, name: string): Promise<string | null> {
+      const made = await attempt(() => api.trackRemoteBranch(repo, remote, name));
+      return made?.branch ?? null;
     },
 
     /** The pixie, or the team with its members, leaves the chat's group (B46). */
