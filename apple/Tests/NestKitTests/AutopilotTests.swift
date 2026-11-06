@@ -115,9 +115,9 @@ private let start = Date(timeIntervalSince1970: 1_791_288_000)
     /// A chat on Autopilot works in a worktree unless the user chose a place.
     @Test func aNewChatOnAutopilotMovesToAWorktree() {
         let on = AutopilotChoice(on: true)
-        #expect(on.place(chosen: nil, fallback: .inPlace) == .newWorktree(from: nil))
-        #expect(on.place(chosen: .inPlace, fallback: .inPlace) == .inPlace)
-        #expect(AutopilotChoice().place(chosen: nil, fallback: .inPlace) == .inPlace)
+        #expect(on.place(chosen: nil, selected: nil, mode: .inPlace) == .newWorktree(from: nil))
+        #expect(on.place(chosen: .inPlace, selected: nil, mode: .inPlace) == .inPlace)
+        #expect(AutopilotChoice().place(chosen: nil, selected: nil, mode: .inPlace) == .inPlace)
     }
 
     @Test func turningOffAsksTheDaemonAndFollowsItsAnswer() async throws {

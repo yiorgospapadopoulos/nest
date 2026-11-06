@@ -77,10 +77,12 @@ public struct AutopilotChoice: Sendable, Hashable {
         on ? SetAutopilotRequest(on: true, budget: budget) : nil
     }
 
-    /// Where a new chat works: the place the user chose, else a new worktree on Autopilot,
-    /// else the default.
-    public func place(chosen: NewChatChoice?, fallback: NewChatChoice) -> NewChatChoice {
-        chosen ?? (on ? .newWorktree(from: nil) : fallback)
+    /// Where a new chat works: the place the user chose for it, else the project's selected
+    /// place through the default mode, Autopilot counting as worktree.
+    public func place(
+        chosen: NewChatChoice?, selected: SelectedPlace?, mode: SessionMode?
+    ) -> NewChatChoice {
+        chosen ?? NewChatChoice(selected: selected, mode: on ? .worktree : mode)
     }
 }
 

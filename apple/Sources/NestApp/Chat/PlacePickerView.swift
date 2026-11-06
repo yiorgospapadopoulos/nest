@@ -3,8 +3,10 @@ import SwiftUI
 
 /// The new chat's "Work on" button (B96, P1): where the chat works, a worktree's branch in
 /// its lane colour; it opens the picker over the composer. `quiet` draws it as the start
-/// screen's plain text, else as the pane composer's capsule.
+/// screen's plain text, else as the pane composer's capsule. A long name is cut, at most
+/// `maxWidth` and less when the pane is narrow, so it pushes nothing off screen.
 struct WorkOnButton: View {
+    static let maxWidth = 300.0
     @Bindable var draft: ComposerDraft
     let repo: Repo
     let picker: PlacePicker
@@ -14,9 +16,10 @@ struct WorkOnButton: View {
     @State private var hovering = false
 
     var body: some View {
-        let title = NewChatPlace.title(draft.place, repo: repo)
+        let place = draft.place(in: repo)
+        let title = NewChatPlace.title(place, repo: repo)
         let lane: Color? =
-            if case .worktree(_, let branch) = draft.place {
+            if case .worktree(_, let branch) = place {
                 shell.branchMaps.color(of: branch, in: repo.name).map(Color.init)
             } else {
                 nil
@@ -24,39 +27,48 @@ struct WorkOnButton: View {
         Button {
             open.toggle()
         } label: {
-            HStack(spacing: quiet ? 4 : 5) {
-                if !quiet || lane != nil {
-                    Image(systemName: Icon.branch).font(.system(size: 10, weight: .medium))
+            WidthCap(maxWidth: Self.maxWidth - 2 * padding) {
+                HStack(spacing: quiet ? 4 : 5) {
+                    if !quiet || lane != nil {
+                        Image(systemName: Icon.branch).font(.system(size: 10, weight: .medium))
+                    }
+                    Text(title)
+                        .font(lane == nil ? .ui(TypeSize.button) : .mono(TypeSize.meta))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: open ? Icon.chevronUp : Icon.chevron)
+                        .font(.system(size: 8, weight: .semibold))
+                        .opacity(quiet ? 1 : 0.5)
                 }
-                Text(title)
-                    .font(lane == nil ? .ui(TypeSize.button) : .mono(TypeSize.meta))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Image(systemName: open ? Icon.chevronUp : Icon.chevron)
-                    .font(.system(size: 8, weight: .semibold))
-                    .opacity(quiet ? 1 : 0.5)
             }
             .foregroundStyle(lane ?? (quiet ? (hovering ? Palette.t1 : Palette.t2) : text))
-            .padding(.horizontal, quiet ? 6 : 10)
+            .padding(.horizontal, padding)
             .frame(height: quiet ? Metrics.buttonHeight : 24)
             .background { background }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
         .onHover { hovering = $0 }
         .help("Where the chat works")
         .accessibilityLabel("Where the chat works: \(title)")
+        .onChange(of: open) { _, open in
+            if open {
+                shell.readBranches(of: repo.name)
+            }
+        }
         .popover(isPresented: $open, arrowEdge: .top) {
-            PlacePickerList(
-                project: repo.name, picker: picker, selected: draft.place.resolved(repo)
-            ) { choice in
-                draft.place = choice
-                open = false
+            if let map = shell.branchMaps.map(repo.name) {
+                PlacePickerList(repo: repo, map: map, picker: picker, selected: place) { choice in
+                    draft.chosenPlace = choice
+                    open = false
+                }
             }
         }
     }
+
+    private var padding: Double { quiet ? 6 : 10 }
 
     private var text: Color { Ink.content(hovering ? 1 : 0.75) }
 
@@ -71,168 +83,113 @@ struct WorkOnButton: View {
     }
 }
 
-/// The picker (P1): "Where this chat works", then a block per branch, divided, in a list
-/// that scrolls once it reaches about eleven rows.
+/// The picker (P1, B131): Find, the top row pinned, every other branch in its lane with
+/// "New worktree" on hover, scrolling past eight rows, then what only the remotes have.
 struct PlacePickerList: View {
     static let width = 300.0
-    let project: String
+    /// Find and the full tree reach the others.
+    static let remoteRows = 40
+    let repo: Repo
+    let map: BranchMap
     let picker: PlacePicker
     let selected: NewChatChoice
+    /// Snapshots only: the row drawn as hovered.
+    var hovered: String?
     let choose: (NewChatChoice) -> Void
+    @Environment(Shell.self) private var shell
+    @State private var query = ""
 
     var body: some View {
+        let chats = shell.branchMaps.chats(
+            in: repo.name, sessions: shell.sessions.sessions(in: repo.name),
+            claudeChats: shell.claudeChats.chats(in: repo.name), repo: repo,
+            tone: shell.tone(of:))
         VStack(alignment: .leading, spacing: 0) {
-            Text("Where this chat works")
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .padding(EdgeInsets(top: 4, leading: 8, bottom: 6, trailing: 8))
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(picker.blocks.enumerated()), id: \.element.id) { index, block in
-                        if index > 0 {
-                            Rectangle().fill(Palette.divider)
-                                .frame(height: 1)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, (PlacePicker.dividerHeight - 1) / 2)
-                        }
-                        ForEach(block.rows) { row in
-                            PlacePickerRowView(
-                                project: project, row: row, width: picker.width,
-                                selected: row.choice == selected, choose: choose)
-                        }
-                    }
-                }
-                .padding(.trailing, 2)
+            FindField(placeholder: "Where this chat works", text: $query, size: TypeSize.ui)
+                .padding(EdgeInsets(top: 3, leading: 8, bottom: 7, trailing: 8))
+            if query.isEmpty {
+                rows(chats: chats)
+            } else {
+                FoundRows(map: map, query: query, picks: picks, maxHeight: 330)
             }
-            .scrollIndicators(.automatic)
-            .frame(height: picker.height)
         }
         .padding(EdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 4))
         .frame(width: Self.width)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Where this chat works")
     }
-}
 
-/// One picker row: its slice of the lanes, its name and, selected, the tint and a check.
-private struct PlacePickerRowView: View {
-    let project: String
-    let row: PlacePickerRow
-    let width: Double
-    let selected: Bool
-    let choose: (NewChatChoice) -> Void
-    @Environment(Shell.self) private var shell
-    @State private var hovering = false
-
-    var body: some View {
-        Button {
-            choose(row.choice)
-        } label: {
-            content
-                .background(
-                    selected ? lane.opacity(0.14) : hovering ? Palette.hover : .clear,
-                    in: .rounded(6)
-                )
-                .contentShape(Rectangle())
+    @ViewBuilder private func rows(chats: [String: BranchChatStatus]) -> some View {
+        let lead = map.detached ? 1 : 0
+        let target = picker.rows.first { selected.marks($0.branch, repo: repo) }
+        if let top = picker.top {
+            row(top, chats: chats)
         }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .onHover { hovering = $0 }
-        .accessibilityLabel(row.accessibilityLabel + (selected ? ", selected" : ""))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var lane: Color {
-        shell.branchMaps.color(of: row.branch, in: project).map(Color.init) ?? Palette.t3
-    }
-
-    private var content: some View {
-        HStack(spacing: 6) {
-            PickerLaneGraph(project: project, row: row, width: width)
-            Text(row.title)
-                .font(font)
-                .foregroundStyle(row.kind == .newWorktree ? Palette.t2 : Palette.t1)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .layoutPriority(1)
-            if let detail = row.detail {
-                Text(detail)
-                    .font(.ui(TypeSize.micro))
-                    .foregroundStyle(Palette.t3)
-                    .lineLimit(1)
-                    .fixedSize()
+        RevealingRows(
+            count: picker.rows.count + lead, rowHeight: PlacePickerRow.height,
+            visible: PlacePicker.visibleRows,
+            index: target.flatMap(picker.rows.firstIndex(of:)).map { $0 + lead }
+        ) {
+            if map.detached {
+                DetachedRow(height: PlacePickerRow.height, trunk: trunk)
             }
-            Spacer(minLength: 0)
-            if selected {
-                Image(systemName: Icon.check)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(lane)
-            }
+            ForEach(picker.rows) { row($0, chats: chats) }
         }
-        .padding(.trailing, 10)
-        .frame(height: PlacePickerRow.height)
+        .padding(.trailing, 2)
+        if !map.remoteBranches.isEmpty {
+            Rectangle().fill(Palette.divider)
+                .frame(height: 1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+        }
+        RemoteFold(
+            remotes: map.remoteBranches.prefix(Self.remoteRows), count: map.remoteBranches.count,
+            rule: false, tall: true, maxHeight: 120, pick: pickRemote)
     }
 
-    private var font: Font {
-        switch row.kind {
-        case .folder: .ui(TypeSize.ui, .semibold)
-        case .worktree: .mono(TypeSize.meta)
-        case .branch, .newWorktree: .ui(TypeSize.ui)
+    private func row(_ row: PlacePickerRow, chats: [String: BranchChatStatus]) -> BranchRow {
+        let marked = selected.marks(row.branch, repo: repo)
+        return BranchRow(
+            project: repo.name, row: row.lane, height: PlacePickerRow.height, selected: marked,
+            chat: chats[row.id], showsChat: false,
+            addWord: row.newWorktree == nil ? nil : "New worktree",
+            mono: row.branch.worktree != nil,
+            label: row.accessibilityLabel + (marked ? ", selected" : ""),
+            showsHover: hovered == row.id
+        ) {
+            pick(row.branch)
+        } add: {
+            addWorktree(row.branch.name)
         }
     }
-}
 
-/// A picker row's slice of the lanes, as the branch map draws them: the lines passing
-/// through, the curve from the parent's lane into a worktree's node, the branch's node,
-/// or the plus of a new worktree.
-private struct PickerLaneGraph: View {
-    let project: String
-    let row: PlacePickerRow
-    let width: Double
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        let height = PlacePickerRow.height
-        let mid = height / 2
-        let x = PlacePickerRow.x(row.depth)
-        let own = color(row.branch)
-        ZStack(alignment: .topLeading) {
-            ForEach(row.lines, id: \.self) { line in
-                let lineX = PlacePickerRow.x(line.depth)
-                Path { path in
-                    path.move(to: CGPoint(x: lineX, y: line.fromTop ? 0 : mid))
-                    path.addLine(to: CGPoint(x: lineX, y: line.toBottom ? height : mid))
-                }
-                .stroke(color(line.lane), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-            }
-            if let parent = row.parentDepth {
-                let parentX = PlacePickerRow.x(parent)
-                Path { path in
-                    path.move(to: CGPoint(x: parentX, y: 0))
-                    path.addCurve(
-                        to: CGPoint(x: x, y: mid), control1: CGPoint(x: parentX, y: 10),
-                        control2: CGPoint(x: x, y: 6))
-                }
-                .stroke(own, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-            }
-            switch row.kind {
-            case .newWorktree:
-                Image(systemName: Icon.plus)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Palette.t2)
-                    .position(x: PlacePickerRow.x(row.depth + 1), y: mid)
-            case .folder, .branch, .worktree:
-                let radius = row.kind == .worktree ? 3.5 : row.kind == .folder ? 4.5 : 4
-                Circle().fill(own)
-                    .frame(width: radius * 2, height: radius * 2)
-                    .position(x: x, y: mid)
-            }
-        }
-        .frame(width: width, height: height)
-        .accessibilityHidden(true)
+    /// The top row's lane, when it runs past the detached row.
+    private var trunk: Color? {
+        guard !picker.rows.isEmpty, let top = picker.top else { return nil }
+        return shell.branchMaps.color(of: top.id, in: repo.name).map(Color.init)
     }
 
-    private func color(_ branch: String) -> Color {
-        shell.branchMaps.color(of: branch, in: project).map(Color.init) ?? Palette.t3
+    private var picks: FoundPicks {
+        FoundPicks(
+            selected: { selected.marks($0, repo: repo) },
+            color: { shell.branchMaps.color(of: $0, in: repo.name).map(Color.init) },
+            pick: pick, pickRemote: pickRemote, add: addWorktree, addWord: "New worktree",
+            tall: true)
+    }
+
+    private func pick(_ branch: BranchMap.Branch) {
+        if let remote = branch.remote {
+            pickRemote(BranchMap.RemoteBranch(remote: remote, name: branch.name))
+        } else if !shell.branchMaps.picksHeld(repo.name) {
+            choose(branch.newChatChoice)
+        }
+    }
+
+    private func pickRemote(_ remote: BranchMap.RemoteBranch) {
+        shell.track(remote, in: repo.name) { choose(.onBranch($0)) }
+    }
+
+    private func addWorktree(_ branch: String) {
+        choose(.newWorktree(from: branch))
     }
 }

@@ -686,8 +686,10 @@ private struct ControlRow: View {
                 AutopilotButton(chat: chat, session: isDraft ? nil : session)
             }
             if start && shell.repo?.git != false {
+                // After the send and model controls, which must stay on screen.
                 StartPlace(draft: draft, repo: shell.repo)
                     .padding(.leading, 4)
+                    .layoutPriority(-1)
             }
             if !pixie && !isDraft,
                 let place = session.flatMap({ ChatPlace.of($0, repo: shell.repo) })
@@ -696,7 +698,7 @@ private struct ControlRow: View {
                     .frame(maxWidth: 140, alignment: .leading)
                     .padding(.leading, 4)
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: 4).layoutPriority(start ? -2 : 0)
             if !pixie {
                 ModelMenu(chat: chat, model: isDraft ? draft.model : session?.model)
                 EffortMenu(
@@ -798,10 +800,11 @@ private struct ComposerActions {
 }
 
 /// Where a new chat works, over its field (B55): a capsule selector with the branch icon,
-/// "Work on <branch>" (the project folder's current branch), "New worktree from <branch>"
-/// or a worktree's branch in its lane colour, chosen in the "Work on" picker of the
-/// project's branch map (B96); a new worktree also takes an optional branch name. Before
-/// the map loads, a menu offers the folder or a new worktree from its branch.
+/// "Work on <branch>", "New worktree from <branch>" or a worktree's branch in its lane
+/// colour, starting on the project's selected place (B131) and changed for this one chat in
+/// the "Work on" picker of the project's branch map (B96); a new worktree also takes an
+/// optional branch name. Before the map loads, a menu offers the folder or a new worktree
+/// from its branch.
 struct WorkingCopyRow: View {
     @Bindable var draft: ComposerDraft
     let repo: Repo?
@@ -810,13 +813,15 @@ struct WorkingCopyRow: View {
     var body: some View {
         HStack(spacing: 8) {
             if let repo, let picker = shell.branchMaps.picker(repo.name) {
+                // Before the branch name field, which gives way down to its minimum.
                 WorkOnButton(draft: draft, repo: repo, picker: picker, quiet: false)
+                    .layoutPriority(1)
             } else {
                 PlaceSelector(title: PlaceItems.title(draft, repo)) {
                     PlaceItems(draft: draft, repo: repo)
                 }
             }
-            if case .newWorktree = draft.place {
+            if case .newWorktree = draft.place(in: repo) {
                 BranchNameField(text: $draft.branchName)
             }
             Spacer(minLength: 0)
@@ -836,6 +841,7 @@ private struct StartPlace: View {
         HStack(spacing: 6) {
             if let repo, let picker = shell.branchMaps.picker(repo.name) {
                 WorkOnButton(draft: draft, repo: repo, picker: picker, quiet: true)
+                    .layoutPriority(1)
             } else {
                 QuietMenu(
                     title: PlaceItems.title(draft, repo), help: "Where the chat works",
@@ -844,7 +850,7 @@ private struct StartPlace: View {
                     PlaceItems(draft: draft, repo: repo)
                 }
             }
-            if case .newWorktree = draft.place {
+            if case .newWorktree = draft.place(in: repo) {
                 BranchNameField(text: $draft.branchName)
             }
         }
@@ -859,19 +865,19 @@ private struct PlaceItems: View {
     let repo: Repo?
 
     static func title(_ draft: ComposerDraft, _ repo: Repo?) -> String {
-        draft.place == .inPlace ? NewChatPlace.inPlaceTitle(repo) : NewChatPlace.worktreeTitle
+        NewChatPlace.title(draft.place(in: repo), repo: repo)
     }
 
     var body: some View {
-        let inPlace = draft.place == .inPlace
+        let inPlace = draft.place(in: repo).resolved(repo) == .inPlace
         OptionItem(
             title: NewChatPlace.inPlaceTitle(repo), detail: NewChatPlace.inPlaceDetail(repo),
             checked: inPlace
-        ) { draft.place = .inPlace }
+        ) { draft.chosenPlace = .inPlace }
         OptionItem(
             title: NewChatPlace.worktreeTitle, detail: NewChatPlace.worktreeDetail,
             checked: !inPlace
-        ) { draft.place = .newWorktree(from: nil) }
+        ) { draft.chosenPlace = .newWorktree(from: nil) }
     }
 }
 
