@@ -4,6 +4,7 @@ import type {
   BranchMap,
   BranchMapBranch,
   ClaudeChat,
+  RemoteBranch,
   RepoConfig,
   Session,
 } from "../../../api/types.ts";
@@ -11,6 +12,9 @@ import { sessionPlace, type ChatPlace } from "../../../screens/chat/place.ts";
 import type { Tone } from "../../../store/selectors.ts";
 
 export const LANE_ROW = 34;
+
+// Rows deeper than this sit on it in the small map and the picker, naming their parent.
+export const INDENT_CAP = 3;
 
 /** A lane's centre, from the graph's left edge. */
 export const laneX = (depth: number) => 14 + 14 * depth;
@@ -25,73 +29,152 @@ export interface LaneLine {
 
 export interface LaneRow {
   branch: BranchMapBranch;
+  // The lane it is drawn in, at most the cap.
   depth: number;
   lines: LaneLine[];
+  // The lane its curve leaves from; its own lane past the cap, where it drops straight down.
+  parentDepth: number | null;
+  // Its parent's name, on rows past the cap only.
+  fromParent: string | null;
+  // No children and no worktree, so it wears its parent's lane until it needs its own.
+  plain: boolean;
   // "here" where the project folder is.
   label: string | null;
 }
 
 export interface BranchLanes {
   rows: LaneRow[];
-  worktrees: number;
+  // The row with no parent, pinned over the rest.
+  top: LaneRow | null;
+  rest: LaneRow[];
   // The graph's width: the deepest lane and a lane's room after it.
   width: number;
-  // "5 worktrees".
-  count: string;
 }
 
-export function branchLanes(map: BranchMap): BranchLanes {
+/** The branches depth first, each lane down to its last child; `maxDepth` caps the indent. */
+export function branchLanes(map: BranchMap, maxDepth: number | null = null): BranchLanes {
+  const names = new Set(map.branches.map((b) => b.name));
+  const children = new Map<string, BranchMapBranch[]>();
+  for (const branch of map.branches) {
+    if (branch.parent === null || !names.has(branch.parent)) continue;
+    children.set(branch.parent, [...(children.get(branch.parent) ?? []), branch]);
+  }
   const placed: { branch: BranchMapBranch; depth: number }[] = [];
   const seen = new Set<string>();
   const visit = (branch: BranchMapBranch, depth: number) => {
     if (seen.has(branch.name)) return;
     seen.add(branch.name);
     placed.push({ branch, depth });
-    for (const child of map.branches.filter((b) => b.parent === branch.name)) {
-      visit(child, depth + 1);
-    }
+    for (const child of children.get(branch.name) ?? []) visit(child, depth + 1);
   };
-  const names = new Set(map.branches.map((b) => b.name));
   for (const branch of map.branches) {
     if (branch.parent === null || !names.has(branch.parent)) visit(branch, 0);
   }
   // A loop the daemon should never send still shows.
   for (const branch of map.branches) visit(branch, 0);
 
+  const shown = (depth: number) => (maxDepth === null ? depth : Math.min(depth, maxDepth));
+  const index = new Map(placed.map((row, at) => [row.branch.name, at]));
+  const lastChild = new Map<string, number>();
+  placed.forEach((row, at) => {
+    const parent = row.branch.parent;
+    if (parent !== null && (index.get(parent) ?? at) < at) lastChild.set(parent, at);
+  });
   const lines: LaneLine[][] = placed.map(() => []);
-  placed.forEach((row, index) => {
-    let last = -1;
-    placed.forEach((other, at) => {
-      if (at > index && other.branch.parent === row.branch.name) last = at;
-    });
-    if (last === -1) return;
-    lines[index]?.push({ depth: row.depth, lane: row.branch.name, fromMiddle: true });
-    for (let between = index + 1; between < last; between++) {
-      lines[between]?.push({ depth: row.depth, lane: row.branch.name, fromMiddle: false });
+  const add = (at: number, depth: number, lane: string, fromMiddle: boolean) => {
+    const row = placed[at];
+    if (row === undefined) return;
+    lines[at]?.push({ depth: Math.min(depth, shown(row.depth)), lane, fromMiddle });
+  };
+  placed.forEach((row, at) => {
+    const last = lastChild.get(row.branch.name);
+    if (last === undefined) return;
+    add(at, row.depth, row.branch.name, true);
+    for (let between = at + 1; between < last; between++) {
+      add(between, row.depth, row.branch.name, false);
     }
   });
 
-  const rows = placed.map((row, index) => ({
-    branch: row.branch,
-    depth: row.depth,
-    lines: [...(lines[index] ?? [])].sort((a, b) => a.depth - b.depth),
-    label: row.branch.here ? "here" : null,
-  }));
-  const worktrees = placed.filter((p) => p.depth > 0 && p.branch.worktree !== null).length;
+  const rows = placed.map((row, at): LaneRow => {
+    const { branch, depth } = row;
+    return {
+      branch,
+      depth: shown(depth),
+      lines: [...(lines[at] ?? [])].sort((a, b) => a.depth - b.depth),
+      parentDepth: depth === 0 ? null : shown(depth - 1),
+      fromParent: depth > shown(depth) ? branch.parent : null,
+      plain:
+        branch.worktree === null &&
+        !children.has(branch.name) &&
+        branch.parent !== null &&
+        names.has(branch.parent),
+      label: branch.here ? "here" : null,
+    };
+  });
+  const top = rows.find((r) => r.branch.parent === null) ?? null;
   return {
     rows,
-    worktrees,
+    top,
+    rest: rows.filter((r) => r !== top),
     width: laneX(Math.max(0, ...rows.map((r) => r.depth))) + 14,
-    count: `${String(worktrees)} worktree${worktrees === 1 ? "" : "s"}`,
   };
 }
 
-/** What a click on a row does (A8), for its tooltip and name. */
-export function rowAction(branch: BranchMapBranch): string {
-  if (branch.here) return "New chat in the project folder";
-  if (branch.worktree !== null) return "New chat in this worktree";
-  return `New chat working on ${branch.name}`;
+/** "feat/b5…red": cut in the middle to `length` characters. */
+export function middleName(name: string, length: number): string {
+  if (name.length <= length) return name;
+  const room = length - 1;
+  return `${name.slice(0, Math.ceil(room * 0.6))}…${name.slice(-Math.floor(room * 0.4))}`;
 }
+
+export interface FoundPlaces {
+  branches: BranchMapBranch[];
+  remotes: RemoteBranch[];
+}
+
+const MAX_FOUND_BRANCHES = 40;
+const MAX_FOUND_REMOTES = 20;
+
+/** The branches and remote branches whose name holds `query`, with no regard for case. */
+export function findPlaces(map: BranchMap, query: string): FoundPlaces {
+  const wanted = query.toLowerCase();
+  const holds = (name: string) => name.toLowerCase().includes(wanted);
+  return {
+    branches: map.branches.filter((b) => holds(b.name)).slice(0, MAX_FOUND_BRANCHES),
+    remotes: map.remote_branches.filter((b) => holds(b.name)).slice(0, MAX_FOUND_REMOTES),
+  };
+}
+
+// Room kept around a name brought into view sideways, so its node shows too.
+const SIDE_ROOM = 44;
+
+/**
+ * A list's selected row (`.on`) comes into view, centred; a row in view moves nothing. In a
+ * list that scrolls `sideways` too, its name does, ending inside the view but never starting
+ * outside it.
+ */
+export function revealSelected(box: HTMLElement | null, sideways = false): void {
+  const row = box?.querySelector(".on");
+  if (box == null || row == null) return;
+  const view = box.getBoundingClientRect();
+  const shown = row.getBoundingClientRect();
+  if (shown.top < view.top || shown.bottom > view.top + box.clientHeight) {
+    box.scrollTop += shown.top - view.top - (box.clientHeight - shown.height) / 2;
+  }
+  const name = sideways ? row.querySelector(".fr-bmname")?.getBoundingClientRect() : undefined;
+  if (name === undefined) return;
+  const right = view.left + box.clientWidth;
+  if (name.right > right) {
+    box.scrollLeft += Math.min(name.right - right + SIDE_ROOM, name.left - view.left - SIDE_ROOM);
+  } else if (name.left < view.left) {
+    box.scrollLeft += name.left - view.left - SIDE_ROOM;
+  }
+}
+
+/** The tint of a selected row. */
+export const selectedFill = (ink: string) => ({
+  background: `color-mix(in srgb, ${ink} 14%, transparent)`,
+});
 
 /** The branch a chat's place is on: a worktree by its folder first, else by name. */
 export function branchFor(map: BranchMap, place: ChatPlace): BranchMapBranch | undefined {
@@ -107,6 +190,38 @@ export function branchFor(map: BranchMap, place: ChatPlace): BranchMapBranch | u
 }
 
 export type BranchChat = "idle" | "running" | "needsYou";
+
+/** The lane a row draws in: its parent's while it is plain, its own once it means something. */
+export function rowLane(
+  row: LaneRow,
+  color: (branch: string) => string | null,
+  selected: boolean,
+  chat: BranchChat | null,
+): string {
+  const borrowed = row.plain && !selected && chat === null ? row.branch.parent : null;
+  return color(borrowed ?? row.branch.name) ?? "var(--t3)";
+}
+
+/** A map row's look, the same in the small map and the full tree. */
+export function mapRowLook(
+  row: LaneRow,
+  color: (branch: string) => string | null,
+  selectedBranch: string | null,
+  chats: Map<string, BranchChat>,
+) {
+  const { branch } = row;
+  const selected = branch.name === selectedBranch;
+  const chat = chats.get(branch.name) ?? null;
+  return {
+    row,
+    ink: rowLane(row, color, selected, chat),
+    color,
+    selected,
+    chat,
+    behind: branch.remote === null ? branch.behind : 0,
+    addWord: branch.remote === null ? "Worktree" : null,
+  };
+}
 
 const URGENCY: Record<BranchChat, number> = { idle: 0, running: 1, needsYou: 2 };
 
@@ -127,18 +242,27 @@ export function branchChats(
 ): Map<string, BranchChat> {
   const live = sessions.filter((s) => s.archived_at === null);
   const chats = claudeChats.filter((c) => !c.archived && c.worktree !== null);
+  const byName = new Map<string, Session[]>();
+  const byFolder = new Map<string, Session[]>();
+  const file = (shelf: Map<string, Session[]>, key: string | null, session: Session) => {
+    if (key !== null) shelf.set(key, [...(shelf.get(key) ?? []), session]);
+  };
+  for (const session of live) {
+    const place = sessionPlace(session, repo);
+    const name = place === null ? null : place.kind === "worktree" ? place.name : place.branch;
+    file(byName, name, session);
+    file(byFolder, session.worktree_path, session);
+  }
   const found = new Map<string, BranchChat>();
   for (const branch of map.branches) {
     const path = branch.worktree?.path ?? null;
-    const nest = live.filter((s) => {
-      if (path !== null && s.worktree_path === path) return true;
-      const place = sessionPlace(s, repo);
-      const name = place === null ? null : place.kind === "worktree" ? place.name : place.branch;
-      return name === branch.name;
-    });
+    const nest = new Set([
+      ...(byName.get(branch.name) ?? []),
+      ...(path === null ? [] : (byFolder.get(path) ?? [])),
+    ]);
     const claude = path !== null && chats.some((c) => c.cwd === path);
-    if (nest.length === 0 && !claude) continue;
-    const dots = nest.map((s) => chatOf(tone(s)));
+    if (nest.size === 0 && !claude) continue;
+    const dots = [...nest].map((s) => chatOf(tone(s)));
     found.set(
       branch.name,
       dots.reduce<BranchChat>((a, b) => (URGENCY[b] > URGENCY[a] ? b : a), "idle"),
