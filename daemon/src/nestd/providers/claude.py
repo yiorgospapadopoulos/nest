@@ -23,8 +23,8 @@ from claude_agent_sdk import (
     PermissionUpdate,
     ToolPermissionContext,
 )
+from claude_agent_sdk.types import HookCallback, SystemPromptPreset
 from claude_agent_sdk.types import PermissionMode as SdkPermissionMode
-from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import JsonValue
 
 from nestd.accounts.profiles import CLAUDE_CONFIG_DIR
@@ -80,9 +80,11 @@ from nestd.providers.claude_tools import (
 from nestd.providers.git_guard import (
     GIT_WORKTREE_RULES,
     GIT_WRITE_RULES,
+    NO_PUSH_ENV,
     block_autopilot_git,
     block_git_writes,
-    pixie_git_guard,
+    block_subagent_git_writes,
+    block_worktree_removal,
 )
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
@@ -134,22 +136,6 @@ class SdkClient(Protocol):
 type ClientFactory = Callable[[ClaudeAgentOptions], SdkClient]
 
 
-def agent_env(gh_config_dir: Path) -> dict[str, str]:
-    """Layer 3 of a guarded run: no git credential helpers, prompts or GitHub token."""
-    return {
-        # An empty credential.helper resets every configured helper.
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "credential.helper",
-        "GIT_CONFIG_VALUE_0": "",
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_ASKPASS": "/usr/bin/false",
-        "GH_CONFIG_DIR": str(gh_config_dir),
-        # The SDK merges this over the daemon's environment, so tokens are blanked, not removed.
-        "GH_TOKEN": "",
-        "GITHUB_TOKEN": "",
-    }
-
-
 # How the Claude app runs Claude Code, so a Nest chat starts and behaves the same (D047):
 # answer before slow MCP servers finish connecting, connect them in batches, and keep old
 # tool results in context instead of trimming them early.
@@ -188,10 +174,17 @@ class StderrTail:
         return text if len(text) <= STDERR_CHARS else "..." + text[3 - STDERR_CHARS :]
 
 
+def _git_hook(spec: SessionSpec) -> HookCallback | None:
+    if spec.guard_git:
+        return block_autopilot_git if spec.guard_worktrees else block_git_writes
+    if spec.guard_worktrees:
+        return block_worktree_removal
+    return block_subagent_git_writes if spec.guard_subagents else None
+
+
 def build_options(
     spec: SessionSpec,
     handler: ApprovalHandler,
-    gh_config_dir: Path,
     stderr: Callable[[str], None] | None = None,
     shell_env: Mapping[str, str] | None = None,
 ) -> ClaudeAgentOptions:
@@ -229,12 +222,9 @@ def build_options(
     system_prompt: SystemPromptPreset = {"type": "preset", "preset": "claude_code"}
     if spec.system_prompt_append:
         system_prompt["append"] = spec.system_prompt_append
-    # A guarded run checks every tool, so MCP and other shell tools are checked too (D049).
-    git_hook = block_autopilot_git if spec.guard_worktrees else block_git_writes
-    pre_tool_use = [HookMatcher(matcher="*", hooks=[git_hook])] if spec.guard_git else []
-    if spec.subagents and not spec.guard_git:
-        pixies = frozenset(spec.subagents)
-        pre_tool_use.append(HookMatcher(matcher="*", hooks=[pixie_git_guard(pixies)]))
+    # Every tool is checked, so MCP and other shell tools are too (D049).
+    git_hook = _git_hook(spec)
+    pre_tool_use = [HookMatcher(matcher="*", hooks=[git_hook])] if git_hook is not None else []
     pre_tool_use.append(
         HookMatcher(
             matcher=ASK_USER_QUESTION,
@@ -259,7 +249,7 @@ def build_options(
         )
     local = spec.local
     disallowed: list[str] = list(GIT_WRITE_RULES) if spec.guard_git else []
-    if spec.guard_git and spec.guard_worktrees:
+    if spec.guard_worktrees:
         disallowed.extend(GIT_WORKTREE_RULES)
     disallowed.extend(spec.disallowed_tools)
     if local is not None:
@@ -295,7 +285,7 @@ def build_options(
         hooks={"PreToolUse": pre_tool_use},
         env={
             **(shell_env or {}),
-            **(agent_env(gh_config_dir) if spec.guard_git else {}),
+            **(NO_PUSH_ENV if spec.guard_git else {}),
             **CLAUDE_APP_ENV,
             # Such as the folder's ports (B108).
             **spec.env,
@@ -442,7 +432,6 @@ class ClaudeProvider:
 
     def __init__(
         self,
-        gh_config_dir: Path,
         client_factory: ClientFactory = ClaudeSDKClient,
         shell_env: ShellEnvSource = no_shell_env,
         claude_dir: Path | None = None,
@@ -451,7 +440,6 @@ class ClaudeProvider:
         `claude_dir` holds Claude Code's transcripts (None: none are read).
         """
         self._claude_dir = claude_dir
-        self._gh_config_dir = gh_config_dir
         self._client_factory = client_factory
         self._shell_env = shell_env
 
@@ -460,9 +448,7 @@ class ClaudeProvider:
     ) -> ClaudeRun:
         stderr = StderrTail(spec.cwd)
         env = await self._shell_env()
-        client = self._client_factory(
-            build_options(spec, handler, self._gh_config_dir, stderr.add, env)
-        )
+        client = self._client_factory(build_options(spec, handler, stderr.add, env))
         try:
             await client.connect()
             info = await client.get_server_info()

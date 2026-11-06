@@ -147,7 +147,7 @@ async def test_the_fork_point_is_the_parent_of_the_message(tmp_path: Path) -> No
             {"type": "user", "uuid": "u-2", "parentUuid": "s-1"},
         ],
     )
-    provider = ClaudeProvider(tmp_path / "gh", claude_dir=claude_dir)
+    provider = ClaudeProvider(claude_dir=claude_dir)
 
     assert await provider.fork_point(cwd, session_id, "u-2") == ForkPoint("s-1")
     # The first message keeps nothing.
@@ -157,7 +157,7 @@ async def test_the_fork_point_is_the_parent_of_the_message(tmp_path: Path) -> No
 
 
 async def test_without_a_claude_folder_there_is_no_fork_point(tmp_path: Path) -> None:
-    provider = ClaudeProvider(tmp_path / "gh")
+    provider = ClaudeProvider()
 
     assert await provider.fork_point(tmp_path, "sdk-1", "u-1") is None
 

@@ -40,7 +40,6 @@ def test_a_local_claude_run_goes_to_the_server_whatever_the_user_set(tmp_path: P
             guard_git=False,
         ),
         ScriptedHandler(PermissionDecision("allow")),
-        tmp_path / "gh",
         shell_env={"ANTHROPIC_BASE_URL": "https://elsewhere", "HOME": "/Users/me"},
     )
 
@@ -59,7 +58,6 @@ def test_a_guarded_local_run_keeps_the_git_blocks(tmp_path: Path) -> None:
     options = build_options(
         SessionSpec(cwd=tmp_path, permission_mode="default", local=local(context=None)),
         ScriptedHandler(PermissionDecision("allow")),
-        tmp_path / "gh",
     )
 
     assert options.disallowed_tools == [*GIT_WRITE_RULES, "WebSearch"]
@@ -71,7 +69,6 @@ def test_a_subscription_run_has_no_settings_of_its_own(tmp_path: Path) -> None:
     options = build_options(
         SessionSpec(cwd=tmp_path, permission_mode="default"),
         ScriptedHandler(PermissionDecision("allow")),
-        tmp_path / "gh",
     )
 
     assert options.settings is None

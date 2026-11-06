@@ -3,12 +3,13 @@
 Nest makes each engine ask before every shell command, edit and outside-folder access
 (`acp_engines`), and judges each request in this order:
 
-1. A guarded run's git write is rejected without asking, in every mode (D013): the
-   command (its input, else the title Gemini puts it in), and for an MCP tool its name
-   and input, with the matchers the Claude side uses. OpenCode asks about an MCP tool
-   before it says the tool's input, so a guarded run also rejects an MCP tool that comes
-   without its input and whose name says it runs commands (`shell`, `exec`, `command`...),
-   since its command cannot be read. The transcript shows Nest's reason as the result.
+1. A guarded run's git write, and on Autopilot a worktree removal, is rejected without
+   asking, in every mode (D013): the command (its input, else the title Gemini puts it in),
+   and for an MCP tool its name and input, with the matchers the Claude side uses. OpenCode
+   asks about an MCP tool before it says the tool's input, so a guarded run also rejects an
+   MCP tool that comes without its input and whose name says it runs commands (`shell`,
+   `exec`, `command`...), since its command cannot be read. The transcript shows Nest's
+   reason as the result. With the user letting agents push no run is guarded (D160).
 2. A run with a write root (a pixie's, D072) has every edit outside it rejected.
 3. Nest's own MCP tools (`nest`, `pixie`) are allowed: they check their callers.
 4. The chat's permission mode: `bypassPermissions` and `auto` allow the rest; a read or
@@ -53,7 +54,12 @@ from nestd.providers.acp_events import (
 from nestd.providers.acp_rpc import JsonObject
 from nestd.providers.base import ApprovalHandler, PermissionDecision, PermissionRequest
 from nestd.providers.codex_items import items, obj, text
-from nestd.providers.git_guard import DENY_REASON, is_git_write, tool_writes
+from nestd.providers.git_guard import (
+    DENY_REASON,
+    WORKTREE_DENY_REASON,
+    is_git_write,
+    tool_writes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +84,7 @@ class AcpRules:
     # Edits outside it are rejected in every mode (D072).
     write_root: Path | None = None
     nest: NestTools = field(default_factory=dict[str, frozenset[str]])
-    # A guarded run's worktree removals are rejected too (Autopilot).
+    # Worktree removals are rejected, guarded or not (Autopilot).
     worktrees: bool = False
 
 
@@ -106,9 +112,9 @@ class AcpPermissions:
         rules = self._rules()
         name, tool_input = tool_use(call, rules.nest)
         own = name.startswith("mcp__") and name.split("__")[1] in rules.nest
-        writes = git_write(call, name, rules.worktrees)
-        if rules.guarded and (writes or (not own and _blind_runner(call))):
-            call.refused = DENY_REASON
+        writes = git_write(call, name, pushes=rules.guarded, worktrees=rules.worktrees)
+        if writes or (rules.guarded and not own and _blind_runner(call)):
+            call.refused = DENY_REASON if rules.guarded else WORKTREE_DENY_REASON
             return "reject"
         changed = paths(call)
         root = rules.write_root
@@ -161,17 +167,20 @@ class AcpPermissions:
             self._asking.discard(task)
 
 
-def git_write(call: ToolCall, name: str, worktrees: bool = False) -> bool:
-    """Whether the call pushes or writes a pull request: its command, else its title
-    (where Gemini puts a command), and an MCP tool's name and input.
+def git_write(call: ToolCall, name: str, *, pushes: bool, worktrees: bool) -> bool:
+    """Whether the call pushes, writes a pull request or removes a worktree, as far as the
+    run blocks those: its command, else its title (where Gemini puts a command), and an MCP
+    tool's name and input.
     """
     commands = [command_text(call)] if shell_call(call) else []
     if call.kind not in READ_KINDS | EDIT_KINDS:
         commands.append(call.title)
-    if any(is_git_write(command, worktrees=worktrees) for command in commands if command):
+    if any(
+        is_git_write(command, pushes=pushes, worktrees=worktrees) for command in commands if command
+    ):
         return True
     tool = name if name.startswith("mcp__") or not unknown_kind(call) else _mcp_name(call)
-    return tool_writes(tool, call.raw_input, worktrees=worktrees)
+    return tool_writes(tool, call.raw_input, pushes=pushes, worktrees=worktrees)
 
 
 def _blind_runner(call: ToolCall) -> bool:

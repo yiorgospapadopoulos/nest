@@ -110,7 +110,7 @@ def push(server: FakeAppServer, *messages: JsonObject) -> None:
         server.notify(str(message["method"]), cast("JsonObject", message["params"]))
 
 
-def spawn(server: FakeAppServer, thread_id: str = AGENT, role: str = "scout") -> None:
+def spawn(server: FakeAppServer, thread_id: str = AGENT, role: str | None = "scout") -> None:
     push(
         server,
         collab("started", "spawnAgent", "call-1", [], prompt="Find the bug"),
@@ -425,6 +425,38 @@ async def test_a_pixie_in_a_normal_chat_cannot_push_but_may_commit_and_merge(
     assert run.permissions("").guarded is False
     assert handler.requests == []
     await run.close()
+
+
+async def test_an_ordinary_subagent_in_a_normal_chat_cannot_push_either(tmp_path: Path) -> None:
+    """D160: "subagents" in the setting is every subagent, as far as Codex asks Nest."""
+    server, run, _, _ = await opened(tmp_path, subagents={"scout": SCOUT}, call_rules=None)
+    spawn(server, role=None)
+    await until(lambda: run.stream.agents.thread(AGENT) is not None)
+
+    assert run.permissions(AGENT).guarded is True
+    assert run.permissions("").guarded is False
+    await run.close()
+
+
+async def test_with_agents_allowed_to_push_a_pixie_may_push(tmp_path: Path) -> None:
+    server, run, _, _ = await opened(
+        tmp_path, subagents={"scout": SCOUT}, call_rules=None, guard_subagents=False
+    )
+    spawn(server)
+    await until(lambda: run.stream.agents.thread(AGENT) is not None)
+
+    assert run.permissions(AGENT).guarded is False
+    await run.close()
+
+
+def test_with_agents_allowed_to_push_a_pixies_role_follows_its_own_mode() -> None:
+    roles = CodexRoles({"scout": SCOUT}, False, None, guard_pixies=False)
+    roles.config("default")
+    text = (roles.folder / "scout.toml").read_text(encoding="utf-8")
+    roles.close()
+
+    assert 'approval_policy = "never"' in text
+    assert 'sandbox_mode = "danger-full-access"' in text
 
 
 def test_a_bypass_pixies_role_still_asks_nest_about_its_commands() -> None:

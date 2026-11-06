@@ -73,7 +73,7 @@ async def open_run(
     values: dict[str, object] = {"cwd": cwd, "permission_mode": "default", "guard_git": False}
     values.update(fields)
     sink = RecordingSink()
-    provider = AcpProvider(OPENCODE, launcher, cwd / "gh", transport=agent)
+    provider = AcpProvider(OPENCODE, launcher, transport=agent)
     run = await provider.open(SessionSpec(**values), handler or Asked(None), sink)  # type: ignore[arg-type]
     return run, sink
 

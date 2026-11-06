@@ -44,7 +44,6 @@ from nestd.providers.base import (
     SessionSpec,
     UserInput,
 )
-from nestd.providers.claude import agent_env
 from nestd.providers.claude_tools import NEST_SERVER, TOOL_SERVER
 from nestd.providers.codex_agents import CodexAgents, Subthread
 from nestd.providers.codex_approvals import CodexApprovals, RunPermissions
@@ -62,6 +61,7 @@ from nestd.providers.codex_process import (
 from nestd.providers.codex_roles import CodexRoles, read_only, skill_overrides
 from nestd.providers.codex_rpc import CodexRpc, JsonObject
 from nestd.providers.codex_tools import ToolHost
+from nestd.providers.git_guard import NO_PUSH_ENV
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
 CODEX_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
@@ -161,7 +161,7 @@ class CodexRun:
         while thread is not None and len(chain) < 64:
             chain.append(thread)
             thread = agents.thread(thread.parent)
-        mode, limited, guarded = self._mode, False, spec.guard_git
+        mode, limited = self._mode, False
         for thread in reversed(chain):
             if thread.refused is not None:
                 return replace(run, refused=True)
@@ -169,9 +169,11 @@ class CodexRun:
             if subagent is not None:
                 mode = subagent.permission_mode
                 limited = read_only(subagent)
-                # The chat may push when asked, its pixies never do (B127).
-                guarded = True
-        return replace(run, mode=mode, read_only=limited, guarded=guarded) if chain else run
+        if not chain:
+            return run
+        # The chat may push when asked, its subagents only if the user lets them (B127).
+        guarded = spec.guard_git or spec.guard_subagents
+        return replace(run, mode=mode, read_only=limited, guarded=guarded)
 
     async def closed(self, reason: str) -> None:
         """Codex ended on its own, and with it the run's tools; while the run opens,
@@ -305,7 +307,6 @@ class CodexProvider:
 
     def __init__(
         self,
-        gh_config_dir: Path,
         codex_home: Path | None = None,
         transport: TransportFactory = spawn,
         shell_env: ShellEnvSource = no_shell_env,
@@ -315,7 +316,6 @@ class CodexProvider:
         """`codex_home` is Codex's home (None: Codex's default, `~/.codex`); `base_env` the
         environment runs start from (None: the daemon's).
         """
-        self._gh_config_dir = gh_config_dir
         self._codex_home = codex_home
         self._transport = transport
         self._shell_env = shell_env
@@ -338,7 +338,7 @@ class CodexProvider:
             )
             extra_env = {
                 **spec.env,
-                **(agent_env(self._gh_config_dir) if spec.guard_git else {}),
+                **(NO_PUSH_ENV if spec.guard_git else {}),
                 **(tools.env() if tools is not None else {}),
                 # The account's profile folder (B98) wins over the first account's home.
                 **(spec.account.env if spec.account is not None else {}),
@@ -366,19 +366,26 @@ class CodexProvider:
             # A local model's own provider needs no login (B106).
             if spec.local is None and not (await read_login(rpc)).signed_in:
                 raise CodexNotSignedInError
-            config = _thread_config(spec, self._gh_config_dir) | QUESTIONS_CONFIG
+            config = _thread_config(spec) | QUESTIONS_CONFIG
             if spec.local is not None:
                 config |= codex_config(spec.local)
             if tools is not None:
                 config |= tools.config()
-            if spec.guard_git:
+            if spec.nest_decides:
                 config |= await _ask_before_mcp_tools(rpc, spec)
             skills = await _folder_skills(rpc, spec)
             if spec.skills:
                 config["skills.config"] = skill_overrides(spec.skills, skills)
             if spec.subagents:
                 own = {} if tools is None or not spec.tools else _own_server(tools)
-                roles = CodexRoles(spec.subagents, spec.guard_git, spec.write_root, skills, own)
+                roles = CodexRoles(
+                    spec.subagents,
+                    spec.nest_decides,
+                    spec.write_root,
+                    skills,
+                    own,
+                    guard_pixies=spec.guard_subagents or spec.nest_decides,
+                )
                 config |= roles.config(spec.permission_mode)
             thread_id = await self._open_thread(rpc, spec, config)
         except BaseException:
@@ -430,7 +437,7 @@ class CodexProvider:
 
 
 def _permissions(spec: SessionSpec, mode: PermissionMode | None) -> CodexPermissions:
-    return codex_permissions(mode, spec.guard_git, spec.write_root)
+    return codex_permissions(mode, spec.nest_decides, spec.write_root)
 
 
 def _served(spec: SessionSpec) -> dict[str, tuple[AgentTool, ...]]:
@@ -509,17 +516,14 @@ async def _ask_before_mcp_tools(rpc: CodexRpc, spec: SessionSpec) -> JsonObject:
     return config
 
 
-def _thread_config(spec: SessionSpec, gh_config_dir: Path) -> JsonObject:
+def _thread_config(spec: SessionSpec) -> JsonObject:
     """Config overrides for the thread, as `-c key=value` would give them. A guarded run's
-    commands also get the credential-free git setup (D013), and every run's commands its
-    folder's ports (B108), whatever the user's shell environment policy leaves out.
+    commands also get the git-level push block (D160), and every run's commands its folder's
+    ports (B108), whatever the user's shell environment policy leaves out.
     """
     config: JsonObject = {}
     # The folder's ports (B108), whatever the policy lets through from the environment.
-    env: dict[str, JsonValue] = {
-        **spec.env,
-        **(agent_env(gh_config_dir) if spec.guard_git else {}),
-    }
+    env: dict[str, JsonValue] = {**spec.env, **(NO_PUSH_ENV if spec.guard_git else {})}
     if env:
         config["shell_environment_policy.set"] = env
     return config

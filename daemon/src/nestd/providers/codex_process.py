@@ -62,8 +62,8 @@ def app_server_launch(
     cwd: Path | None = None,
 ) -> CodexLaunch:
     """`base_env` is the daemon's environment with the user's login shell's over it;
-    `extra_env` wins over both and over `codex_home` (a guarded run's credential-free git,
-    D013; an added account's own home, B98).
+    `extra_env` wins over both and over `codex_home` (a guarded run's git-level push block,
+    D160; an added account's own home, B98).
     """
     env = dict(base_env)
     if binary.path_dir is not None:
