@@ -62,7 +62,6 @@ import { tokens } from "../../format.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { ShellContext } from "../shell/context.ts";
-import { takeNextDraftChoice } from "../shell/frame/draftChoice.ts";
 import { Button, TextField } from "../ui/controls.tsx";
 import { Menu, QuietMenu } from "../ui/Menu.tsx";
 import type { MenuEntry } from "../ui/menuItems.ts";
@@ -81,7 +80,7 @@ import {
 import { Glyph } from "./glyphs.tsx";
 import { PendingMessages } from "./Bars.tsx";
 import { PlaceButton } from "./WorkOn.tsx";
-import { choiceOfMode, placeBody, type NewChatChoice } from "./placePicker.ts";
+import { placeBody, selectedChoice, type NewChatChoice } from "./placePicker.ts";
 import { Sheet } from "./Sheet.tsx";
 import "./chat.css";
 
@@ -100,7 +99,13 @@ export type ComposerTarget =
   | { kind: "chat"; session: Session }
   // A new chat's pane, with where it works over the field; the empty workspace's composer
   // (`start`) has it in the row under the field (B90).
-  | { kind: "draft" | "start"; repo: string; onCreated: (session: Session) => void }
+  | { kind: "start"; repo: string; onCreated: (session: Session) => void }
+  | {
+      kind: "draft";
+      repo: string;
+      place: NewChatChoice | null;
+      onCreated: (session: Session) => void;
+    }
   // A pixie's pane: messages go through the pixie, which starts its chat when it has none;
   // no attachments and no selectors, as the Mac's Composer(pixie:).
   | { kind: "pixie"; pixie: string; session: Session | undefined };
@@ -158,9 +163,9 @@ export function Composer({ target }: { target: ComposerTarget }) {
   const [memory, setMemory] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [draftChoices, setDraftChoices] = useState<NewChatChoices | null>(null);
-  // A click on a branch map row chose where the next new chat starts (A8).
-  const [place, setPlace] = useState<NewChatChoice | null>(() =>
-    target.kind === "chat" || target.kind === "pixie" ? null : takeNextDraftChoice(target.repo),
+  // This chat's own pick; without one it follows the project's selected place, live.
+  const [place, setPlace] = useState<NewChatChoice | null>(
+    target.kind === "draft" ? target.place : null,
   );
   const [branch, setBranch] = useState("");
   const [caret, setCaret] = useState(0);
@@ -247,7 +252,8 @@ export function Composer({ target }: { target: ComposerTarget }) {
 
   const shownPlace: NewChatChoice =
     place ??
-    choiceOfMode(
+    selectedChoice(
+      repo?.selected_place ?? null,
       pilot.on
         ? "worktree"
         : repo?.worktree.default === undefined || repo.worktree.default === null

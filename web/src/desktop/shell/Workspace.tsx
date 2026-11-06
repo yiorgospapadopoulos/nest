@@ -323,6 +323,7 @@ function Pane({ pane, frame }: { pane: string; frame: Rect }) {
       body = (
         <DraftPane
           repo={target.draft}
+          place={shell.state.draftPlaces.get(pane) ?? null}
           chrome={chrome}
           onCreated={(session) => {
             callbacks.replace(session.id);

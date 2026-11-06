@@ -1,23 +1,29 @@
-// The new chat's "Work on" button and its picker (B96, P1), as the Mac's WorkOnButton and
-// PlacePickerList: the project's branches with their lanes, each with "New worktree from"
-// it and its worktrees, in a popover; before the branch map loads, a menu offers the
-// folder or a new worktree from its branch.
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { RepoConfig } from "../../api/types.ts";
+// The new chat's "Work on" button and its picker (B96, P1, B131), as the Mac's WorkOnButton and
+// PlacePickerList: Find, the top row pinned, every other branch in its lane with
+// "New worktree" on hover, then what only the remotes have, in a popover; before the branch
+// map loads, a menu offers the folder or a new worktree from its branch.
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { BranchMapBranch, RemoteBranch, RepoConfig } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { useApi } from "../context.ts";
+import { BranchRow, DetachedRow } from "../shell/frame/BranchRow.tsx";
+import { revealSelected, rowLane, type BranchChat } from "../shell/frame/branchLanes.ts";
+import { FoundRows, RemoteFold, RemoteRow } from "../shell/frame/FlatRows.tsx";
+import { FindField } from "../shell/frame/MapBar.tsx";
+import { useBranchChats, useFreshWhenOpen } from "../shell/frame/projectMap.ts";
 import { Menu } from "../ui/Menu.tsx";
 import { Popover } from "../ui/Popover.tsx";
-import { useBranchMap, type LoadedMap } from "./branchMaps.ts";
+import { holdPicks, loadBranchMap, picksHeld, useBranchMap, type LoadedMap } from "./branchMaps.ts";
 import { Glyph } from "./glyphs.tsx";
 import {
+  branchChoice,
   choiceTitle,
-  DIVIDER_HEIGHT,
   inPlaceDetail,
   inPlaceTitle,
-  laneX,
+  isSelected,
   resolvedChoice,
   ROW_HEIGHT,
-  sameChoice,
+  VISIBLE_ROWS,
   WORKTREE_DETAIL,
   WORKTREE_TITLE,
   type NewChatChoice,
@@ -31,6 +37,9 @@ interface Props {
   // The start screen's plain text, else the pane composer's capsule.
   quiet: boolean;
 }
+
+// Find and the full tree reach the others.
+const REMOTE_ROWS = 40;
 
 export function PlaceButton({ repo, choice, onChoose, quiet }: Props) {
   const { actions } = useStore();
@@ -56,7 +65,7 @@ export function PlaceButton({ repo, choice, onChoose, quiet }: Props) {
   );
 
   if (loaded === null) {
-    const inPlace = choice.kind === "inPlace";
+    const shown = resolvedChoice(choice, repo).kind;
     return (
       <Menu
         label="Where this chat works"
@@ -65,7 +74,7 @@ export function PlaceButton({ repo, choice, onChoose, quiet }: Props) {
           {
             title: inPlaceTitle(repo),
             detail: inPlaceDetail(repo),
-            checked: inPlace,
+            checked: shown === "inPlace",
             onSelect: () => {
               onChoose({ kind: "inPlace" });
             },
@@ -73,7 +82,7 @@ export function PlaceButton({ repo, choice, onChoose, quiet }: Props) {
           {
             title: WORKTREE_TITLE,
             detail: WORKTREE_DETAIL,
-            checked: !inPlace,
+            checked: shown === "newWorktree",
             onSelect: () => {
               onChoose({ kind: "newWorktree", from: null });
             },
@@ -114,7 +123,7 @@ function PickerButton({
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
-  const selected = resolvedChoice(choice, repo);
+  useFreshWhenOpen(repo.name, repo.git, open);
   return (
     <>
       <button
@@ -140,7 +149,8 @@ function PickerButton({
         >
           <PlaceList
             loaded={loaded}
-            selected={selected}
+            repo={repo}
+            choice={choice}
             onChoose={(next) => {
               onChoose(next);
               setOpen(false);
@@ -152,116 +162,151 @@ function PickerButton({
   );
 }
 
-/** "Where this chat works", then a block per branch, divided; it scrolls past eleven rows. */
+/** Find, the top row, then every other branch, scrolling past eight rows. */
 function PlaceList({
   loaded,
-  selected,
+  repo,
+  choice,
   onChoose,
 }: {
   loaded: LoadedMap;
-  selected: NewChatChoice;
+  repo: RepoConfig;
+  choice: NewChatChoice;
   onChoose: (choice: NewChatChoice) => void;
 }) {
-  const { picker } = loaded;
+  const { actions } = useStore();
+  const api = useApi();
+  const { picker, map } = loaded;
+  const chats = useBranchChats(repo, loaded);
+  const [query, setQuery] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    revealSelected(box.current);
+  }, []);
+  const pickRemote = ({ remote, name }: RemoteBranch) =>
+    holdPicks(repo.name, async () => {
+      const made = await actions.trackRemoteBranch(repo.name, remote, name);
+      if (made === null) return;
+      await loadBranchMap(api, repo.name);
+      onChoose({ kind: "onBranch", branch: made });
+    });
+  const pick = (branch: BranchMapBranch) => {
+    if (branch.remote !== null) void pickRemote({ remote: branch.remote, name: branch.name });
+    else if (!picksHeld(repo.name)) onChoose(branchChoice(branch));
+  };
+  const addWorktree = (branch: string) => {
+    onChoose({ kind: "newWorktree", from: branch });
+  };
+  const row = (lane: PickerRow) => (
+    <PlaceRow
+      key={lane.branch.name}
+      row={lane}
+      loaded={loaded}
+      selected={isSelected(lane.branch, choice, repo)}
+      chat={chats.get(lane.branch.name) ?? null}
+      onPick={pick}
+      onAdd={addWorktree}
+    />
+  );
+  const { detached } = map;
+  const shown = detached ? picker.rows.length + 1 : picker.rows.length;
   return (
     <div className="dc-placel">
-      <span className="dc-placeh">Where this chat works</span>
-      <div
-        className="dc-placerows"
-        style={{ maxHeight: picker.height }}
-        role="listbox"
-        aria-label="Where this chat works"
-      >
-        {picker.blocks.map((block, index) => (
-          <div key={block.id}>
-            {index > 0 && <div className="dc-placediv" style={{ height: DIVIDER_HEIGHT }} />}
-            {block.rows.map((row) => (
-              <PlaceRow
-                key={row.id}
-                row={row}
-                width={picker.width}
-                loaded={loaded}
-                selected={sameChoice(row.choice, selected)}
-                onChoose={onChoose}
-              />
-            ))}
-          </div>
-        ))}
+      <div className="dc-placef">
+        <FindField value={query} placeholder="Where this chat works" onChange={setQuery} />
       </div>
+      {query !== "" ? (
+        <div className="fr-bmscroll placefound">
+          <FoundRows
+            map={map}
+            query={query}
+            picks={{
+              selected: (branch) => isSelected(branch, choice, repo),
+              color: loaded.color,
+              onPick: pick,
+              onRemote: (remote) => {
+                void pickRemote(remote);
+              },
+              onAdd: addWorktree,
+              addWord: "New worktree",
+              tall: true,
+            }}
+          />
+        </div>
+      ) : (
+        <>
+          <div role="listbox" aria-label="Where this chat works">
+            {picker.top !== null && row(picker.top)}
+            <div
+              ref={box}
+              className="dc-placerows"
+              style={{ height: Math.min(shown, VISIBLE_ROWS) * ROW_HEIGHT }}
+            >
+              {detached && (
+                <DetachedRow
+                  height={ROW_HEIGHT}
+                  onClear={null}
+                  trunk={
+                    picker.rows.length > 0 && picker.top !== null
+                      ? loaded.color(picker.top.branch.name)
+                      : null
+                  }
+                />
+              )}
+              {picker.rows.map(row)}
+            </div>
+          </div>
+          {map.remote_branches.length > 0 && <div className="dc-placediv" />}
+          <RemoteFold count={map.remote_branches.length} rule={false}>
+            <div className="fr-bmscroll placeremotes">
+              {map.remote_branches.slice(0, REMOTE_ROWS).map((branch) => (
+                <RemoteRow
+                  key={`${branch.remote}/${branch.name}`}
+                  branch={branch}
+                  tall
+                  onRemote={(remote) => {
+                    void pickRemote(remote);
+                  }}
+                />
+              ))}
+            </div>
+          </RemoteFold>
+        </>
+      )}
     </div>
   );
 }
 
 function PlaceRow({
   row,
-  width,
   loaded,
   selected,
-  onChoose,
+  chat,
+  onPick,
+  onAdd,
 }: {
   row: PickerRow;
-  width: number;
   loaded: LoadedMap;
   selected: boolean;
-  onChoose: (choice: NewChatChoice) => void;
+  chat: BranchChat | null;
+  onPick: (branch: BranchMapBranch) => void;
+  onAdd: (branch: string) => void;
 }) {
-  const color = (branch: string) => loaded.color(branch) ?? "var(--t3)";
-  const own = color(row.branch);
-  const mid = ROW_HEIGHT / 2;
-  const x = laneX(row.depth);
-  const radius = row.kind === "worktree" ? 3.5 : row.kind === "folder" ? 4.5 : 4;
   return (
-    <button
-      role="option"
-      aria-selected={selected}
-      aria-label={row.label + (selected ? ", selected" : "")}
-      className={`dc-placer ${row.kind}${selected ? " on" : ""}`}
-      style={selected ? { background: `color-mix(in srgb, ${own} 14%, transparent)` } : undefined}
-      onClick={() => {
-        onChoose(row.choice);
-      }}
-    >
-      <svg width={width} height={ROW_HEIGHT} aria-hidden="true" className="dc-lanes">
-        {row.lines.map((line, index) => (
-          <line
-            key={index}
-            x1={laneX(line.depth)}
-            x2={laneX(line.depth)}
-            y1={line.fromTop ? 0 : mid}
-            y2={line.toBottom ? ROW_HEIGHT : mid}
-            stroke={color(line.lane)}
-            strokeWidth={2}
-            strokeLinecap="round"
-          />
-        ))}
-        {row.parentDepth !== null && (
-          <path
-            d={`M${String(laneX(row.parentDepth))} 0 C${String(laneX(row.parentDepth))} 10 ${String(x)} 6 ${String(x)} ${String(mid)}`}
-            fill="none"
-            stroke={own}
-            strokeWidth={2}
-            strokeLinecap="round"
-          />
-        )}
-        {row.kind === "newWorktree" ? (
-          <path
-            d={`M${String(laneX(row.depth + 1) - 4)} ${String(mid)}h8M${String(laneX(row.depth + 1))} ${String(mid - 4)}v8`}
-            stroke="var(--t2)"
-            strokeWidth={1.6}
-            strokeLinecap="round"
-          />
-        ) : (
-          <circle cx={x} cy={mid} r={radius} fill={own} />
-        )}
-      </svg>
-      <span className="dc-placet">{row.title}</span>
-      {row.detail !== null && <span className="dc-placed">{row.detail}</span>}
-      <span className="grow" />
-      {selected && (
-        <span style={{ color: own }} className="dc-placeck">
-          <Glyph name="check" size={10} />
-        </span>
-      )}
-    </button>
+    <BranchRow
+      row={row}
+      height={ROW_HEIGHT}
+      ink={rowLane(row, loaded.color, selected, chat)}
+      color={loaded.color}
+      selected={selected}
+      chat={null}
+      behind={0}
+      addWord={row.newWorktree === null ? null : "New worktree"}
+      mono={row.branch.worktree !== null}
+      label={row.words + (selected ? ", selected" : "")}
+      option
+      onPick={onPick}
+      onAdd={onAdd}
+    />
   );
 }
