@@ -1480,6 +1480,10 @@
             shell.show(.branchTree("todo-ui"))
             try await pair(controller, "b131-tree", folder)
             shell.close()
+            // A short tree: its rows start right under the top row.
+            shell.show(.branchTree("weather-forecast"))
+            try await pair(controller, "b131-tree-short", folder)
+            shell.close()
             // A name past the sheet's edge: the tree opens scrolled to it, the top row stays.
             try await model.app.selectPlace(
                 "todo-ui", SelectPlaceRequest(branch: SampleAPI.longBranch))

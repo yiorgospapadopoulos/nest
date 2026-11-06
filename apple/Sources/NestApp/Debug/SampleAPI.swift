@@ -1474,7 +1474,11 @@
             guard name == "todo-ui" else {
                 return BranchMap(
                     defaultBranch: "main", currentBranch: "main",
-                    branches: [Branch(name: "main", parent: nil, worktree: nil, here: true)])
+                    branches: [Branch(name: "main", parent: nil, worktree: nil, here: true)]
+                        + (name == "weather-forecast"
+                            ? ["old-spike", "feat/tidy", "wip"].map {
+                                Branch(name: $0, parent: "main", worktree: nil, here: false)
+                            } : []))
             }
             let folder = "/Users/me/Projects/todo-ui/.claude/worktrees"
             func worktree(_ name: String, from parent: String, _ path: String) -> Branch {
