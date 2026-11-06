@@ -528,6 +528,14 @@ public struct APIClient: NestAPI {
         try await call("PUT", ["pixie-settings"], body: settings)
     }
 
+    public func limitSettings() async throws -> LimitSettings {
+        try await get("limits", "settings")
+    }
+
+    public func updateLimitSettings(_ settings: LimitSettings) async throws -> LimitSettings {
+        try await call("PUT", ["limits", "settings"], body: settings)
+    }
+
     public func notificationRules() async throws -> NotificationRules {
         try await get("notifications", "settings")
     }

@@ -568,6 +568,14 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "PUT", "/api/pixie-settings", body: Fixture.json(PixieSettings()),
             response: Fixture.json(PixieSettings())
         ) { _ = try await $0.updatePixieSettings(PixieSettings()) },
+        RouteCase("GET", "/api/limits/settings", response: #"{"can_push": true}"#) {
+            let settings = try await $0.limitSettings()
+            #expect(settings.canPush)
+        },
+        RouteCase(
+            "PUT", "/api/limits/settings", body: #"{"can_push":true}"#,
+            response: #"{"can_push": true}"#
+        ) { _ = try await $0.updateLimitSettings(LimitSettings(canPush: true)) },
         RouteCase(
             "GET", "/api/notifications/settings", response: #"{"pixie_report_level": "info"}"#
         ) { _ = try await $0.notificationRules() },
