@@ -1,7 +1,7 @@
 """A SessionManager wired to real stores, real git and the fake provider."""
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from pathlib import Path
 
@@ -157,7 +157,12 @@ def gate_worktree_add(
     run = runner._run  # pyright: ignore[reportPrivateUsage]
 
     async def gated(
-        argv: Sequence[str], cwd: Path, time_limit: float, *rest: int | None
+        argv: Sequence[str],
+        cwd: Path,
+        time_limit: float,
+        tail: int | None,
+        env: Mapping[str, str] | None,
+        own_group: bool,
     ) -> tuple[int | None, bytes, bytes]:
         # After the hardening options (I-009), wherever they end.
         if any(list(argv[i : i + 2]) == ["worktree", "add"] for i in range(1, len(argv))):
@@ -165,7 +170,7 @@ def gate_worktree_add(
             await release.wait()
             if fail:
                 return 128, b"", b"fatal: no space left"
-        return await run(argv, cwd, time_limit, *rest)
+        return await run(argv, cwd, time_limit, tail, env, own_group)
 
     monkeypatch.setattr(runner, "_run", gated)
     return started, release
