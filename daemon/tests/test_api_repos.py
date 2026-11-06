@@ -61,6 +61,8 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "default_branch": "main",
         # Read from git on each request (B55).
         "current_branch": "main",
+        "selected_place": None,
+        "selected_place_gone": None,
         # No origin when it was registered, so a push needs the user's confirmation (D050).
         "remote_url": None,
         # No icon set: the project shows its initials in the default colour.

@@ -136,6 +136,7 @@ from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
 from nestd.reactions import SessionReactions, StateFollower
 from nestd.repos.branch_watch import BranchWatch
+from nestd.repos.places import PlaceBook
 from nestd.repos.service import GENERAL, RepoService
 from nestd.review.actions import ReviewActions
 from nestd.review.publish import GitPublisher
@@ -181,6 +182,8 @@ class AppContext:
     modules: "ModuleRegistry[AppContext]"
     clock: Clock
     repos: RepoService
+    # Where new chats start in each project (B131).
+    places: PlaceBook
     attachments: AttachmentStore
     sessions: SessionManager
     approvals: ApprovalQueue
@@ -340,7 +343,8 @@ class AppContext:
         await local.load()
         pixie_store = PixieStore(db, clock)
         notifier = Notifier(bus, pixie_store.name)
-        repos = RepoService(paths, bus)
+        places = PlaceBook(db)
+        repos = RepoService(paths, bus, places)
         attachments = AttachmentStore(db, clock, paths.attachments_dir)
         approvals = ApprovalQueue(ApprovalStore(db, clock), bus, notifier)
         tracking = Tracking(bus)
@@ -866,6 +870,7 @@ class AppContext:
             notifications=notifications,
             claude_chats=claude_chats,
             branch_watch=BranchWatch(repos=repos, bus=bus),
+            places=places,
             usage_refresher=usage_refresher,
             commands=commands,
             prs=PullRequests(

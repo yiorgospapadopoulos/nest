@@ -2,10 +2,12 @@
 
 import asyncio
 import re
+from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
+from typing import Protocol
 
-from pydantic import JsonValue, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from nestd.config.loader import (
     delete_repo,
@@ -19,7 +21,7 @@ from nestd.errors import ConflictError, InvalidInputError, NotFoundError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.gitops.hardened import run_hardened_git
-from nestd.gitops.remotes import push_urls
+from nestd.gitops.remotes import push_urls, scrub_credentials
 from nestd.gitops.runner import GitError, run_command
 from nestd.paths import AppPaths
 
@@ -37,13 +39,43 @@ LINK_PATTERNS = (".env", ".env.*", "*.local", "*.local.*")
 SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "dist", "build", ".git"})
 
 
+class SelectedPlace(BaseModel):
+    """Where the user last clicked in a project's branch map (B131): a branch, or the
+    linked worktree at `worktree_path`, which is on `branch`.
+    """
+
+    branch: str
+    worktree_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class PlaceReading:
+    """A repo's selected place, or the name of one found gone and not yet cleared."""
+
+    place: SelectedPlace | None = None
+    gone: str | None = None
+
+
+class SelectedPlaces(Protocol):
+    """The projects' selected places (`repos/places.py`)."""
+
+    async def current(self, repo: RepoConfig) -> PlaceReading:
+        """The repo's selected place, if it is still there."""
+        ...
+
+
 class RepoView(RepoConfig):
-    """A repo as clients see it: its config and the branch checked out in its folder now,
-    read fresh from git (B55); None when HEAD is detached, the branch has no commits yet,
-    or the folder is not a git repository.
+    """A repo as clients see it: its config, the branch checked out in its folder now, read
+    fresh from git (B55), and its selected place.
+
+    `current_branch` is None when HEAD is detached, the branch has no commits yet, or the
+    folder is not a git repository. `selected_place_gone` names a selected place that went
+    away, until a client has told the user and cleared it.
     """
 
     current_branch: str | None = None
+    selected_place: SelectedPlace | None = None
+    selected_place_gone: str | None = None
 
 
 class RepoNotFoundError(NotFoundError):
@@ -64,6 +96,14 @@ class RepoFolderMissingError(ConflictError):
 
 class RepoInUseError(ConflictError):
     pass
+
+
+class RepoUnreadableError(ConflictError):
+    """git refused to read the repo, such as a broken `.git/config`."""
+
+    def __init__(self, error: GitError) -> None:
+        lines = error.stderr.strip().splitlines() or [str(error)]
+        super().__init__(scrub_credentials(lines[0]))
 
 
 class BuiltInRepoError(ConflictError):
@@ -101,9 +141,15 @@ def is_link_candidate(path: str) -> bool:
 
 
 class RepoService:
-    def __init__(self, paths: AppPaths, bus: EventBus | None = None) -> None:
+    def __init__(
+        self,
+        paths: AppPaths,
+        bus: EventBus | None = None,
+        places: SelectedPlaces | None = None,
+    ) -> None:
         self._paths = paths
         self._bus = bus
+        self._places = places
 
     def list_repos(self) -> list[RepoConfig]:
         """In the saved project order (D090); repos it does not name follow in file order."""
@@ -156,7 +202,15 @@ class RepoService:
 
     async def view(self, repo: RepoConfig) -> RepoView:
         branch = await current_branch(repo.path) if repo.git else None
-        return RepoView(**repo.model_dump(), current_branch=branch)
+        reading = PlaceReading()
+        if repo.git and self._places is not None:
+            reading = await self._places.current(repo)
+        return RepoView(
+            **repo.model_dump(),
+            current_branch=branch,
+            selected_place=reading.place,
+            selected_place_gone=reading.gone,
+        )
 
     async def git_repo(self, name: str) -> RepoConfig:
         """The repo, which must be a git repository whose folder exists."""
