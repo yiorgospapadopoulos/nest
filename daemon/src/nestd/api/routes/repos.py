@@ -78,6 +78,17 @@ class SelectPlace(BaseModel):
     worktree_path: Path | None = None
 
 
+class TrackRemoteBranch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    remote: str
+    name: str
+
+
+class TrackedBranch(BaseModel):
+    branch: str
+
+
 @router.get("")
 async def list_repos(ctx: Context) -> list[RepoView]:
     """Plain folders that became git repositories are updated on the way (D041)."""
@@ -170,6 +181,13 @@ async def refresh_repo(name: str, ctx: Context) -> RefreshReport:
     remote; `repo.branches_changed` follows. 409 for a repo git cannot read.
     """
     return await ctx.fetcher.refresh(await ctx.repos.git_repo(name))
+
+
+@router.post("/{name}/remote-branches", status_code=status.HTTP_201_CREATED)
+async def track_remote_branch(name: str, body: TrackRemoteBranch, ctx: Context) -> TrackedBranch:
+    """A local branch tracking a remote-only one (B131); nothing is checked out."""
+    repo = await ctx.repos.git_repo(name)
+    return TrackedBranch(branch=await ctx.sessions.track_remote(repo, body.remote, body.name))
 
 
 @router.get("/{name}/link-suggestions")

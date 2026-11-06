@@ -330,6 +330,9 @@ class SessionManager:
     async def worktree_bases(self, repo: str) -> dict[Path, str]:
         return await self._store.worktree_bases(repo)
 
+    async def track_remote(self, repo: RepoConfig, remote: str, name: str) -> str:
+        return await self._worktrees.track_remote(repo, remote, name)
+
     async def get(self, session_id: str) -> Session:
         return await self._store.get(session_id)
 

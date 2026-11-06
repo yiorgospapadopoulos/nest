@@ -1,6 +1,7 @@
 """Create, link, set up and remove per-session worktrees; inspect in-place checkouts."""
 
 import asyncio
+import contextlib
 import logging
 import re
 import shutil
@@ -14,9 +15,10 @@ from nestd.config.models import RepoConfig
 from nestd.errors import ConflictError, InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.gitops.hardened import run_checkout_git, run_hardened_git
+from nestd.gitops.hardened import remote_names, run_checkout_git, run_hardened_git
 from nestd.gitops.runner import GitError
 from nestd.paths import AppPaths
+from nestd.repos.service import RepoUnreadableError
 from nestd.worktrees.setup import LinkResult, SetupResult, link_files, run_commands
 
 BRANCH_PREFIX = "agent/"
@@ -209,6 +211,51 @@ class WorktreeManager:
             msg = f"{repo.name} has no local branch named {branch!r}"
             raise InvalidBranchError(msg) from None
         return output.strip()
+
+    async def track_remote(self, repo: RepoConfig, remote: str, name: str) -> str:
+        """A local branch `name` tracking the one of that name on `remote`, with nothing
+        checked out. Accepted when it exists already at the same commit, as after a double
+        click. Not `git branch --track`, which refuses a branch outside the remote's
+        configured refspec, as on a single-branch clone.
+        """
+        try:
+            remotes = await remote_names(repo.path)
+        except GitError as error:
+            raise RepoUnreadableError(error) from None
+        if remote not in remotes:
+            msg = f"{repo.name} has no remote named {remote!r}"
+            raise InvalidInputError(msg)
+        if name.startswith("refs/"):
+            msg = f"{name!r} is not a valid branch name"
+            raise InvalidBranchError(msg)
+        with contextlib.suppress(BranchExistsError):
+            await self.check_new_branch(repo, name)
+        ref = f"refs/remotes/{remote}/{name}"
+        try:
+            output = await run_hardened_git(["show-ref", "--verify", "--hash", ref], repo.path)
+        except GitError:
+            msg = f"{remote} has no branch named {name!r}"
+            raise InvalidBranchError(msg) from None
+        # Read from the refs as stored and compared blind to case on every system: on a
+        # case-insensitive disk `git branch Case` would write over `case`, and asking git
+        # for `Case` by name does not find a packed `case` first.
+        heads = await _exact_heads(repo)
+        if name in heads:
+            if heads[name] == output.strip():
+                return name
+            msg = f"a branch named {name!r} already exists in {repo.name}"
+            raise BranchExistsError(msg)
+        if any(head.casefold() == name.casefold() for head in heads):
+            msg = f"{name!r} differs only in case from a local branch of {repo.name}"
+            raise BranchExistsError(msg)
+        try:
+            await run_hardened_git(["branch", "--no-track", name, ref], repo.path)
+        except GitError as error:
+            raise ConflictError(error.stderr.strip().splitlines()[0]) from None
+        await run_hardened_git(["config", f"branch.{name}.remote", remote], repo.path)
+        await run_hardened_git(["config", f"branch.{name}.merge", f"refs/heads/{name}"], repo.path)
+        await self._branches_changed(repo)
+        return name
 
     def link(self, repo: RepoConfig, worktree_path: Path) -> LinkResult:
         return link_files(repo.worktree.link, repo.path, worktree_path)
@@ -406,6 +453,14 @@ async def _has_branch(repo: RepoConfig, branch: str) -> bool:
     except GitError:
         return False
     return True
+
+
+async def _exact_heads(repo: RepoConfig) -> dict[str, str]:
+    """Each local branch's commit, by the name as it is stored."""
+    output = await run_hardened_git(
+        ["for-each-ref", "--format=%(objectname) %(refname:lstrip=2)", "refs/heads/"], repo.path
+    )
+    return {name: commit for commit, name in (line.split(" ", 1) for line in output.splitlines())}
 
 
 async def _current_branch(repo: RepoConfig) -> str | None:

@@ -328,3 +328,144 @@ def test_fetch_blockers_cover_what_a_fetch_reaches_and_nothing_else() -> None:
         assert not blocked(key), key
 
 
+async def track(api: Api, remote: str, name: str) -> tuple[int, JsonValue]:
+    response = await api.http.post(
+        "/api/repos/repo/remote-branches", json={"remote": remote, "name": name}
+    )
+    return response.status_code, response.json()
+
+
+async def test_tracking_makes_a_local_branch_and_checks_nothing_out(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    bare = bare_copy(repo, tmp_path / "origin.git")
+    tip = new_commit(bare, "feat/x")
+    await refresh(api)
+    (repo / "README.md").write_text("dirty\n", encoding="utf-8")
+    head = git(repo, "rev-parse", "--symbolic-full-name", "HEAD")
+
+    result = await track(api, "origin", "feat/x")
+
+    assert result == (201, {"branch": "feat/x"})
+    assert git(repo, "rev-parse", "refs/heads/feat/x").strip() == tip
+    assert git(repo, "config", "branch.feat/x.remote").strip() == "origin"
+    assert git(repo, "config", "branch.feat/x.merge").strip() == "refs/heads/feat/x"
+    assert git(repo, "rev-parse", "--symbolic-full-name", "HEAD") == head
+    assert (repo / "README.md").read_text(encoding="utf-8") == "dirty\n"
+    assert (await api.http.get("/api/repos/repo/branch-map")).json()["remote_branches"] == []
+
+
+async def test_tracking_works_on_a_single_branch_clone(api: Api, tmp_path: Path) -> None:
+    source = init_repo(tmp_path / "source")
+    git(source, "branch", "other")
+    bare = tmp_path / "source.git"
+    git(source, "clone", "-q", "--bare", ".", str(bare))
+    clone = tmp_path / "single"
+    git(tmp_path, "clone", "-q", "--single-branch", "--branch", "main", str(bare), str(clone))
+    await api.http.post("/api/repos", json={"path": str(clone), "name": "single"})
+
+    fetched = await api.http.post("/api/repos/single/refresh")
+    made = await api.http.post(
+        "/api/repos/single/remote-branches", json={"remote": "origin", "name": "other"}
+    )
+
+    assert fetched.json() == {"remotes": [{"name": "origin", "error": None}]}
+    assert made.status_code == 201
+    assert git(clone, "config", "branch.other.remote").strip() == "origin"
+
+
+@pytest.mark.parametrize("name", ["-x", "HEAD", "a..b", "@{-1}", "refs/heads/x", ""])
+async def test_unsafe_names_are_refused(api: Api, repo: Path, tmp_path: Path, name: str) -> None:
+    bare_copy(repo, tmp_path / "origin.git")
+    before = refs(repo)
+
+    status, _ = await track(api, "origin", name)
+
+    assert status == 422
+    assert refs(repo) == before
+
+
+async def test_unknown_remotes_and_branches_are_refused(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    bare_copy(repo, tmp_path / "origin.git")
+
+    assert (await track(api, "nope", "x"))[0] == 422
+    assert (await track(api, "origin", "x"))[0] == 422
+
+
+async def test_a_double_click_is_accepted_and_a_different_tip_refused(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    bare = bare_copy(repo, tmp_path / "origin.git")
+    new_commit(bare, "x")
+    await refresh(api)
+
+    first = await track(api, "origin", "x")
+    second = await track(api, "origin", "x")
+    new_commit(bare, "x", "x")
+    await refresh(api)
+    third = await track(api, "origin", "x")
+
+    assert first == second == (201, {"branch": "x"})
+    assert third[0] == 409
+
+
+async def test_a_name_differing_only_in_case_is_a_conflict_not_a_false_success(
+    api: Api, repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a case-insensitive disk git finds `Case` when only `case` exists, so the same is
+    made to happen on any disk.
+    """
+    bare_copy(repo, tmp_path / "origin.git")
+    git(repo, "branch", "case")
+    git(repo, "update-ref", "refs/remotes/origin/Case", "HEAD")
+
+    async def loosely(_: RepoConfig, __: str) -> bool:
+        return True
+
+    monkeypatch.setattr(manager, "_has_branch", loosely)
+
+    status, body = await track(api, "origin", "Case")
+
+    assert status == 409
+    assert isinstance(body, dict)
+    assert "only in case" in str(body["detail"])
+    assert "refs/heads/case" in refs(repo)
+    assert "refs/heads/Case" not in refs(repo)
+
+
+async def test_a_remote_name_differing_only_in_case_never_moves_a_packed_local_branch(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    """A packed ref has no file for a case-insensitive disk to answer with, so asking for
+    `Case` by name says no, and git would then write over `case`.
+    """
+    bare_copy(repo, tmp_path / "origin.git")
+    git(repo, "branch", "case")
+    before = git(repo, "rev-parse", "refs/heads/case").strip()
+    other = git(repo, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "other").strip()
+    git(repo, "update-ref", "refs/remotes/origin/Case", other)
+    git(repo, "pack-refs", "--all")
+
+    status, body = await track(api, "origin", "Case")
+
+    assert status == 409
+    assert "only in case" in str(body)
+    assert git(repo, "rev-parse", "refs/heads/case").strip() == before
+    assert "refs/heads/Case" not in refs(repo)
+
+
+async def test_a_folder_and_file_clash_is_a_conflict_with_gits_reason(
+    api: Api, repo: Path, tmp_path: Path
+) -> None:
+    bare_copy(repo, tmp_path / "origin.git")
+    git(repo, "branch", "feat")
+    git(repo, "update-ref", "refs/remotes/origin/feat/x", "HEAD")
+
+    status, body = await track(api, "origin", "feat/x")
+
+    assert status == 409
+    assert isinstance(body, dict)
+    assert "feat" in str(body["detail"])
+    assert "\n" not in str(body["detail"])
