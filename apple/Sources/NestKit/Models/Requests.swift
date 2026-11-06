@@ -219,6 +219,52 @@ struct RepoOrderRequest: Encodable {
     var order: [String]
 }
 
+/// `PUT /api/repos/{name}/selected-place` (B131): a branch or a worktree; neither clears it.
+public struct SelectPlaceRequest: Encodable, Sendable, Hashable {
+    public var branch: String?
+    public var worktreePath: String?
+
+    public init(branch: String? = nil, worktreePath: String? = nil) {
+        self.branch = branch
+        self.worktreePath = worktreePath
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case branch
+        case worktreePath = "worktree_path"
+    }
+}
+
+/// `POST /api/repos/{name}/remote-branches` (B131).
+struct TrackRemoteBranchRequest: Encodable {
+    let remote: String
+    let name: String
+}
+
+struct TrackedBranch: Decodable {
+    let branch: String
+}
+
+/// `POST /api/repos/{name}/refresh` (B131): how each of the project's remotes answered.
+public struct RemotesRefresh: Decodable, Sendable, Hashable {
+    public var remotes: [Remote]
+
+    public init(remotes: [Remote]) {
+        self.remotes = remotes
+    }
+
+    public struct Remote: Decodable, Sendable, Hashable {
+        public var name: String
+        /// Why it could not be fetched; nil when it was.
+        public var error: String?
+
+        public init(name: String, error: String? = nil) {
+            self.name = name
+            self.error = error
+        }
+    }
+}
+
 struct OpenRepoRequest: Encodable {
     var app: RepoApp
 }
