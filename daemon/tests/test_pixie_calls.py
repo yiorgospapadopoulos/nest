@@ -323,6 +323,40 @@ async def test_send_message_continues_the_pixie(chat: Chat) -> None:
     assert [c.continued for c in (await chat.group())[0].calls] == [True, True, False]
 
 
+async def test_messages_to_a_working_pixie_all_end_with_its_task(chat: Chat) -> None:
+    """B133, as a real chat did: three messages to one agent, whose task ends once."""
+    await chat.say(agent("a1", "scribe"))
+    await chat.say(handback("a1", "ag1"))
+    await chat.say(send("s1", "ag1"))
+    await chat.task(AgentTask(task_id="ag1", phase="started", tool_use_id="s1", background=True))
+    await chat.say(send("s2", "ag1"))
+    await chat.say(send("s3", "ag1"))
+    assert (await chat.group())[0].state == "running"
+
+    await chat.task(AgentTask(task_id="ag1", phase="finished", status="completed"))
+    await chat.task(
+        AgentTask(task_id="ag1", phase="finished", tool_use_id="s1", status="completed")
+    )
+
+    (entry,) = await chat.group()
+    assert entry.state == "done"
+    assert [c.state for c in entry.calls] == ["done"] * 4
+
+
+async def test_stopping_a_pixie_messaged_several_times_leaves_no_call_running(
+    chat: Chat,
+) -> None:
+    await chat.say(agent("a1", "scribe", background=True))
+    await chat.task(AgentTask(task_id="ag1", phase="started", tool_use_id="a1", background=True))
+    await chat.say(send("s1", "ag1"))
+    await chat.say(send("s2", "ag1"))
+
+    await chat.task(AgentTask(task_id="ag1", phase="finished", status="stopped"))
+
+    (entry,) = await chat.group()
+    assert [c.state for c in entry.calls] == ["interrupted"] * 3
+
+
 async def test_a_refused_send_message_fails(chat: Chat) -> None:
     await chat.say(agent("a1", "scribe"))
     await chat.say(handback("a1", "ag1"))
