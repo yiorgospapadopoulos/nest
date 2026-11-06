@@ -491,15 +491,14 @@
   border-radius: 3.5px;
   font-size: 6.5px;
 }
-/* The project's name comes first, then the branch, then the Live word (the Mac's layout
-   priorities): the name shrinks only once the branch has no room left. */
+/* The chip keeps its room on the project's line and the name shrinks (B131). */
 .fr-pmenu {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   max-width: calc(100% + 6px);
 }
 .fr-phead > .fr-pbranch {
-  flex: 0 1000 auto;
-  min-width: 0;
+  flex: none;
+  max-width: 102px;
 }
 .fr-pchev {
   width: 8px;
@@ -548,7 +547,7 @@
 .fr-pbranch:hover .fr-pbchev {
   opacity: 1;
 }
-.fr-pbranch.on {
+.fr-pbranch.picked {
   --lane: var(--t1);
   color: var(--lane);
   background: color-mix(in srgb, var(--lane) 16%, transparent);
@@ -604,70 +603,403 @@
     color-mix(in srgb, var(--bg) 65%, transparent);
   overflow: hidden;
 }
-.fr-bmap > header {
+.fr-bmbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.fr-bmfind {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--dk-line);
-  font-size: var(--fs-meta);
+  min-width: 0;
   color: var(--t3);
 }
-.fr-bmap > header > span {
-  flex: 1 0 auto;
-  white-space: nowrap;
-}
-.fr-bmap > header small {
+.fr-bmfind input {
+  flex: 1;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  font-size: 11.5px;
+}
+.fr-bmfind input::placeholder {
+  color: var(--t3);
+}
+.fr-bmib {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--t3);
+}
+.fr-bmib:hover {
+  background: var(--mac-soft);
+  color: var(--t1);
+}
+.fr-bmib.small {
+  width: 16px;
+  height: 16px;
+}
+.fr-bmib.run {
+  color: var(--t1);
+}
+.fr-bmib.run svg {
+  animation: fr-spin 1s linear infinite;
+}
+@keyframes fr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.fr-bmprog {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-micro);
 }
-.fr-bmrows {
+.fr-bmprog > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: var(--t2);
+  animation: fr-slide 1.4s ease-in-out infinite;
+}
+@keyframes fr-slide {
+  from {
+    left: -40%;
+  }
+  to {
+    left: 100%;
+  }
+}
+.fr-bmnote {
+  display: flex;
+  gap: 6px;
+  padding: 5px 4px 5px 8px;
+  border-bottom: 1px solid var(--dk-line);
+  font-size: var(--fs-meta);
+  line-height: 1.3;
+  color: var(--t2);
+}
+.fr-bmnote > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fr-bmnote b {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--bad);
+}
+.fr-bmscroll {
+  position: relative;
   overflow-y: auto;
-  padding: 2px 0;
+  scrollbar-width: thin;
 }
-.fr-bmrow {
+.fr-bmscroll.found {
+  max-height: 204px;
+}
+.fr-bmscroll.remotes {
+  max-height: 130px;
+}
+.fr-bmscroll.placefound {
+  max-height: 330px;
+}
+.fr-bmscroll.placeremotes {
+  max-height: 120px;
+}
+
+/* One row: the part that selects, then the worktree button that takes its right end on
+   hover or keyboard focus, in place of the note, the dot and the check. */
+.fr-bmrow,
+.fr-bmflat {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-radius: 6px;
+  color: var(--mac-sidebar-text-open);
+  font-size: var(--fs-body);
+  white-space: nowrap;
+}
+.fr-bmflat {
+  height: 26px;
+  font-size: 11.5px;
+}
+.fr-bmflat.tall {
+  height: 30px;
+  font-size: var(--fs-body);
+}
+.fr-bmrow:not(.fixed):hover,
+.fr-bmflat:hover,
+.fr-bmfold:not(.quiet):hover {
+  background: var(--mac-hover);
+}
+.fr-bmrow.on:hover,
+.fr-bmflat.on:hover {
+  filter: brightness(1.05);
+}
+.fr-bmpick {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
-  height: 34px;
+  min-width: 0;
+  height: 100%;
   padding: 0 10px 0 0;
   border: 0;
-  border-radius: 6px;
   background: transparent;
-  color: var(--mac-sidebar-text-open);
+  color: inherit;
   font: inherit;
-  font-size: var(--fs-body);
   text-align: left;
 }
-.fr-bmrow:hover {
-  background: var(--mac-hover);
+.fr-bmrow .grow,
+.fr-bmflat .grow,
+.fr-bmfold .grow {
+  flex: 1;
+  min-width: 0;
+}
+.fr-bmrow small,
+.fr-bmflat small,
+.fr-bmfold small {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--t3);
+}
+.fr-bmbehind {
+  font-variant-numeric: tabular-nums;
+}
+.fr-bmadd {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  margin-right: 8px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--dk-sel);
+  color: var(--t1);
+  font: inherit;
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+.fr-bmadd:hover {
+  background: var(--mac-selection);
+}
+.fr-bmadd .ic {
+  width: 8px;
+  height: 8px;
+}
+.fr-bmrow:hover .fr-bmadd,
+.fr-bmrow:focus-within .fr-bmadd,
+.fr-bmflat:hover .fr-bmadd,
+.fr-bmflat:focus-within .fr-bmadd {
+  display: flex;
+}
+.fr-bmrow.adds:hover .fr-bmx,
+.fr-bmrow.adds:focus-within .fr-bmx,
+.fr-bmflat.adds:hover .fr-bmx,
+.fr-bmflat.adds:focus-within .fr-bmx {
+  display: none;
+}
+.fr-bmrow.adds:hover .fr-bmpick,
+.fr-bmflat.adds:hover .fr-bmpick {
   padding-right: 6px;
 }
-.fr-bmrow svg {
+.fr-lanes,
+.fr-bmflat svg {
   flex: none;
   overflow: visible;
 }
-.fr-bmrow .grow {
-  flex: 1;
+.fr-node {
+  fill: var(--dk-side);
 }
-.fr-bmname {
+.fr-mid {
+  display: flex;
+  min-width: 0;
+}
+/* A short name sits whole, and gives way at its end if it must. A longer one's middle gives
+   way first, down to its ellipsis, then its ending; the factors are far apart so the ending
+   waits. The ending's letters sit last to first in a wrapping row one line high, so it
+   loses whole letters from its front, where a clip would cut one in half. */
+.fr-mid {
+  overflow: hidden;
+  line-height: 1.25;
+}
+.fr-mid > span {
+  white-space: pre;
+}
+.fr-midw,
+.fr-midm {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.fr-midw {
+  flex: 0 1 auto;
+}
+.fr-mids {
+  flex: none;
+}
+.fr-midm {
+  flex: 0 10000000 auto;
+  min-width: 1.35em;
+}
+.fr-mide {
+  flex: 0 1 auto;
+  display: flex;
+  flex-flow: row-reverse wrap;
+  min-width: 0;
+  height: 1.25em;
+  overflow: hidden;
+}
+.fr-mid em {
+  border-radius: 2px;
+  background: var(--dk-sel);
+  color: var(--t1);
+  font-style: normal;
+}
+.fr-bmpre {
+  color: var(--t3);
+}
+.fr-bmname {
   min-width: 0;
 }
 .fr-bmname.here {
   color: var(--t1);
   font-weight: 600;
 }
-.fr-bmrow small {
+.fr-bmname.mono {
+  font: var(--fs-meta) var(--mono);
+}
+.fr-bmtwo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+.fr-bmfrom {
   font-size: var(--fs-micro);
   color: var(--t3);
+}
+.fr-bmck {
+  display: inline-flex;
+  flex: none;
+}
+.fr-bmfold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t2);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+}
+.fr-bmfold.rule {
+  border-top: 1px solid var(--dk-line);
+  border-radius: 0 0 6px 6px;
+}
+.fr-bmfold svg {
+  flex: none;
+  transform: rotate(-90deg);
+}
+.fr-bmfold.open svg {
+  transform: none;
+}
+.fr-bmfold small {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The full tree: its own scroll box in both directions, the top row stuck to its top. */
+.fr-bmsheet {
+  height: min(560px, calc(100vh - 100px));
+}
+.fr-bmsheet .dkh-head {
+  border-bottom: 0;
+}
+.fr-bmsheet .dkh-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.fr-bmsheet .fr-bmbar {
+  flex: none;
+  height: 32px;
+  padding: 0 8px 0 16px;
+  border-top: 1px solid var(--dk-line);
+  border-bottom: 1px solid var(--dk-line);
+}
+.fr-bmtree {
+  container-type: inline-size;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.fr-bmtreein {
+  min-width: max-content;
+  padding: 2px 8px 8px 2px;
+}
+/* The band spans the content, so nothing shows through it; the row in it stays in view
+   sideways too, as wide as the view. */
+.fr-bmstuck {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+}
+.fr-bmstuck .fr-bmrow.wide {
+  position: sticky;
+  left: 2px;
+  width: calc(100cqw - 10px);
+  min-width: max-content;
+}
+.fr-bmrow.wide {
+  width: auto;
+  min-width: 100%;
+}
+.fr-bmrow.wide .fr-bmpick {
+  flex: none;
+  padding-right: 12px;
+}
+.fr-bmgap {
+  position: relative;
+  height: 13px;
+}
+.fr-bmgap::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 6px;
+  height: 1px;
+  background: var(--dk-line);
 }
 .fr-pulse {
   fill: none;
@@ -690,26 +1022,11 @@
   .fr-pulse {
     display: none;
   }
-  .fr-live > i {
+  .fr-live > i,
+  .fr-bmib.run svg,
+  .fr-bmprog > i {
     animation: none;
   }
-}
-.fr-bmnew {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 5px;
-  background: var(--dk-sel);
-  color: var(--t1);
-  font-size: var(--fs-micro);
-  white-space: nowrap;
-  flex: none;
-}
-.fr-bmnew .ic {
-  width: 8px;
-  height: 8px;
 }
 .fr-bmdot {
   width: 6px;
@@ -940,7 +1257,7 @@ html.desk .ewl {
   text-overflow: ellipsis;
 }
 .fr-tdetail {
-  flex: 0 1000 auto;
+  flex: 0 10000000 auto;
   min-width: 0;
   font-family: var(--mono);
 }

@@ -14,6 +14,7 @@ interface Props {
   // In pixels, as SheetFrame's width (580) and maxHeight (700).
   width?: number;
   maxHeight?: number;
+  className?: string;
   // Buttons under the content, such as Cancel and Save, at the trailing edge.
   footer?: ReactNode;
   children: ReactNode;
@@ -29,6 +30,7 @@ export function SheetFrame({
   onClose,
   width = 580,
   maxHeight = 700,
+  className,
   footer,
   children,
 }: Props) {
@@ -79,7 +81,7 @@ export function SheetFrame({
     >
       <div
         ref={box}
-        className="dkh"
+        className={className === undefined ? "dkh" : `dkh ${className}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
