@@ -827,7 +827,8 @@ class SessionManager:
                 return
             live.resume_queue = True
             await self._approvals.expire(live.session_id, BLOCKING, "interrupted by the user")
-            await live.interrupt()
+            if await live.interrupt():
+                self._turns.stop_sent(live)
 
     async def files(self, session_id: str, query: str) -> list[str]:
         """Files in the session's working directory matching `query`, for @ mentions."""
@@ -853,6 +854,8 @@ class SessionManager:
             async with live.steering:
                 await self._turns.steering.retract(live)
                 stopped = await live.interrupt()
+                if stopped:
+                    self._turns.stop_sent(live)
         if await self._end_pause(session_id, "stopped", turn_stopped=stopped):
             return
         if not stopped:
