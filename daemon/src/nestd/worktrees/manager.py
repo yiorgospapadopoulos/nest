@@ -29,6 +29,8 @@ OWNED_WORKTREE_PREFIXES = (WORKTREE_PREFIX, "harness-")
 EXCLUDE_LINE = "/.claude/worktrees/"
 # What `git branch -d` says when it refuses a branch with work it cannot find elsewhere.
 NOT_MERGED = "not fully merged"
+# What `git worktree add` says of a branch checked out elsewhere, naming where.
+USED_AT = re.compile(r"already used by worktree at '(.+)'")
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +151,7 @@ class WorktreeManager:
         path = claude_worktrees_dir(repo.path) / f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
         path.parent.mkdir(parents=True, exist_ok=True)
         async with self._checking_out:
-            await run_checkout_git(["worktree", "add", "-q", str(path), branch], repo.path)
+            await _add_worktree(repo, path, branch)
         await self._branches_changed(repo)
         return Worktree(path=path, branch=branch, base_ref=base)
 
@@ -333,6 +335,34 @@ class WorktreeManager:
         except GitError:
             return True
         return bool(changes) or await self.head_at(worktree.path) != worktree.base_ref
+
+
+def held_at(error: GitError) -> Path | None:
+    """The checkout `git worktree add` says holds the branch, if that is why it refused."""
+    found = USED_AT.search(error.stderr)
+    return None if found is None else Path(found[1])
+
+
+async def _add_worktree(repo: RepoConfig, path: Path, branch: str) -> None:
+    """`branch` checked out at `path`. A folder deleted by hand leaves a record that still
+    holds the branch: only then is that one record dropped. Others stay, as their folders
+    may only be moved away; a real checkout and a locked worktree still refuse.
+    """
+    args = ["worktree", "add", "-q", "--", str(path), branch]
+    try:
+        await run_checkout_git(args, repo.path)
+    except GitError as error:
+        held = held_at(error)
+        if held is None or await asyncio.to_thread(held.exists):
+            raise
+        try:
+            await run_hardened_git(["worktree", "remove", "--force", "--", str(held)], repo.path)
+        except GitError:
+            raise error from None
+        await run_checkout_git(args, repo.path)
+    if branch.startswith("-"):
+        # git takes such a name for a commit and detaches: commits would land on no branch.
+        await run_hardened_git(["symbolic-ref", "HEAD", f"refs/heads/{branch}"], path)
 
 
 async def _exclude_worktrees(repo: RepoConfig) -> None:
