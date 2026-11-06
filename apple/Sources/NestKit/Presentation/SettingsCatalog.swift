@@ -80,10 +80,10 @@ public enum SettingsPage: Sendable, Hashable {
                 ]
         case .pixies:
             [
-                "Your pixies", "Show hidden pixies", "New pixie", "New pixies start with",
-                "Model", "Autonomy", "Project files", "Projects", "Chats running at once",
-                "Chats started per day", "Habits", "Pause all habits", "Skip habit runs above",
-                "Reports", "Send to the phone from",
+                "Your pixies", "Show hidden pixies", "Pixies and subagents can push", "New pixie",
+                "New pixies start with", "Model", "Autonomy", "Project files", "Projects",
+                "Chats running at once", "Chats started per day", "Habits", "Pause all habits",
+                "Skip habit runs above", "Reports", "Send to the phone from",
             ]
         case .accounts: ["Claude", "Sign in", "Sign out", "GitHub", "Check again"]
         case .configuration:

@@ -17,7 +17,7 @@ from nestd.pixies.models import (
     UpdateTeam,
     WriteFile,
 )
-from nestd.pixies.prompt import CALL_PREAMBLE, NO_PIXIE_CALLS
+from nestd.pixies.prompt import CALL_PREAMBLE, NO_PIXIE_CALLS, NO_PUSH_NOTE
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.providers.base import CallRules
@@ -110,7 +110,10 @@ async def test_a_definition_carries_the_pixie(ctx: AppContext, agents: PixieAgen
 
     assert sub.description == "Tester: You test everything."
     assert sub.prompt.startswith(
-        CALL_PREAMBLE.format(name="Tester", slug="tester") + "\n" + NO_PIXIE_CALLS + "\n\n"
+        CALL_PREAMBLE.format(name="Tester", slug="tester", no_push=NO_PUSH_NOTE)
+        + "\n"
+        + NO_PIXIE_CALLS
+        + "\n\n"
     )
     assert NO_PIXIE_CALLS == (
         "- You call no pixies. For help, use your engine's own ordinary subagents, if it has any."
@@ -449,10 +452,15 @@ async def test_a_called_pixies_prompt_is_its_call_prompt(
     led = await agents.called_prompt(await ctx.pixies.get(lead.id))
     alone = await agents.called_prompt(solo)
 
-    assert led.startswith(CALL_PREAMBLE.format(name="Lead", slug="lead") + "\n\n")
+    assert led.startswith(
+        CALL_PREAMBLE.format(name="Lead", slug="lead", no_push=NO_PUSH_NOTE) + "\n\n"
+    )
     assert "- bugs (call with call_pixie): Bugs: You find bugs.\n" in led
     assert alone.startswith(
-        CALL_PREAMBLE.format(name="Solo", slug="solo") + "\n" + NO_PIXIE_CALLS + "\n\n"
+        CALL_PREAMBLE.format(name="Solo", slug="solo", no_push=NO_PUSH_NOTE)
+        + "\n"
+        + NO_PIXIE_CALLS
+        + "\n\n"
     )
 
 

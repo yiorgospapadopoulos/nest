@@ -47,6 +47,7 @@ private struct PixieListSection: View {
                 Switch(isOn: shell.showsHiddenPixies) { shell.showsHiddenPixies.toggle() }
                     .accessibilityLabel("Show hidden pixies")
             }
+            CanPushRow()
             Button {
                 shell.createPixie(CreatePixieRequest(name: "New pixie"), details: true)
                 shell.showMainWindow()
@@ -56,6 +57,25 @@ private struct PixieListSection: View {
             .buttonStyle(.nest(.soft))
             .padding(.top, 10)
         }
+    }
+}
+
+/// One global choice, not per pixie (D160).
+private struct CanPushRow: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let store = shell.model.limitSettings
+        SettingsRow(label: "Pixies and subagents can push") {
+            Switch(isOn: store.settings?.canPush ?? false) {
+                shell.settingsChange("Could not change the pixie settings") {
+                    try await store.update { $0.canPush.toggle() }
+                }
+            }
+            .accessibilityLabel("Pixies and subagents can push")
+        }
+        .disabled(store.settings == nil)
+        .task { try? await store.load() }
     }
 }
 

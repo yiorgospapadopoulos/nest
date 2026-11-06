@@ -85,6 +85,19 @@ public struct LargeAttachment: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// `GET/PUT /api/limits/settings`: what Nest lets agents do on their own (D160).
+public struct LimitSettings: Codable, Sendable, Hashable {
+    public var canPush: Bool
+
+    public init(canPush: Bool = false) {
+        self.canPush = canPush
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case canPush = "can_push"
+    }
+}
+
 /// `GET/PUT /api/pixie-settings`: what new pixies start with, and the habits' switches.
 public struct PixieSettings: Codable, Sendable, Hashable {
     /// The Claude model new Claude pixies start on; nil only before the daemon resolved

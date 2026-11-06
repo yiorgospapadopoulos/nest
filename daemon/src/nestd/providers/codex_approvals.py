@@ -66,7 +66,7 @@ class RunPermissions:
     read_only: bool = False
     # A subagent thread the call guard refused (B70): nothing it asks is allowed.
     refused: bool = False
-    # A guarded run's worktree removals are declined too (Autopilot).
+    # Worktree removals are declined, guarded or not (Autopilot).
     worktrees: bool = False
 
 
@@ -181,8 +181,10 @@ class CodexApprovals:
         tool = text(call.get("tool")) or _message_tool(message)
         tool_input = obj(meta.get("tool_params")) or obj(call.get("arguments"))
         name = f"mcp__{server}__{tool}"
-        writes = tool_writes(name, tool_input, worktrees=permissions.worktrees)
-        if permissions.guarded and (not tool or writes):
+        writes = tool_writes(
+            name, tool_input, pushes=permissions.guarded, worktrees=permissions.worktrees
+        )
+        if writes or (permissions.guarded and not tool):
             return _DECLINE
         if permissions.mode == "bypassPermissions":
             return _ACCEPT

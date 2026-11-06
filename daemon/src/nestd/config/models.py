@@ -300,6 +300,13 @@ class StuckSettings(_Strict):
     turn_minutes: int = Field(default=60, ge=0, le=1440)
 
 
+class LimitSettings(_Strict):
+    """What Nest lets agents do on their own (D160)."""
+
+    # Whether pixies, subagents and Autopilot may push and open or merge pull requests.
+    can_push: bool = False
+
+
 class ProjectSettings(_Strict):
     # Project names in the order clients show them, set by reordering the Mac app's tabs
     # (D090); projects not listed follow in file name order.
@@ -351,6 +358,7 @@ class Settings(_Strict):
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
     stuck: StuckSettings = Field(default_factory=StuckSettings)
+    limits: LimitSettings = Field(default_factory=LimitSettings)
     projects: ProjectSettings = Field(default_factory=ProjectSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     pixies: PixieDefaults = Field(default_factory=PixieDefaults)

@@ -532,7 +532,7 @@ def cli_mcp_config(options: ClaudeAgentOptions, cli: Path) -> tuple[dict[str, An
 
 
 async def options_of(run: FakeRun, tmp_path: Path) -> ClaudeAgentOptions:
-    return build_options(run.spec, ScriptedHandler(PermissionDecision("deny")), tmp_path / "gh")
+    return build_options(run.spec, ScriptedHandler(PermissionDecision("deny")))
 
 
 async def test_a_chats_options_serve_and_allow_the_artifact_tools(

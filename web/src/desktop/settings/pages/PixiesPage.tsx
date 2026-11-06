@@ -46,8 +46,9 @@ export function PixiesPage() {
 }
 
 function PixieList() {
-  const { state } = useStore();
+  const { state, actions } = useStore();
   const shell = useShell();
+  const limits = state.settings.limits;
   const pixies = pixieList(state, shell.showsHiddenPixies);
   return (
     <SettingsSection title="Your pixies" bare>
@@ -84,6 +85,14 @@ function PixieList() {
         label="Show hidden pixies"
         on={shell.showsHiddenPixies}
         onChange={shell.setShowsHiddenPixies}
+      />
+      <SwitchRow
+        label="Pixies and subagents can push"
+        on={limits?.can_push ?? false}
+        disabled={limits === null}
+        onChange={(can_push) => {
+          if (limits !== null) void actions.saveSection("limits", { ...limits, can_push }, limits);
+        }}
       />
       <div className="dks3-after">
         <Button

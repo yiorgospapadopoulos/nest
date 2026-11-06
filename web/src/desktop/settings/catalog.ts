@@ -119,6 +119,7 @@ const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = 
   pixies: [
     "Your pixies",
     "Show hidden pixies",
+    "Pixies and subagents can push",
     "New pixie",
     "New pixies start with",
     "Model",

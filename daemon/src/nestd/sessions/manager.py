@@ -160,6 +160,7 @@ class SessionManager:
         weekly_used: Callable[[Session], Awaitable[float | None]] | None = None,
         names_dir: Path | None = None,
         name_waits: Sequence[float] = NAME_WAITS,
+        can_push: Callable[[], bool] = lambda: False,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
@@ -172,7 +173,8 @@ class SessionManager:
         folder's ports and dev server (B108). `keep_awake` and `weekly_used` serve Autopilot
         (`AutopilotRunner`). `names_dir` is the empty folder of the small calls that name
         a chat on an engine with no names of its own, and `name_waits` how long the others
-        are given (`ChatNamer`).
+        are given (`ChatNamer`). `can_push` is whether the user lets pixies, subagents and
+        Autopilot push (D160).
         """
         self._local = local
         self._issues = issues
@@ -196,7 +198,14 @@ class SessionManager:
         self._limits = LimitPauses(store, bus, clock)
         self._limit_task: asyncio.Task[None] | None = None
         self.autopilot = AutopilotRunner(
-            store, bus, approvals, clock, keep_awake, weekly_used or _no_usage, self._save_changes
+            store,
+            bus,
+            approvals,
+            clock,
+            keep_awake,
+            weekly_used or _no_usage,
+            self._save_changes,
+            can_push,
         )
         self.autopilot.host = self
         self._moves = WorktreeMoves(
@@ -235,6 +244,7 @@ class SessionManager:
             call_tools=call_tools,
             local=local,
             ports=ports,
+            can_push=can_push,
         )
         self._rewinds = Rewinds(
             store=store,

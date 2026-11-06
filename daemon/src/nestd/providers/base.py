@@ -424,11 +424,14 @@ class SessionSpec:
     subagents: Mapping[str, Subagent] = field(default_factory=dict[str, Subagent])
     # Which agents may call which pixies among the subagents; None guards no calls (B70).
     call_rules: CallRules | None = None
-    # Commits, pushes and pull request writes blocked, and git and gh without credentials
-    # (D013): pixie chats, habit runs and chats a pixie started (D072). A normal chat uses
-    # git and gh as in the terminal, with the user's own login (B58).
+    # Pushes and pull request writes blocked for the whole run (D013, D160): pixie chats,
+    # habit runs, chats a pixie started and Autopilot, while the user has not let agents
+    # push. Commits stay allowed and every run keeps the user's login.
     guard_git: bool = True
-    # With `guard_git`: what changes the branch's history stays blocked too (Autopilot).
+    # The same for the run's subagents only, pixies or not, while the user has not let
+    # agents push. A normal chat itself pushes when asked (B127).
+    guard_subagents: bool = True
+    # Removing a worktree is blocked, whether or not agents may push (Autopilot).
     guard_worktrees: bool = False
     # With `resume_id`: load the conversation only up to and including this entry, into a
     # new engine session (a fork), leaving the resumed one as it was (B59).
@@ -446,6 +449,13 @@ class SessionSpec:
     # False: a one-off run the engine keeps no history of, so it never shows in Claude
     # Code's or Codex's own chat lists (B115's performance check).
     keep_history: bool = True
+
+    @property
+    def nest_decides(self) -> bool:
+        """Whether every command and MCP call must come to Nest, which refuses what is
+        blocked, on engines without hooks.
+        """
+        return self.guard_git or self.guard_worktrees
 
 
 @dataclass(frozen=True)

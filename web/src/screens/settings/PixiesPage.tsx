@@ -41,6 +41,7 @@ export function PixiesPage({ onOpenPixie }: Props) {
 
 function PixieList({ onOpenPixie }: Props) {
   const { state, actions } = useStore();
+  const limits = state.settings.limits;
   const [showHidden, setShowHidden] = useState(false);
   const pixies = pixieList(state, showHidden);
   const hidden = pixieList(state, true).length - pixieList(state).length;
@@ -81,6 +82,16 @@ function PixieList({ onOpenPixie }: Props) {
           }}
         />
       )}
+      <SwitchRow
+        label="Pixies and subagents can push"
+        on={limits?.can_push ?? false}
+        disabled={limits === null}
+        onToggle={() => {
+          if (limits !== null) {
+            void actions.saveSection("limits", { ...limits, can_push: !limits.can_push }, limits);
+          }
+        }}
+      />
       <div className="srow">
         <button className="b" onClick={() => void create()}>
           New pixie

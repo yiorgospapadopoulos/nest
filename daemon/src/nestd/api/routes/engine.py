@@ -141,7 +141,7 @@ async def _info(ctx: Context, engine: Engine, refresh: bool) -> ProviderInfo:
         info.signed_in = acp.signed_in
         info.version = acp.version
         info.tested = service.engine.tested
-        info.git_guard = service.engine.git_guard
+        info.git_guard = service.engine.git_guard or engine.can_push()
         info.state = acp.state
         info.state_detail = acp.state_detail
         info.sign_in = service.engine.sign_in

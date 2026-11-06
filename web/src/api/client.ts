@@ -107,6 +107,7 @@ import type {
   ListedDevice,
   GithubAccount,
   PairingCode,
+  LimitSettings,
   PixieDefaults,
   StorageSettings,
   PerfView,
@@ -337,6 +338,8 @@ export interface Api {
   saveStuckSettings(settings: StuckSettings): Promise<StuckSettings>;
   pixieDefaults(): Promise<PixieDefaults>;
   savePixieDefaults(settings: PixieDefaults): Promise<PixieDefaults>;
+  limitSettings(): Promise<LimitSettings>;
+  saveLimitSettings(settings: LimitSettings): Promise<LimitSettings>;
   github(): Promise<GithubAccount>;
   checkGithub(): Promise<GithubAccount>;
   claudeAccount(): Promise<ClaudeAccount>;
@@ -1089,6 +1092,14 @@ export class HttpApi implements Api {
 
   savePixieDefaults(settings: PixieDefaults) {
     return this.json<PixieDefaults>("PUT", "/api/pixie-settings", settings);
+  }
+
+  limitSettings() {
+    return this.json<LimitSettings>("GET", "/api/limits/settings");
+  }
+
+  saveLimitSettings(settings: LimitSettings) {
+    return this.json<LimitSettings>("PUT", "/api/limits/settings", settings);
   }
 
   github() {

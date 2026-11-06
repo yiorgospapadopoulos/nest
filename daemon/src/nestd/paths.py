@@ -96,11 +96,6 @@ class AppPaths:
         return self.data_dir / "worktrees"
 
     @property
-    def agent_gh_dir(self) -> Path:
-        """An empty GitHub CLI config dir for guarded runs, so `gh` has no login (D013, B58)."""
-        return self.data_dir / "agent-gh"
-
-    @property
     def launchers_dir(self) -> Path:
         """Launcher scripts that open a session's conversation in a terminal."""
         return self.data_dir / "launchers"
@@ -156,7 +151,6 @@ class AppPaths:
             self.logs_dir,
             self.attachments_dir,
             self.worktrees_dir,
-            self.agent_gh_dir,
             self.launchers_dir,
             self.probe_dir,
             self.ask_dir,

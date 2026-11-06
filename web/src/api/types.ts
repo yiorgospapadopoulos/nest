@@ -1288,6 +1288,11 @@ export interface StuckSettings {
   turn_minutes: number;
 }
 
+/** What Nest lets agents do on their own (`/api/limits/settings`, D160). */
+export interface LimitSettings {
+  can_push: boolean;
+}
+
 /** What new pixies start with, and the habit switches (`/api/pixie-settings`, D104). */
 export interface PixieDefaults {
   model: string | null;

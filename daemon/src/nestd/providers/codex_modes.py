@@ -12,13 +12,14 @@ In acceptEdits Nest accepts file changes itself and asks for commands. Every san
 network, as Claude Code has.
 
 `untrusted` asks before every command Codex does not know to be read-only and before every
-file change, as Claude Code's default mode asks. A guarded run (D013, B58: pixie chats,
-habit runs, chats a pixie started, called pixies) gets no sandbox beyond Claude's (B112):
-always `untrusted` with the user as reviewer and full access (read-only in plan mode, which
-is what the mode is), so every such command and file change comes to Nest, which declines
-git writes; in bypass Nest accepts the rest itself. A run with a write root (a pixie's,
-D072) is also `untrusted`, so each file change comes to Nest, which declines one outside the
-root (`codex_approvals`), as Claude's write guard denies it.
+file change, as Claude Code's default mode asks. While the user has not let agents push
+(D160), a guarded run (D013, B58: pixie chats, habit runs, chats a pixie started, called
+pixies, Autopilot) gets no sandbox beyond Claude's (B112): always `untrusted` with the user
+as reviewer and full access (read-only in plan mode, which is what the mode is), so every
+such command and file change comes to Nest, which declines git writes; in bypass Nest
+accepts the rest itself. Autopilot stays so either way, for removing worktrees. A run with
+a write root (a pixie's, D072) is also `untrusted`, so each file change comes to Nest, which
+declines one outside the root (`codex_approvals`), as Claude's write guard denies it.
 """
 
 from collections.abc import Sequence
@@ -87,7 +88,7 @@ def command_decision(
     command: str, mode: PermissionMode | None, guarded: bool, worktrees: bool = False
 ) -> AutoDecision | None:
     """What Nest answers a command approval itself; None asks the user."""
-    if guarded and is_git_write(command, worktrees=worktrees):
+    if is_git_write(command, pushes=guarded, worktrees=worktrees):
         return "decline"
     if mode == "bypassPermissions":
         return "accept"

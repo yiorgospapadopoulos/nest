@@ -146,14 +146,14 @@ async def test_the_runs_environment_starts_from_the_login_shell(tmp_path: Path) 
             "CLAUDE_CODE_ENABLE_TODO_TOOLS": "0",
         }
 
-    opened.provider = ClaudeProvider(tmp_path / "agent-gh", opened.factory, shell_env)
+    opened.provider = ClaudeProvider(opened.factory, shell_env)
     handler = ScriptedHandler(PermissionDecision("allow"))
 
     _, guarded = await opened.open(SessionSpec(tmp_path, "default"), handler)
     _, normal = await opened.open(SessionSpec(tmp_path, "default", guard_git=False), handler)
 
     assert guarded.options.env["PATH"] == "/Users/me/.nvm/bin:/usr/bin"
-    assert guarded.options.env["GH_TOKEN"] == ""
+    assert guarded.options.env["GH_TOKEN"] == normal.options.env["GH_TOKEN"]
     assert guarded.options.env["MCP_CONNECTION_NONBLOCKING"] == "true"
     assert guarded.options.env["CLAUDE_CODE_ENABLE_TODO_TOOLS"] == "1"
     assert normal.options.env == {

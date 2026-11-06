@@ -25,7 +25,7 @@ from nestd.providers.base import (
     ToolUseBlock,
     UserInput,
 )
-from nestd.providers.git_guard import DENY_REASON
+from nestd.providers.git_guard import DENY_REASON, NO_PUSH_ENV, WORKTREE_DENY_REASON
 from tests.acp_support import FakeAgent, Step, load
 from tests.async_support import until
 from tests.recording_sink import RecordingSink
@@ -70,7 +70,7 @@ async def open_run(
     async def launcher(account: RunAccount | None) -> AcpLaunch:
         return AcpLaunch(("/engines/opencode", "acp"), {"PATH": "/engine/bin", "HOME": "/home"})
 
-    provider = AcpProvider(engine, launcher, cwd / "gh", transport=agent)
+    provider = AcpProvider(engine, launcher, transport=agent)
     run = await provider.open(spec(cwd, **fields), handler, sink)
     return run, sink, handler
 
@@ -208,6 +208,49 @@ async def test_a_rejected_command_answers_reject_once(tmp_path: Path) -> None:
     await run.close()
 
 
+async def test_with_agents_allowed_to_push_a_pixie_run_is_not_touched(tmp_path: Path) -> None:
+    """D160: no refusal, no forced `build` agent, and no git-level block."""
+    agent = FakeAgent(
+        load("opencode-shell-reject", tmp_path, {"git log --oneline": "git push origin main"})
+    )
+    run, sink, handler = await open_run(
+        agent, tmp_path, guard_git=False, guard_subagents=False, permission_mode="bypassPermissions"
+    )
+
+    await turn(run, sink)
+
+    assert outcomes(agent) == [once("once")]
+    assert handler.requests == []
+    env = agent.transport.launch.env
+    assert "GIT_CONFIG_COUNT" not in env
+    assert "OPENCODE_CONFIG_CONTENT" not in env
+    await run.close()
+
+
+async def test_autopilot_keeps_its_worktree_refusal_when_agents_may_push(tmp_path: Path) -> None:
+    agent = FakeAgent(
+        load("opencode-shell-reject", tmp_path, {"git log --oneline": "git worktree remove x"})
+    )
+    run, sink, _ = await open_run(
+        agent,
+        tmp_path,
+        guard_git=False,
+        guard_subagents=False,
+        guard_worktrees=True,
+        permission_mode="bypassPermissions",
+    )
+
+    await turn(run, sink)
+
+    assert outcomes(agent) == [once("reject")]
+    [result] = [b for b in blocks(sink) if isinstance(b, ToolResultBlock)]
+    assert result.content == WORKTREE_DENY_REASON
+    env = agent.transport.launch.env
+    assert "GIT_CONFIG_COUNT" not in env
+    assert env["OPENCODE_CONFIG_CONTENT"] == OPENCODE.guarded_env["OPENCODE_CONFIG_CONTENT"]
+    await run.close()
+
+
 @pytest.mark.parametrize("mode", ["default", "bypassPermissions"])
 async def test_a_guarded_runs_push_is_rejected_without_asking(tmp_path: Path, mode: str) -> None:
     agent = FakeAgent(
@@ -225,7 +268,7 @@ async def test_a_guarded_runs_push_is_rejected_without_asking(tmp_path: Path, mo
     [result] = [b for b in blocks(sink) if isinstance(b, ToolResultBlock)]
     assert (result.content, result.is_error) == (DENY_REASON, True)
     env = agent.transport.launch.env
-    assert (env["GH_TOKEN"], env["GIT_TERMINAL_PROMPT"]) == ("", "0")
+    assert env["GIT_CONFIG_KEY_0"] == NO_PUSH_ENV["GIT_CONFIG_KEY_0"]
     # OpenCode's own agent settings cannot loosen a guarded run's rules.
     assert env["OPENCODE_CONFIG_CONTENT"] == OPENCODE.guarded_env["OPENCODE_CONFIG_CONTENT"]
     assert env["PORT"] == "4100"

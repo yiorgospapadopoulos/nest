@@ -46,8 +46,10 @@ class Engine:
     # None: the engine has no accounts to choose from, as in tests.
     accounts: AccountSource | None = None
     # False when Nest cannot block the engine's git commands (B107): pixies, habits and
-    # the chats a pixie starts, whose block is a promise, are refused on it.
+    # the chats a pixie starts, whose block is a promise, are refused on it, unless the user
+    # lets agents push (`can_push`), which needs no block.
     git_guard: bool = True
+    can_push: Callable[[], bool] = lambda: False
 
     @property
     def name(self) -> str:
@@ -55,8 +57,11 @@ class Engine:
 
     @property
     def unsupported(self) -> frozenset[ProviderFeature]:
-        """What its chats lack: the provider's, and pixies without a git guard."""
-        unguarded: frozenset[ProviderFeature] = frozenset(() if self.git_guard else ("pixies",))
+        """What its chats lack: the provider's, and pixies when they need a git guard it
+        cannot give.
+        """
+        guarded = self.git_guard or self.can_push()
+        unguarded: frozenset[ProviderFeature] = frozenset(() if guarded else ("pixies",))
         return self.provider.unsupported | unguarded
 
     def supports(self, feature: ProviderFeature) -> bool:

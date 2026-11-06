@@ -12,6 +12,7 @@ from nestd.config.models import (
     AgentChoices,
     AgentDefaults,
     ConfigurationSettings,
+    LimitSettings,
     NotificationSettings,
     PixieDefaults,
     ProjectSettings,
@@ -79,6 +80,11 @@ def save_usage(paths: AppPaths, usage: UsageSettings) -> UsageSettings:
 def save_stuck(paths: AppPaths, stuck: StuckSettings) -> StuckSettings:
     """Replace the `[stuck]` section of settings.toml, keeping every other section."""
     return _save_section(paths, "stuck", _dump(stuck)).stuck
+
+
+def save_limits(paths: AppPaths, limits: LimitSettings) -> LimitSettings:
+    """Replace the `[limits]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "limits", _dump(limits)).limits
 
 
 def save_storage(paths: AppPaths, storage: StorageSettings) -> StorageSettings:

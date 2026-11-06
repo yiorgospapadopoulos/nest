@@ -74,10 +74,10 @@ from nestd.providers.base import (
     SessionSpec,
     UserInput,
 )
-from nestd.providers.claude import agent_env
 from nestd.providers.claude_tools import NEST_SERVER, TOOL_SERVER
 from nestd.providers.codex_items import items, obj, text
 from nestd.providers.codex_tools import ToolHost
+from nestd.providers.git_guard import NO_PUSH_ENV
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
 __all__ = [
@@ -669,13 +669,11 @@ class AcpProvider:
         self,
         engine: AcpEngine,
         launcher: AcpLauncher,
-        gh_config_dir: Path,
         transport: AcpTransportFactory = spawn_acp,
         shell_env: ShellEnvSource = no_shell_env,
     ) -> None:
         self._engine = engine
         self._launcher = launcher
-        self._gh_config_dir = gh_config_dir
         self._transport = transport
         self._shell_env = shell_env
 
@@ -692,10 +690,11 @@ class AcpProvider:
     ) -> AcpRun:
         launch = await self._launcher(spec.account)
         run = AcpRun(self._engine, spec, handler, sink)
-        guarded = (
-            {**agent_env(self._gh_config_dir), **self._engine.guarded_env} if spec.guard_git else {}
-        )
-        extra = {**spec.env, **guarded}
+        extra = {
+            **spec.env,
+            **(NO_PUSH_ENV if spec.guard_git else {}),
+            **(self._engine.guarded_env if spec.nest_decides else {}),
+        }
         env = process_env(await self._shell_env(), launch.env, extra)
         transport = await self._transport(AcpLaunch(launch.args, env), spec.cwd)
         rpc = AcpRpc(
@@ -764,7 +763,7 @@ def process_env(
     """The engine's environment: the launcher's over the user's login shell's, so the
     engine's own settings and the account's folder win, with the shell's PATH entries
     after the launcher's (the engine finds the user's tools, such as node); `extra` (the
-    chat's ports, a guarded run's credential-free git) over all.
+    chat's ports, a guarded run's git-level push block) over all.
     """
     env = {**shell, **launch}
     if (shell_path := shell.get("PATH")) and (launch_path := launch.get("PATH")):

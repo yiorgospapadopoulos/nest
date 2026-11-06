@@ -408,6 +408,15 @@ added = 2026-11-05
 block = "B127"
 
 [[features]]
+id = "agents-can-push"
+group = "pixies"
+name = "One switch for pushing"
+text = "One switch decides whether pixies and subagents can push and open or merge pull requests. It stays off until you turn it on."
+where = "Settings › Pixies"
+added = 2026-11-06
+block = "B132"
+
+[[features]]
 id = "pixie-project-access"
 group = "pixies"
 name = "Project access"
@@ -602,10 +611,10 @@ block = "B121"
 id = "autopilot"
 group = "chats"
 name = "Autopilot"
-text = "One button keeps a chat working without you: it answers its own questions, goes on after early stops, restarts and errors, and shows each decision in the chat with the options and the reason, then a report at the end. Pushes and pull requests stay yours."
+text = "One button keeps a chat working without you: it answers its own questions, goes on after early stops, restarts and errors, and shows each decision in the chat with the options and the reason, then a report at the end. Pushes and pull requests stay yours unless you let pixies and subagents push."
 where = "Chat › the button beside the mic"
 added = 2026-11-04
-changed = 2026-11-05
+changed = 2026-11-06
 block = "B120"
 
 [[features]]

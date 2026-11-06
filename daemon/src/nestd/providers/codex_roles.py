@@ -63,14 +63,18 @@ class CodexRoles:
         write_root: Path | None,
         skills: Iterable[tuple[str, bool]] = (),
         own_servers: JsonObject | None = None,
+        *,
+        guard_pixies: bool = True,
     ) -> None:
         """`skills` are the folder's skills, by name with whether they are on; `own_servers`
-        the run's own tool servers (as thread config entries), off in every role.
+        the run's own tool servers (as thread config entries), off in every role;
+        `guard_pixies` that a pixie's commands must reach Nest, in any chat (B127).
         """
         self._subagents = {
             slug: subagent for slug, subagent in subagents.items() if set(slug) <= ROLE_NAME
         }
         self._guarded = guarded
+        self._guard_pixies = guard_pixies
         self._write_root = write_root
         self._skills = tuple(skills)
         self._own_servers = own_servers or {}
@@ -118,8 +122,7 @@ class CodexRoles:
             lines.append(f"model = {_string(subagent.model)}")
         if subagent.effort:
             lines.append(f"model_reasoning_effort = {_string(subagent.effort)}")
-        # Guarded in any chat, so a pixie's commands reach Nest, which declines pushes (B127).
-        own = codex_permissions(subagent.permission_mode, True, self._write_root)
+        own = codex_permissions(subagent.permission_mode, self._guard_pixies, self._write_root)
         if read_only(subagent) and own.approval_policy != "untrusted":
             own = replace(own, approval_policy="untrusted", reviewer="user")
         if own != caller:
