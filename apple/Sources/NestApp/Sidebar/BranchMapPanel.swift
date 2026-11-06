@@ -2,250 +2,177 @@ import AppKit
 import NestKit
 import SwiftUI
 
-/// The project's branches and worktrees as coloured lanes (B96, A7), open under the
-/// project header: each branch in its lane colour, joined to the branch it comes from by a
-/// short curve; where the project folder is pulses. A click on a row starts a new chat
-/// there (A8). At most six rows show; the rest scroll.
+/// The project's branches and worktrees as coloured lanes (B96, B131), open under the
+/// project header: the top row pinned, every other branch scrolling under the branch it came
+/// from. A click selects where new chats start and nothing else; where the project folder is
+/// pulses.
 struct BranchMapPanel: View {
-    static let visibleRows = 6
+    /// Under the pinned top row; the rest scroll.
+    static let visibleRows = 5
+    /// Find and the full tree reach the others.
+    static let remoteRows = 60
     let project: String
+    let map: BranchMap
     let lanes: BranchLanes
     /// Snapshots only: the row drawn as hovered.
     var hovered: String?
     @Environment(Shell.self) private var shell
     @Environment(\.reducedMotion) private var reduceMotion
+    @State private var query = ""
 
     var body: some View {
         let chats = shell.branchMaps.chats(
             in: project, sessions: shell.sessions.sessions(in: project),
             claudeChats: shell.claudeChats.chats(in: project), repo: shell.repo,
             tone: shell.tone(of:))
+        let selected = shell.repo?.selectedPlace?.branch
         VStack(spacing: 0) {
-            header
-            Divider().overlay(Palette.divider)
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(lanes.rows) { row in
-                        BranchMapRow(
-                            project: project, row: row, width: lanes.width,
-                            status: chats[row.id], showsHover: hovered == row.id
-                        )
-                        .transition(
-                            reduceMotion
-                                ? .opacity
-                                : .asymmetric(
-                                    insertion: .opacity.combined(with: .offset(x: -10)),
-                                    removal: .opacity.combined(with: .offset(x: 10))))
-                    }
+            MapBar(project: project, query: $query) {
+                MapBarButton(icon: Icon.maximize, label: "Full tree") {
+                    shell.show(.branchTree(project))
                 }
-                .padding(.vertical, 2)
             }
-            .scrollIndicators(.automatic)
-            .frame(
-                height: Double(min(lanes.rows.count, Self.visibleRows)) * BranchLaneRow.height
-                    + 4)
+            if query.isEmpty {
+                rows(selected: selected, chats: chats)
+            } else {
+                FoundRows(
+                    map: map, query: query, picks: picks(selected: selected), maxHeight: 204)
+            }
         }
         .background(Palette.composer, in: .rounded(8))
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.5), value: lanes)
+        .clipShape(.rounded(8))
         .padding(EdgeInsets(top: 6, leading: 8, bottom: 2, trailing: 8))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Branch map")
     }
 
-    @ViewBuilder private var header: some View {
-        HStack(spacing: 6) {
-            Text("Branches and worktrees")
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-            Spacer(minLength: 0)
-            Text(lanes.count)
-                .font(.ui(TypeSize.micro))
-                .foregroundStyle(Palette.t3)
-                .lineLimit(1)
-                .truncationMode(.middle)
+    @ViewBuilder private func rows(
+        selected: String?, chats: [String: BranchChatStatus]
+    ) -> some View {
+        let lead = map.detached ? 1 : 0
+        if let top = lanes.top {
+            row(top, selected: selected, chats: chats)
         }
-        .padding(.horizontal, 8)
-        .frame(height: 28)
+        RevealingRows(
+            count: lanes.rest.count + lead, rowHeight: BranchLaneRow.height,
+            visible: Self.visibleRows,
+            index: lanes.rest.firstIndex { $0.id == selected }.map { $0 + lead },
+            reveal: shell.mapReveals
+        ) {
+            if map.detached {
+                DetachedRow(
+                    height: BranchLaneRow.height, trunk: trunk,
+                    clear: selected == nil ? nil : { shell.clearPlace(in: project) })
+            }
+            ForEach(lanes.rest) { lane in
+                row(lane, selected: selected, chats: chats)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .asymmetric(
+                                insertion: .opacity.combined(with: .offset(x: -10)),
+                                removal: .opacity.combined(with: .offset(x: 10))))
+            }
+            .animation(motion, value: lanes)
+        }
+        // Only the rows and a short list's height animate: a scroll to a row while the list's
+        // content grew would stop at the old end, with a strip of the row in view.
+        .animation(motion, value: min(lanes.rest.count + lead, Self.visibleRows))
+        RemoteFold(
+            remotes: map.remoteBranches.prefix(Self.remoteRows), count: map.remoteBranches.count,
+            rule: true, maxHeight: 130
+        ) {
+            shell.select($0, in: project)
+        }
+    }
+
+    private func row(
+        _ lane: BranchLaneRow, selected: String?, chats: [String: BranchChatStatus]
+    ) -> BranchRow {
+        BranchRow(
+            project: project, row: lane, selected: selected, chats: chats,
+            showsHover: hovered == lane.id, shell: shell)
+    }
+
+    private var motion: Animation? { reduceMotion ? nil : .easeOut(duration: 0.5) }
+
+    /// The top row's lane, when it runs past the detached row.
+    private var trunk: Color? {
+        guard !lanes.rest.isEmpty, let top = lanes.top else { return nil }
+        return shell.branchMaps.color(of: top.id, in: project).map(Color.init)
+    }
+
+    private func picks(selected: String?) -> FoundPicks {
+        FoundPicks(
+            selected: { $0.name == selected },
+            color: { shell.branchMaps.color(of: $0, in: project).map(Color.init) },
+            pick: {
+                guard !shell.branchMaps.picksHeld(project) else { return }
+                shell.select($0, in: project, reveals: true)
+                query = ""
+            },
+            pickRemote: {
+                guard !shell.branchMaps.picksHeld(project) else { return }
+                shell.select($0, in: project)
+                query = ""
+            },
+            add: shell.newWorktree(from:), addWord: "Worktree")
     }
 }
 
-/// One branch: its lanes, name, label and its chat's dot; hovered, a "New chat" chip in
-/// the dot's place. A click starts a new chat there (A8).
-private struct BranchMapRow: View {
-    let project: String
-    let row: BranchLaneRow
-    let width: Double
-    let status: BranchChatStatus?
-    let showsHover: Bool
-    @Environment(Shell.self) private var shell
-    @State private var hovering = false
+/// A fixed-height list that brings its selected row into view: when it opens, and when
+/// `reveal` goes up. A row already in view moves nothing, so reading the map again never
+/// takes the list away from where the user scrolled to.
+struct RevealingRows<Content: View>: View {
+    let count: Int
+    let rowHeight: Double
+    let visible: Int
+    let index: Int?
+    var reveal = 0
+    @ViewBuilder let content: () -> Content
+    @State private var position = ScrollPosition(y: 0)
+    @State private var offset = RowsOffset()
 
     var body: some View {
-        let branch = row.branch
-        let hovered = hovering || showsHover
-        Button {
-            shell.newChat(at: branch.newChatChoice)
-        } label: {
-            HStack(spacing: 6) {
-                LaneGraph(project: project, row: row, width: width)
-                Text(branch.name)
-                    .font(.ui(TypeSize.ui, branch.here ? .semibold : .regular))
-                    .foregroundStyle(branch.here ? Palette.t1 : Palette.sidebarTextOpen)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .layoutPriority(1)
-                if let label = row.label {
-                    Text(label)
-                        .font(.ui(TypeSize.micro))
-                        .foregroundStyle(Palette.t3)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if hovered {
-                    NewChatChip()
-                } else if let status {
-                    ChatDot(status: status)
-                }
-            }
-            .padding(.trailing, hovered ? 6 : 10)
-            .frame(height: BranchLaneRow.height)
-            .background(hovered ? Palette.hover : .clear, in: .rounded(6))
-            .contentShape(Rectangle())
+        let height = Double(min(count, visible)) * rowHeight
+        let total = Double(count) * rowHeight
+        ScrollView {
+            LazyVStack(spacing: 0) { content() }
+                .frame(height: total, alignment: .top)
         }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .onHover { hovering = $0 }
-        .help(row.newChatHelp)
-        .accessibilityLabel(row.accessibilityLabel(status: status))
-    }
-}
-
-/// The hovered row's "+ New chat", in the selection's tint.
-private struct NewChatChip: View {
-    @Environment(\.accentColors) private var accent
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: Icon.plus).font(.system(size: 8, weight: .semibold))
-            Text("New chat").font(.ui(TypeSize.micro)).lineLimit(1)
+        .scrollPosition($position)
+        .scrollIndicators(.automatic)
+        .onScrollGeometryChange(for: Double.self) {
+            $0.contentOffset.y
+        } action: { _, new in
+            offset.y = new
         }
-        .foregroundStyle(Palette.t1)
-        .padding(.horizontal, 6)
-        .frame(height: 20)
-        .background(accent.selection, in: .rounded(5))
-        .fixedSize()
-        .accessibilityHidden(true)
-    }
-}
-
-/// A row's slice of the graph: the lines passing through, the curve from the parent's
-/// lane and the node, pulsing where the project folder is.
-private struct LaneGraph: View {
-    let project: String
-    let row: BranchLaneRow
-    let width: Double
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        let height = BranchLaneRow.height
-        let mid = height / 2
-        let x = BranchLaneRow.x(row.depth)
-        let own = color(row.branch.name)
-        ZStack(alignment: .topLeading) {
-            ForEach(row.lines, id: \.self) { line in
-                let lineX = BranchLaneRow.x(line.depth)
-                Path { path in
-                    path.move(to: CGPoint(x: lineX, y: line.fromMiddle ? mid : 0))
-                    path.addLine(to: CGPoint(x: lineX, y: height))
-                }
-                .stroke(color(line.lane), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+        .frame(height: height)
+        .task(id: RevealTrigger(reveal: reveal, hasRow: index != nil)) {
+            // After the first layout, which sizes the content.
+            await Task.yield()
+            guard let index else { return }
+            let target = RowReveal.offset(
+                row: index, height: rowHeight, current: offset.y, viewport: height, content: total)
+            if let target {
+                position.scrollTo(y: target)
             }
-            if let parent = row.parentDepth {
-                let parentX = BranchLaneRow.x(parent)
-                Path { path in
-                    path.move(to: CGPoint(x: parentX, y: 0))
-                    path.addCurve(
-                        to: CGPoint(x: x, y: mid), control1: CGPoint(x: parentX, y: 12),
-                        control2: CGPoint(x: x, y: 8))
-                }
-                .stroke(own, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-            }
-            let radius = row.branch.here ? 5.0 : 4.0
-            if row.branch.here {
-                Pulse(color: own).position(x: x, y: mid)
-            }
-            Circle().fill(own)
-                .frame(width: radius * 2, height: radius * 2)
-                .position(x: x, y: mid)
-        }
-        .frame(width: width, height: height)
-        .accessibilityHidden(true)
-    }
-
-    private func color(_ branch: String) -> Color {
-        shell.branchMaps.color(of: branch, in: project).map(Color.init) ?? Palette.t3
-    }
-}
-
-/// The ring that grows and fades around the here node; still with Reduce Motion.
-private struct Pulse: View {
-    let color: Color
-    @Environment(\.reducedMotion) private var reduceMotion
-
-    var body: some View {
-        if !reduceMotion {
-            ColoredLayerMark<BranchPulseLayer>(color: color)
-                .frame(width: BranchPulseLayer.side, height: BranchPulseLayer.side)
-                .frame(width: 9, height: 9)
         }
     }
 }
 
-private final class BranchPulseLayer: ColoredMotionView {
-    static let growth = 2.6
-    /// Holds the ring at its largest, with its stroke.
-    static let side = 28.0
-
-    override func startMotion(in layer: CALayer) {
-        guard let color else { return }
-        // A border runs inside its layer, a SwiftUI stroke either side of the circle.
-        let lineWidth = 1.4
-        let ring = CALayer()
-        ring.bounds = CGRect(x: 0, y: 0, width: 9 + lineWidth, height: 9 + lineWidth)
-        ring.position = CGPoint(x: Self.side / 2, y: Self.side / 2)
-        ring.cornerRadius = ring.bounds.width / 2
-        ring.borderWidth = lineWidth
-        ring.borderColor = color.cgColor
-        ring.opacity = 0
-        layer.sublayers = [ring]
-        let grow = CABasicAnimation(keyPath: "transform.scale")
-        grow.fromValue = 1
-        grow.toValue = Self.growth
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 0.7
-        fade.toValue = 0
-        for animation in [grow, fade] {
-            animation.timingFunction = LayerLoop.easeOut
-            LayerLoop.run(animation, period: 2, on: ring)
-        }
-    }
+/// What starts a list's reveal: asked for again, or the row turned up, as a new branch does
+/// after its selection.
+struct RevealTrigger: Equatable {
+    let reveal: Int
+    let hasRow: Bool
+    var measured = true
 }
 
-/// A branch's chat: running filled green, needing the user amber, idle an outline.
-private struct ChatDot: View {
-    let status: BranchChatStatus
-
-    var body: some View {
-        Group {
-            switch status {
-            case .running: Circle().fill(StatusTone.review.color)
-            case .needsYou: Circle().fill(StatusTone.waiting.color)
-            case .idle: Circle().strokeBorder(Palette.t3, lineWidth: 1)
-            }
-        }
-        .frame(width: 6, height: 6)
-        .accessibilityHidden(true)
-    }
+/// Where a list has scrolled to, held apart so scrolling redraws nothing.
+final class RowsOffset {
+    var x = 0.0
+    var y = 0.0
 }
 
 /// The header's mark that the map follows changes as they happen: shown while the event

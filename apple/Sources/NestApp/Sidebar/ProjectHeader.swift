@@ -2,21 +2,27 @@ import NestKit
 import SwiftUI
 
 /// The top of the sidebar: the project's icon and name, opening its local app actions,
-/// with its current branch (or Init for a plain folder) beside it (B73: the bar over the
+/// with where new chats start (or Init for a plain folder) beside it (B73: the bar over the
 /// project is gone; B83: the squeeze button moved to the footer). The branch opens the
-/// branch map, marked Live while it follows changes (B96).
+/// branch map, marked Live while it follows changes (B96). It reads the selected place and
+/// nothing an open chat reads, so open chats do not look as if they moved (B131).
 struct ProjectHeader: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let project = shell.project ?? ""
         HStack(spacing: 8) {
-            ProjectMenu().layoutPriority(2)
-            switch shell.repo?.badge {
-            case .branch(let branch):
-                BranchLabel(project: project, branch: branch).layoutPriority(1)
-            case .initGit: InitGitButton()
-            case nil: EmptyView()
+            // The name gives way before the branch, which has its own cap.
+            ProjectMenu().layoutPriority(1)
+            if let repo = shell.repo, !repo.isGeneral {
+                if !repo.git {
+                    InitGitButton()
+                } else if let branch = repo.startBranch(map: shell.branchMaps.map(project)) {
+                    BranchLabel(
+                        project: project, branch: branch, selected: repo.selectedPlace != nil
+                    )
+                    .layoutPriority(2)
+                }
             }
             Spacer(minLength: 0)
             if shell.branchMaps.isOpen(project), shell.app.connection == .connected {
@@ -30,36 +36,45 @@ struct ProjectHeader: View {
     }
 }
 
-/// The current branch, small and grey after the project's name; it opens and closes the
-/// branch map, tinted in the branch's lane colour while the map is open (B96).
+/// Where new chats start, small and grey after the project's name, cut in the middle past
+/// its cap; it opens and closes the branch map, tinted in the branch's lane colour while the
+/// map is open (B96) or a place is selected (B131).
 private struct BranchLabel: View {
+    static let maxWidth = 102.0
     let project: String
     let branch: String
+    let selected: Bool
     @Environment(Shell.self) private var shell
     @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
         let open = shell.branchMaps.isOpen(project)
         let lane = shell.branchMaps.color(of: branch, in: project).map(Color.init)
+        let tinted = open || selected
         Button {
             withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) {
                 shell.branchMaps.toggle(project)
             }
+            if shell.branchMaps.isOpen(project) {
+                shell.app.reloadRepos()
+            }
         } label: {
             HoverReader { hovering in
-                HStack(spacing: 5) {
-                    Image(systemName: Icon.branch).font(.system(size: 9.5))
-                    Text(branch).lineLimit(1).truncationMode(.middle)
-                    Image(systemName: open ? Icon.chevronUp : Icon.chevron)
-                        .font(.system(size: 7, weight: .semibold))
-                        .opacity(open || hovering ? 1 : 0.6)
+                WidthCap(maxWidth: Self.maxWidth - 14) {
+                    HStack(spacing: 5) {
+                        Image(systemName: Icon.branch).font(.system(size: 9.5))
+                        Text(branch).lineLimit(1).truncationMode(.middle)
+                        Image(systemName: open ? Icon.chevronUp : Icon.chevron)
+                            .font(.system(size: 7, weight: .semibold))
+                            .opacity(open || hovering ? 1 : 0.6)
+                    }
                 }
                 .font(.ui(TypeSize.meta))
-                .foregroundStyle(open ? lane ?? Palette.t1 : hovering ? Palette.t2 : Palette.t3)
+                .foregroundStyle(tinted ? lane ?? Palette.t1 : hovering ? Palette.t2 : Palette.t3)
                 .padding(.horizontal, 7)
                 .frame(height: 20)
                 .background(
-                    open ? (lane ?? Palette.t1).opacity(0.16) : hovering ? Palette.soft : .clear,
+                    tinted ? (lane ?? Palette.t1).opacity(0.16) : hovering ? Palette.soft : .clear,
                     in: .rounded(Radius.button)
                 )
                 .contentShape(Rectangle())
@@ -68,7 +83,7 @@ private struct BranchLabel: View {
         .buttonStyle(.plain)
         .pointerStyle(.link)
         .padding(.leading, -7)
-        .help(open ? "Hide the branch map" : "Show the branch map")
+        .help(branch)
         .accessibilityLabel("Branch \(branch), \(open ? "hide" : "show") branch map")
     }
 }
