@@ -41,7 +41,7 @@ interface Tools {
 export type FileSave = { version: string } | { conflict: string | null };
 
 // The settings sections saved whole with PUT, by their key in the state.
-type Section = "usage" | "stuck" | "storage" | "pixies";
+type Section = "usage" | "stuck" | "storage" | "pixies" | "limits";
 type Saved<K extends Section> = NonNullable<SettingsState[K]>;
 
 /** What the Settings pages do (B81): load and save the daemon's sections and accounts. */
@@ -111,6 +111,7 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
     stuck: (value) => api.saveStuckSettings(value),
     storage: (value) => api.saveStorageSettings(value),
     pixies: (value) => api.savePixieDefaults(value),
+    limits: (value) => api.saveLimitSettings(value),
   };
 
   return {
@@ -119,17 +120,19 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
      * give (an older daemon) only leaves its rows loading.
      */
     async loadSettings(): Promise<void> {
-      const [usage, stuck, storage, pixies, github, claude, codex, features] = await Promise.all([
-        quietly(() => api.usageSettings()),
-        quietly(() => api.stuckSettings()),
-        quietly(() => api.storageSettings()),
-        quietly(() => api.pixieDefaults()),
-        quietly(() => api.github()),
-        quietly(() => api.claudeAccount()),
-        quietly(() => api.codexAccount()),
-        quietly(() => api.features()),
-      ]);
-      const found = { usage, stuck, storage, pixies, github, claude, codex, features };
+      const [usage, stuck, storage, pixies, limits, github, claude, codex, features] =
+        await Promise.all([
+          quietly(() => api.usageSettings()),
+          quietly(() => api.stuckSettings()),
+          quietly(() => api.storageSettings()),
+          quietly(() => api.pixieDefaults()),
+          quietly(() => api.limitSettings()),
+          quietly(() => api.github()),
+          quietly(() => api.claudeAccount()),
+          quietly(() => api.codexAccount()),
+          quietly(() => api.features()),
+        ]);
+      const found = { usage, stuck, storage, pixies, limits, github, claude, codex, features };
       const loaded: Partial<SettingsState> = Object.fromEntries(
         Object.entries(found).filter(([, value]) => value !== null),
       );

@@ -51,7 +51,14 @@ from nestd.providers.base import (
 )
 from nestd.providers.claude import ClaudeProvider, ClaudeRun, build_options
 from nestd.providers.claude_questions import QUESTION_TIMEOUT_SECONDS
-from nestd.providers.git_guard import GIT_WRITE_RULES, block_git_writes
+from nestd.providers.git_guard import (
+    GIT_WORKTREE_RULES,
+    GIT_WRITE_RULES,
+    NO_PUSH_ENV,
+    block_git_writes,
+    block_subagent_git_writes,
+    block_worktree_removal,
+)
 from tests.async_support import until
 from tests.fake_sdk import FakeSdkClient
 from tests.recording_sink import RecordingSink
@@ -93,7 +100,7 @@ class ScriptedHandler:
 class Opened:
     def __init__(self, tmp_path: Path) -> None:
         self.clients: list[FakeSdkClient] = []
-        self.provider = ClaudeProvider(tmp_path / "agent-gh", self.factory)
+        self.provider = ClaudeProvider(self.factory)
         self.sink = RecordingSink()
 
     def factory(self, options: ClaudeAgentOptions) -> FakeSdkClient:
@@ -111,7 +118,7 @@ class Opened:
 
 
 def test_provider_name(tmp_path: Path) -> None:
-    assert ClaudeProvider(tmp_path).name == "claude"
+    assert ClaudeProvider().name == "claude"
 
 
 async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
@@ -162,14 +169,7 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
     assert question_matcher.matcher == "AskUserQuestion"
     assert question_matcher.timeout == QUESTION_TIMEOUT_SECONDS
     assert options.env == {
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "credential.helper",
-        "GIT_CONFIG_VALUE_0": "",
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_ASKPASS": "/usr/bin/false",
-        "GH_CONFIG_DIR": str(tmp_path / "agent-gh"),
-        "GH_TOKEN": "",
-        "GITHUB_TOKEN": "",
+        **NO_PUSH_ENV,
         # As the Claude app runs Claude Code (D047): answer without waiting for slow MCP
         # servers, connect them in batches, and keep old tool results in context.
         "MCP_CONNECTION_NONBLOCKING": "true",
@@ -182,7 +182,7 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
 
 async def test_a_normal_chat_uses_git_and_gh_as_in_the_terminal(tmp_path: Path) -> None:
     """B58: Claude commits when asked, and pushes or opens a pull request when the user
-    says so, with the user's own git and gh login: no git block and no credential changes.
+    says so, with the user's own git and gh login: nothing on the chat itself.
     """
     spec = SessionSpec(cwd=tmp_path, permission_mode="default", guard_git=False)
 
@@ -191,7 +191,6 @@ async def test_a_normal_chat_uses_git_and_gh_as_in_the_terminal(tmp_path: Path) 
     options = client.options
     assert options.disallowed_tools == []
     assert options.hooks is not None
-    assert [m.matcher for m in options.hooks["PreToolUse"]] == ["AskUserQuestion"]
     assert all(block_git_writes not in m.hooks for m in options.hooks["PreToolUse"])
     assert options.env == {
         "MCP_CONNECTION_NONBLOCKING": "true",
@@ -207,7 +206,6 @@ def test_a_run_on_an_added_account_points_claude_code_at_its_profile(tmp_path: P
     options = build_options(
         SessionSpec(cwd=tmp_path, permission_mode="default", account=account),
         ScriptedHandler(PermissionDecision("allow")),
-        tmp_path / "agent-gh",
         shell_env={"CLAUDE_CONFIG_DIR": "/elsewhere", "HOME": "/Users/me"},
     )
 
@@ -219,9 +217,9 @@ def test_a_run_on_an_added_account_points_claude_code_at_its_profile(tmp_path: P
 def test_a_run_without_history_leaves_no_claude_code_transcript(tmp_path: Path) -> None:
     """B115: the performance check's tiny turns stay out of Claude Code's chat history."""
     handler = ScriptedHandler(PermissionDecision("allow"))
-    kept = build_options(SessionSpec(cwd=tmp_path, permission_mode=None), handler, tmp_path)
+    kept = build_options(SessionSpec(cwd=tmp_path, permission_mode=None), handler)
     once = build_options(
-        SessionSpec(cwd=tmp_path, permission_mode=None, keep_history=False), handler, tmp_path
+        SessionSpec(cwd=tmp_path, permission_mode=None, keep_history=False), handler
     )
 
     assert "no-session-persistence" not in kept.extra_args
@@ -237,7 +235,6 @@ def test_a_runs_folder_ports_reach_claude_code_over_the_shells(tmp_path: Path) -
             env={"NEST_PORT": "41020", "NEST_PORT_1": "41021"},
         ),
         ScriptedHandler(PermissionDecision("allow")),
-        tmp_path / "agent-gh",
         shell_env={"NEST_PORT": "1", "HOME": "/Users/me"},
     )
 
@@ -250,12 +247,77 @@ def test_a_run_is_guarded_unless_it_says_otherwise(tmp_path: Path) -> None:
     options = build_options(
         SessionSpec(cwd=tmp_path, permission_mode="default"),
         ScriptedHandler(PermissionDecision("allow")),
-        tmp_path / "agent-gh",
     )
 
     assert options.disallowed_tools == list(GIT_WRITE_RULES)
     assert options.env is not None
-    assert options.env["GH_CONFIG_DIR"] == str(tmp_path / "agent-gh")
+    assert options.env["GIT_CONFIG_COUNT"] == NO_PUSH_ENV["GIT_CONFIG_COUNT"]
+
+
+def test_a_guarded_run_keeps_the_users_login(tmp_path: Path) -> None:
+    """D160: `gh`, private fetch and pull work in pixie runs; only pushing is blocked."""
+    options = build_options(
+        SessionSpec(cwd=tmp_path, permission_mode="default"),
+        ScriptedHandler(PermissionDecision("allow")),
+        shell_env={"GH_TOKEN": "mine", "GITHUB_TOKEN": "mine", "GH_CONFIG_DIR": "/mine"},
+    )
+
+    assert options.env is not None
+    assert {name: options.env[name] for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_CONFIG_DIR")} == {
+        "GH_TOKEN": "mine",
+        "GITHUB_TOKEN": "mine",
+        "GH_CONFIG_DIR": "/mine",
+    }
+    assert "GIT_ASKPASS" not in options.env
+
+
+def _git_hooks(options: ClaudeAgentOptions) -> list[object]:
+    assert options.hooks is not None
+    return [
+        hook
+        for matcher in options.hooks["PreToolUse"]
+        if matcher.matcher == "*"
+        for hook in matcher.hooks
+    ]
+
+
+def test_a_normal_chat_blocks_only_its_subagents_while_agents_cannot_push(tmp_path: Path) -> None:
+    spec = SessionSpec(cwd=tmp_path, permission_mode="default", guard_git=False)
+
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
+
+    assert _git_hooks(options) == [block_subagent_git_writes]
+    assert options.disallowed_tools == []
+    assert options.env is not None
+    assert "GIT_CONFIG_COUNT" not in options.env
+
+
+def test_with_agents_allowed_to_push_a_run_has_no_git_guard(tmp_path: Path) -> None:
+    spec = SessionSpec(
+        cwd=tmp_path, permission_mode="default", guard_git=False, guard_subagents=False
+    )
+
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
+
+    assert _git_hooks(options) == []
+    assert options.disallowed_tools == []
+    assert options.env is not None
+    assert "GIT_CONFIG_COUNT" not in options.env
+
+
+def test_autopilot_keeps_its_worktree_block_when_agents_may_push(tmp_path: Path) -> None:
+    spec = SessionSpec(
+        cwd=tmp_path,
+        permission_mode="default",
+        guard_git=False,
+        guard_subagents=False,
+        guard_worktrees=True,
+    )
+
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
+
+    assert _git_hooks(options) == [block_worktree_removal]
+    assert options.disallowed_tools == list(GIT_WORKTREE_RULES)
 
 
 async def test_a_stream_message_over_a_megabyte_reaches_the_reader(
@@ -270,7 +332,7 @@ async def test_a_stream_message_over_a_megabyte_reaches_the_reader(
     cli.chmod(0o755)
     monkeypatch.setenv("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
     spec = SessionSpec(cwd=tmp_path, permission_mode="default")
-    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
     transport = SubprocessCLITransport("", replace(options, cli_path=cli))
 
     await transport.connect()
@@ -898,7 +960,7 @@ async def test_a_run_whose_opening_is_cancelled_after_connecting_is_disconnected
         client.server_info = {"commands": [{"name": "review"}]}
         return client
 
-    opened.provider = ClaudeProvider(tmp_path / "agent-gh", described)
+    opened.provider = ClaudeProvider(described)
     sink = StuckSink()
     spec = SessionSpec(tmp_path, "default")
     opening = asyncio.create_task(
@@ -924,7 +986,7 @@ async def test_open_reports_the_commands_of_the_initialize_response(tmp_path: Pa
         client.server_info = {"commands": [{"name": "compact", "description": "Compact"}]}
         return client
 
-    opened.provider = ClaudeProvider(tmp_path / "agent-gh", described)
+    opened.provider = ClaudeProvider(described)
 
     run, _ = await opened.open(SessionSpec(tmp_path, "default"))
     await run.close()
@@ -950,7 +1012,7 @@ async def test_open_reports_the_models_and_account_of_the_initialize_response(
         }
         return client
 
-    opened.provider = ClaudeProvider(tmp_path / "agent-gh", described)
+    opened.provider = ClaudeProvider(described)
 
     run, _ = await opened.open(SessionSpec(tmp_path, "default"))
     await run.close()
@@ -1091,7 +1153,7 @@ async def test_subagents_become_agent_definitions(tmp_path: Path) -> None:
         },
     )
 
-    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
 
     assert options.agents == {
         "tester": AgentDefinition(
@@ -1118,7 +1180,7 @@ async def test_a_subagent_keeps_its_own_mode_whatever_the_callers(tmp_path: Path
         },
     )
 
-    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
 
     assert options.agents is not None
     assert options.agents["tester"].permissionMode == "bypassPermissions"
@@ -1179,7 +1241,7 @@ async def test_subagents_never_get_the_runs_own_tools(tmp_path: Path) -> None:
 async def test_no_subagents_passes_none(tmp_path: Path) -> None:
     spec = SessionSpec(cwd=tmp_path, permission_mode="default")
 
-    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
 
     assert options.agents is None
 
@@ -1188,7 +1250,7 @@ async def test_call_rules_guard_the_agent_tools(tmp_path: Path) -> None:
     rules = CallRules(pixies=frozenset({"bugs"}), main=frozenset())
     spec = SessionSpec(cwd=tmp_path, permission_mode="default", call_rules=rules)
 
-    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")))
     assert options.hooks is not None
     matcher = options.hooks["PreToolUse"][-1]
     (guard,) = matcher.hooks
@@ -1205,7 +1267,6 @@ async def test_call_rules_guard_the_agent_tools(tmp_path: Path) -> None:
     unguarded = build_options(
         SessionSpec(cwd=tmp_path, permission_mode="default"),
         ScriptedHandler(PermissionDecision("allow")),
-        tmp_path,
     )
     assert unguarded.hooks is not None
     assert [m.matcher for m in unguarded.hooks["PreToolUse"]] == ["*", "AskUserQuestion"]

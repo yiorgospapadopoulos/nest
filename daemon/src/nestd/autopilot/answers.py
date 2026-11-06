@@ -1,5 +1,6 @@
 """What Nest answers in the user's place while a run is on: the agent's recommended option,
-the plan as it is, and every permission except the git writes that stay blocked.
+the plan as it is, and every permission except what stays blocked: removing a worktree,
+and git writes unless the user lets agents push (D160).
 """
 
 from collections.abc import Mapping
@@ -12,6 +13,7 @@ from nestd.providers.base import Question, QuestionOption, QuestionRequest
 from nestd.providers.git_guard import tool_writes
 
 GUARDED_REASON = "Autopilot leaves pushes, pull requests and removing worktrees to the user."
+WORKTREE_REASON = "Autopilot leaves removing worktrees to the user."
 NO_OPTIONS_ANSWER = "Use your best judgement; nobody is here to answer."
 RECOMMENDED_REASON = "The agent recommended it"
 FIRST_OPTION_REASON = "The agent gave no recommendation, so Autopilot took the first option."
@@ -21,8 +23,12 @@ DENIED_ANSWER = "Denied"
 DETAIL_CHARS = 4000
 
 
-def blocked(tool: str, tool_input: Mapping[str, object]) -> bool:
-    return tool_writes(tool, tool_input, worktrees=True)
+def blocked(tool: str, tool_input: Mapping[str, object], *, can_push: bool) -> bool:
+    return tool_writes(tool, tool_input, pushes=not can_push, worktrees=True)
+
+
+def refusal(*, can_push: bool) -> str:
+    return WORKTREE_REASON if can_push else GUARDED_REASON
 
 
 def _pick(question: Question) -> QuestionOption | None:
@@ -81,10 +87,10 @@ def plan_decision(plan: str, at: datetime) -> AutopilotDecision:
 def permission_decision(
     title: str, *, denied: bool, reason: str | None, at: datetime
 ) -> AutopilotDecision:
-    """`reason` is why the engine asked; a denied call says why Nest refused instead."""
+    """`reason` is why the engine asked or, for a denied call, why Nest refused."""
     if denied:
         return AutopilotDecision(
-            kind="denied", title=title, answer=DENIED_ANSWER, at=at, reason=GUARDED_REASON
+            kind="denied", title=title, answer=DENIED_ANSWER, at=at, reason=reason
         )
     return AutopilotDecision(kind="allowed", title=title, answer="Allowed", at=at, reason=reason)
 

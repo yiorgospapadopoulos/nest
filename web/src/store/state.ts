@@ -32,6 +32,7 @@ import type {
   GithubAccount,
   InstalledPlugin,
   Marketplace,
+  LimitSettings,
   PixieDefaults,
   StorageSettings,
   StuckSettings,
@@ -117,6 +118,7 @@ export interface SettingsState {
   stuck: StuckSettings | null;
   storage: StorageSettings | null;
   pixies: PixieDefaults | null;
+  limits: LimitSettings | null;
   github: GithubAccount | null;
   claude: ClaudeAccount | null;
   install: InstallProgress | null;
@@ -158,6 +160,7 @@ export const NO_SETTINGS: SettingsState = {
   stuck: null,
   storage: null,
   pixies: null,
+  limits: null,
   github: null,
   claude: null,
   install: null,

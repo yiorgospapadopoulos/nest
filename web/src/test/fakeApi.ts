@@ -274,6 +274,10 @@ export function fakeApi(): FakeApi {
       .fn<Api["saveStuckSettings"]>()
       .mockImplementation((settings) => Promise.resolve(settings)),
     pixieDefaults: vi.fn<Api["pixieDefaults"]>().mockResolvedValue(pixieDefaults()),
+    limitSettings: vi.fn<Api["limitSettings"]>().mockResolvedValue({ can_push: false }),
+    saveLimitSettings: vi
+      .fn<Api["saveLimitSettings"]>()
+      .mockImplementation((settings) => Promise.resolve(settings)),
     savePixieDefaults: vi
       .fn<Api["savePixieDefaults"]>()
       .mockImplementation((settings) => Promise.resolve(settings)),

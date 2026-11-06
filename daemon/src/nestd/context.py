@@ -518,6 +518,10 @@ class AppContext:
         # The habit scheduler and the pixie calls across engines join once they exist:
         # they need the sessions (B42, B91).
         followers: list[StateFollower] = [report_back, pixie_calls]
+
+        def can_push() -> bool:
+            return context.settings.limits.can_push
+
         # Claude and Codex run the pixies on their own engine as their own subagents (B112).
         # The default engine stands for Claude (a fake one in tests), so its pixies stay
         # its own subagents, as do Codex's on Codex (B112).
@@ -530,6 +534,7 @@ class AppContext:
                 if sessions.engines.by_name(provider) is sessions.engines.default
                 else native_subagents(provider)
             ),
+            can_push=can_push,
         )
         issues = IssueService(
             repo=repos.get, run=runner, clock=clock, cwd=paths.data_dir, chats=store.issue_chats
@@ -550,7 +555,6 @@ class AppContext:
             attachments=attachments,
             provider=provider
             or ClaudeProvider(
-                paths.agent_gh_dir,
                 shell_env=shell_env,
                 claude_dir=paths.claude_dir,
             ),
@@ -584,7 +588,6 @@ class AppContext:
             engines=[
                 Engine(
                     CodexProvider(
-                        paths.agent_gh_dir,
                         codex_home=codex_home,
                         transport=codex_transport,
                         shell_env=shell_env,
@@ -600,7 +603,6 @@ class AppContext:
                         AcpProvider(
                             service.engine,
                             service.launch,
-                            paths.agent_gh_dir,
                             transport=acp_setup.transport,
                         ),
                         models=service.find,
@@ -609,6 +611,7 @@ class AppContext:
                         small=_acp_small_model(service),
                         accounts=active.source(service.name),
                         git_guard=service.engine.git_guard,
+                        can_push=can_push,
                     )
                     for service in acp.values()
                 ),
@@ -619,6 +622,7 @@ class AppContext:
             names_dir=paths.names_dir,
             keep_awake=KeepAwake(system.name),
             weekly_used=partial(weekly_used, usage),
+            can_push=can_push,
         )
         call_runs: PixieCallRuns = PixieCallRuns(
             pixies=pixie_store,
@@ -708,6 +712,7 @@ class AppContext:
                 + habit_tools.tools(pixie_id, session)
             ),
             called_prompt=pixie_agents.called_prompt,
+            can_push=can_push,
         )
         monitor = PrMonitor(
             store=store,

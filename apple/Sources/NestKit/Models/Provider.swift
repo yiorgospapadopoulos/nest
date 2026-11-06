@@ -146,8 +146,9 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
         state == .ready && (signIn == .browser || signedIn != false)
     }
 
-    /// Whether a pixie may run on it: ready, and Nest can block its git commands, since a
-    /// pixie's runs must not commit or push; the daemon refuses the others (B107).
+    /// Whether a pixie may run on it: ready, and Nest can block its pushes unless the user
+    /// lets agents push, which the daemon reports as `gitGuard`; it refuses the others
+    /// (B107, D160).
     public var offeredForPixies: Bool {
         state == .ready && gitGuard
     }

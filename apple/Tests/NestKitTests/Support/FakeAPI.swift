@@ -95,6 +95,7 @@ final class FakeAPI: NestAPI {
         var storageSettings = StorageSettings()
         var largeAttachments: [LargeAttachment] = []
         var pixieSettings = PixieSettings()
+        var limitSettings = LimitSettings()
         var notificationRules = NotificationRules()
         var pixieSkills: [PixieSkillChoice] = []
         var github = GitHubAccount(
@@ -1287,6 +1288,17 @@ final class FakeAPI: NestAPI {
     func rebuildSearch() async throws {
         await pass("rebuildSearch")
         try call("rebuildSearch") { _ in }
+    }
+
+    func limitSettings() async throws -> LimitSettings {
+        try call("limitSettings") { $0.limitSettings }
+    }
+
+    func updateLimitSettings(_ settings: LimitSettings) async throws -> LimitSettings {
+        try call("updateLimitSettings") { state in
+            state.limitSettings = settings
+            return settings
+        }
     }
 
     func pixieSettings() async throws -> PixieSettings {

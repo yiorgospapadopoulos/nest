@@ -138,7 +138,6 @@ def test_derived_paths_live_under_config_and_data(tmp_path: Path) -> None:
     assert paths.attachments_dir == tmp_path / "d" / "attachments"
     assert paths.db_path == tmp_path / "d" / "nest.db"
     assert paths.worktrees_dir == tmp_path / "d" / "worktrees"
-    assert paths.agent_gh_dir == tmp_path / "d" / "agent-gh"
     assert paths.launchers_dir == tmp_path / "d" / "launchers"
     assert paths.probe_dir == tmp_path / "d" / "probe"
     assert paths.pixies_dir == tmp_path / "d" / "pixies"
@@ -158,7 +157,6 @@ def test_ensure_creates_every_directory_and_is_idempotent(tmp_path: Path) -> Non
         paths.logs_dir,
         paths.attachments_dir,
         paths.worktrees_dir,
-        paths.agent_gh_dir,
         paths.launchers_dir,
         paths.probe_dir,
         paths.pixies_dir,

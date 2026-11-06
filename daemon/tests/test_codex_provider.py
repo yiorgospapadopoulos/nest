@@ -20,7 +20,6 @@ from nestd.providers.base import (
     TextBlock,
     UserInput,
 )
-from nestd.providers.claude import agent_env
 from nestd.providers.codex import (
     CODEX_UNSUPPORTED,
     NO_REWIND,
@@ -32,6 +31,7 @@ from nestd.providers.codex import (
 from nestd.providers.codex_engine import NOT_SIGNED_IN
 from nestd.providers.codex_process import CODEX_HOME_ENV, CodexBinary
 from nestd.providers.codex_rpc import CodexClosedError, CodexRpcError
+from nestd.providers.git_guard import NO_PUSH_ENV
 from tests.async_support import until
 from tests.codex_support import SIGNED_OUT, FakeAppServer, item, note, turn_completed
 from tests.recording_sink import RecordingSink
@@ -58,7 +58,6 @@ async def shell_env() -> Mapping[str, str]:
 
 def provider(tmp_path: Path, server: FakeAppServer) -> CodexProvider:
     return CodexProvider(
-        tmp_path / "gh",
         codex_home=tmp_path / "codex-home",
         transport=server,
         shell_env=shell_env,
@@ -134,19 +133,18 @@ async def test_a_run_on_an_added_account_starts_codex_on_its_profile(tmp_path: P
     await run.close()
 
 
-async def test_a_guarded_run_has_no_git_credentials_in_codex_or_its_commands(
+async def test_a_guarded_run_has_the_git_level_block_in_codex_and_its_commands(
     tmp_path: Path,
 ) -> None:
     server, run, _, _ = await opened(tmp_path, guard_git=True, model="gpt-5.5")
 
     env = server.launches[0].env
-    assert env["GH_TOKEN"] == ""
-    assert env["GIT_CONFIG_VALUE_0"] == ""
-    assert env["GH_CONFIG_DIR"] == str(tmp_path / "gh")
+    assert env["GIT_CONFIG_KEY_0"] == NO_PUSH_ENV["GIT_CONFIG_KEY_0"]
+    assert "GH_CONFIG_DIR" not in env
     [start] = server.requests("thread/start")
     assert start["model"] == "gpt-5.5"
     assert start["config"] == {
-        "shell_environment_policy.set": {**_agent_env(tmp_path)},
+        "shell_environment_policy.set": NO_PUSH_ENV,
         **QUESTIONS_CONFIG,
     }
     assert "developerInstructions" not in start
@@ -178,15 +176,11 @@ async def test_a_runs_folder_ports_reach_codex_and_its_commands(tmp_path: Path) 
     assert start["config"] == {"shell_environment_policy.set": ports, **QUESTIONS_CONFIG}
     [guarded_start] = guarded_server.requests("thread/start")
     assert guarded_start["config"] == {
-        "shell_environment_policy.set": {**ports, **_agent_env(tmp_path)},
+        "shell_environment_policy.set": {**ports, **NO_PUSH_ENV},
         **QUESTIONS_CONFIG,
     }
     await run.close()
     await guarded.close()
-
-
-def _agent_env(tmp_path: Path) -> dict[str, str]:
-    return agent_env(tmp_path / "gh")
 
 
 async def test_a_session_with_a_thread_resumes_it(tmp_path: Path) -> None:
@@ -226,7 +220,7 @@ async def test_a_thread_without_an_id_fails_the_open(tmp_path: Path) -> None:
 
 async def test_the_default_binary_is_the_bundled_one(tmp_path: Path) -> None:
     server = FakeAppServer()
-    codex = CodexProvider(tmp_path / "gh", transport=server)
+    codex = CodexProvider(transport=server)
 
     run = await codex.open(spec(tmp_path), Handler(), RecordingSink())
 

@@ -12,6 +12,7 @@ from nestd.autopilot.answers import (
     FIRST_OPTION_REASON,
     GUARDED_REASON,
     NO_OPTIONS_REASON,
+    WORKTREE_REASON,
 )
 from nestd.autopilot.models import AutopilotDecision, AutopilotReport, SetAutopilot
 from nestd.autopilot.runner import (
@@ -525,6 +526,48 @@ async def test_a_denied_call_says_why_and_an_allowed_one_gives_the_engines_reaso
     assert run.decisions[0].reason == "It is outside the project"
     assert run.decisions[1].kind == "denied"
     assert run.decisions[1].reason == GUARDED_REASON
+
+
+async def test_with_agents_allowed_to_push_autopilot_answers_only_worktree_removal(
+    env: Env,
+) -> None:
+    env.can_push = True
+    session = await idle_chat(env)
+    await env.manager.set_autopilot(session.id, ON)
+    runner = env.manager.autopilot
+
+    pushing = PermissionRequest("Bash", {"command": "git push"})
+    pull_request = PermissionRequest("mcp__github__create_pull_request", {})
+    removing = PermissionRequest("Bash", {"command": "git worktree remove x"})
+
+    assert await runner.permission(session.id, pushing) == PermissionDecision("allow")
+    assert await runner.permission(session.id, pull_request) == PermissionDecision("allow")
+    assert await runner.permission(session.id, removing) == PermissionDecision(
+        "deny", WORKTREE_REASON
+    )
+    run = (await env.manager.get(session.id)).autopilot
+    assert run is not None
+    assert run.decisions[-1].reason == WORKTREE_REASON
+
+
+async def test_with_agents_allowed_to_push_an_autopilot_run_only_guards_worktrees(
+    env: Env,
+) -> None:
+    env.can_push = True
+    session = await idle_chat(env)
+    await env.manager.set_autopilot(session.id, ON)
+    env.provider.script(done("ok"))
+
+    await tick_until_turn(env, session.id, 1)
+    await env.reach(session.id, SessionState.IDLE)
+
+    spec = env.provider.runs[-1].spec
+    assert not spec.guard_git
+    assert not spec.guard_subagents
+    assert spec.guard_worktrees
+    assert spec.system_prompt_append is not None
+    assert "Pushing" not in spec.system_prompt_append
+    assert "Removing a worktree is blocked" in spec.system_prompt_append
 
 
 async def test_a_decision_lands_in_the_transcript_where_it_happened(env: Env) -> None:

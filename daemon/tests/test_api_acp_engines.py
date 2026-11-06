@@ -173,6 +173,20 @@ async def test_pixies_refuse_an_engine_without_a_git_guard(api: Api) -> None:
     assert guarded.status_code == 201, guarded.text
 
 
+async def test_pixies_run_on_it_once_agents_may_push(api: Api) -> None:
+    """D160: with nothing to block, an engine that cannot block anything is no risk."""
+    saved = await api.http.put("/api/limits/settings", json={"can_push": True})
+    assert saved.status_code == 200, saved.text
+
+    created = await api.http.post("/api/pixies", json={"name": "C", "provider": "cursor"})
+    providers = (await api.http.get("/api/providers")).json()["providers"]
+
+    assert created.status_code == 201, created.text
+    cursor = next(p for p in providers if p["name"] == "cursor")
+    assert cursor["git_guard"] is True
+    assert "pixies" not in cursor["unsupported"]
+
+
 def by_id(event: dict[str, Any], account_id: str) -> dict[str, Any]:
     return next(a for a in event["accounts"] if a["id"] == account_id)
 

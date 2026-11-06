@@ -78,7 +78,6 @@ def build_perf(setup: PerfSetup) -> tuple[Perf, InProcess]:
                 folder=paths.general_dir,
                 prompt=setup.general_prompt,
                 tools=setup.general_tools,
-                gh_config_dir=paths.agent_gh_dir,
                 shell_env=setup.shell_env,
                 account=setup.claude_account,
             ),

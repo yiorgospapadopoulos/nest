@@ -43,6 +43,15 @@ def test_a_guarded_run_asks_nest_for_every_command_with_no_extra_sandbox(
     assert permissions == CodexPermissions("untrusted", "danger-full-access", "user", network=True)
 
 
+def test_autopilot_declines_removing_a_worktree_when_agents_may_push() -> None:
+    assert command_decision("git worktree remove x", None, False, worktrees=True) == "decline"
+    assert command_decision("git push", "bypassPermissions", False, worktrees=True) == "accept"
+
+
+def test_an_unguarded_run_has_no_command_refused() -> None:
+    assert command_decision("git --config-env=alias.p=X p", None, False) is None
+
+
 def test_a_guarded_run_in_plan_mode_stays_read_only_and_still_asks() -> None:
     assert codex_permissions("plan", guarded=True) == CodexPermissions(
         "untrusted", "read-only", "user", network=True

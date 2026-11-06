@@ -24,6 +24,7 @@ from nestd.sessions.models import SessionState, UpdateSession
 from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import (
+    FakeRun,
     ask,
     ask_together,
     background,
@@ -565,6 +566,65 @@ async def test_idle_close_waits_for_background_tasks(env: Env) -> None:
     assert run.closed is False
     run.emit(background(0))
     await until(lambda: run.closed)
+
+
+async def only_a_background_agent_works(run: FakeRun) -> None:
+    await run.sink.subagent_delta("working", "toolu_leader")
+
+
+async def test_stop_ends_a_turn_only_a_background_agent_was_working_in(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The engine reports no result then, as the chat itself had no turn: it stayed running
+    with Stop accepted and every message waiting, until its process was killed.
+    """
+    monkeypatch.setattr("nestd.sessions.turns.STOP_ANSWER_SECONDS", 0.01)
+    env.provider.script(background(1, reply("started")), reply("back"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    env.provider.runs[0].emit(only_a_background_agent_works)
+    await env.reach(created.id, SessionState.RUNNING)
+    await env.manager.interrupt(created.id)
+    await env.reach(created.id, SessionState.INTERRUPTED)
+
+    await env.manager.send(created.id, "go on", [])
+    await env.reach(created.id, SessionState.IDLE)
+
+
+async def test_send_now_starts_after_a_turn_only_a_background_agent_was_working_in(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("nestd.sessions.turns.STOP_ANSWER_SECONDS", 0.01)
+    env.provider.script(background(1, reply("started")), reply("back"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    env.provider.runs[0].emit(only_a_background_agent_works)
+    await env.reach(created.id, SessionState.RUNNING)
+    await env.manager.send(created.id, "go on", [], interrupt=True)
+
+    await until(lambda: len(env.provider.runs[-1].inputs) == 2)
+    await env.reach(created.id, SessionState.IDLE)
+
+
+async def test_stop_leaves_a_turn_the_engine_ends_itself_to_the_engine(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("nestd.sessions.turns.STOP_ANSWER_SECONDS", 0.01)
+    env.provider.script(reply("one"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    working = asyncio.Event()
+    env.provider.runs[0].emit(until_interrupted(working))
+    await working.wait()
+    await env.manager.interrupt(created.id)
+    await env.reach(created.id, SessionState.INTERRUPTED)
+    await asyncio.sleep(0.03)
+
+    states = await env.states(created.id)
+    assert states.count("interrupted") == 1
 
 
 async def test_a_crash_while_idle_drops_the_run_and_the_next_message_resumes(env: Env) -> None:

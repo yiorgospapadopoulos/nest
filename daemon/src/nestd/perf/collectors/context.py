@@ -70,7 +70,6 @@ class NewChat:
     folder: Path
     prompt: str
     tools: tuple[AgentTool, ...]
-    gh_config_dir: Path
     shell_env: Callable[[], Awaitable[Mapping[str, str]]]
     account: Callable[[], Awaitable[RunAccount | None]]
 
@@ -88,9 +87,7 @@ async def chat_options(chat: NewChat) -> ClaudeAgentOptions:
         account=await chat.account(),
         keep_history=False,
     )
-    options = build_options(
-        spec, NoTools(), chat.gh_config_dir, shell_env=dict(await chat.shell_env())
-    )
+    options = build_options(spec, NoTools(), shell_env=dict(await chat.shell_env()))
     return dataclasses.replace(options, max_turns=1)
 
 

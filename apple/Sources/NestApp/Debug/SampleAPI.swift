@@ -39,6 +39,7 @@
         private var runOutputs: [String: String] = [:]
         private var archiveDays: Int? = 30
         private var pixieDefaults = PixieSettings()
+        private var limits = LimitSettings()
         private var rules = NotificationRules()
         private var stuck = StuckSettings(
             waitingMinutes: 15, silentMinutes: 10, repeatedCalls: 4, turnMinutes: 60)
@@ -1591,6 +1592,15 @@
 
         func updatePixieSettings(_ settings: PixieSettings) async throws -> PixieSettings {
             lock.withLock { pixieDefaults = settings }
+            return settings
+        }
+
+        func limitSettings() async throws -> LimitSettings {
+            lock.withLock { limits }
+        }
+
+        func updateLimitSettings(_ settings: LimitSettings) async throws -> LimitSettings {
+            lock.withLock { limits = settings }
             return settings
         }
 

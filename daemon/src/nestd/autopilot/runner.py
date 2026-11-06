@@ -18,13 +18,13 @@ from pydantic import JsonValue
 from nestd.approvals.models import BLOCKING, Approval, ApprovalKind
 from nestd.approvals.queue import ApprovalQueue
 from nestd.autopilot.answers import (
-    GUARDED_REASON,
     answers,
     blocked,
     chosen,
     permission_decision,
     plan_decision,
     question_decision,
+    refusal,
     stored_question,
 )
 from nestd.autopilot.keep_awake import KeepAwake
@@ -120,10 +120,11 @@ class AutopilotRunner:
         keep_awake: KeepAwake | None,
         weekly_used: Callable[[Session], Awaitable[float | None]],
         save: Callable[[str, dict[str, object]], Awaitable[Session]],
+        can_push: Callable[[], bool] = lambda: False,
     ) -> None:
         """`keep_awake` is None where nothing may start a process (tests). `weekly_used` is
         how much of the weekly window the chat's engine has used, in percent; `save` stores
-        and announces a session's fields.
+        and announces a session's fields; `can_push` whether the user lets agents push.
         """
         self._store = store
         self._bus = bus
@@ -132,6 +133,7 @@ class AutopilotRunner:
         self._keep_awake = keep_awake
         self._weekly_used = weekly_used
         self._save = save
+        self._can_push = can_push
         self._active: set[str] = set()
         # Reports of runs that ended during a turn; each goes in the chat when the turn ends.
         self._reports: dict[str, list[AutopilotReport]] = {}
@@ -250,7 +252,7 @@ class AutopilotRunner:
             session_id, title, request.tool_name, request.tool_input, request.reason
         ):
             return PermissionDecision("allow")
-        return PermissionDecision("deny", GUARDED_REASON)
+        return PermissionDecision("deny", refusal(can_push=self._can_push()))
 
     async def question(self, session_id: str, request: QuestionRequest) -> QuestionAnswer | None:
         if session_id not in self._active:
@@ -301,7 +303,11 @@ class AutopilotRunner:
             reason if isinstance(reason, str) else None,
         ):
             return {"behavior": "allow", "message": None, "always": False}
-        return {"behavior": "deny", "message": GUARDED_REASON, "always": False}
+        return {
+            "behavior": "deny",
+            "message": refusal(can_push=self._can_push()),
+            "always": False,
+        }
 
     async def _settle(
         self,
@@ -312,8 +318,10 @@ class AutopilotRunner:
         reason: str | None,
     ) -> bool:
         """Note a permission's answer, and say whether it is allowed."""
-        denied = blocked(tool, tool_input)
-        decision = permission_decision(title, denied=denied, reason=reason, at=self._clock.now())
+        can_push = self._can_push()
+        denied = blocked(tool, tool_input, can_push=can_push)
+        told = refusal(can_push=can_push) if denied else reason
+        decision = permission_decision(title, denied=denied, reason=told, at=self._clock.now())
         await self._note(session_id, decision)
         return not denied
 

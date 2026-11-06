@@ -99,6 +99,40 @@ public final class PixieSettingsStore {
     }
 }
 
+/// Settings > Pixies: whether pixies and subagents can push (D160).
+@MainActor @Observable
+public final class LimitSettingsStore {
+    /// Nil until loaded.
+    public private(set) var settings: LimitSettings?
+
+    let api: any NestAPI
+
+    public init(api: any NestAPI) {
+        self.api = api
+    }
+
+    public func load() async throws {
+        settings = try await api.limitSettings()
+    }
+
+    /// Shows the change at once and restores the old settings if the daemon refuses it.
+    public func update(_ change: (inout LimitSettings) -> Void) async throws {
+        if settings == nil {
+            try await load()
+        }
+        guard let previous = settings else { return }
+        var changed = previous
+        change(&changed)
+        settings = changed
+        do {
+            settings = try await api.updateLimitSettings(changed)
+        } catch {
+            settings = previous
+            throw error
+        }
+    }
+}
+
 /// Settings > Notifications: the pixie report level the daemon keeps for the phone (B85).
 @MainActor @Observable
 public final class NotificationRulesStore {

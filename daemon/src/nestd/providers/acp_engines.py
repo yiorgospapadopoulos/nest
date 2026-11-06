@@ -67,7 +67,8 @@ class AcpEngine:
     git_guard: bool
     # Environment every run of the engine gets, whatever the user's own settings say.
     env: Mapping[str, str] = field(default_factory=dict[str, str])
-    # Added for a guarded run (D013): pixie chats, habit runs and chats a pixie started.
+    # Added while Nest must decide every command (`SessionSpec.nest_decides`): pixie chats,
+    # habit runs, chats a pixie started and Autopilot.
     guarded_env: Mapping[str, str] = field(default_factory=dict[str, str])
     # The command that signs in, in Terminal: required for `sign_in == "terminal"`.
     login_command: str | None = None

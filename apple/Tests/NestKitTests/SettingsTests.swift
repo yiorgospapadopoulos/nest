@@ -543,6 +543,19 @@ import Testing
         await #expect(throws: APIError.self) { try await fresh.update { $0.maxRunning = 1 } }
     }
 
+    @Test func canPushShowsWhatWasSavedAndRestoresARefusal() async throws {
+        api.set { $0.limitSettings = LimitSettings(canPush: true) }
+        let store = LimitSettingsStore(api: api)
+        try await store.load()
+        #expect(store.settings?.canPush == true)
+        try await store.update { $0.canPush = false }
+        #expect(api.state.withLock { $0.limitSettings.canPush } == false)
+        #expect(store.settings?.canPush == false)
+        api.fail("updateLimitSettings")
+        await #expect(throws: APIError.self) { try await store.update { $0.canPush = true } }
+        #expect(store.settings?.canPush == false)
+    }
+
     @Test func thePixieReportLevelSavesTheWholeRulesAndRestoresARefusal() async throws {
         api.set {
             $0.notificationRules = NotificationRules(fields: ["vapid_subject": .string("x")])
