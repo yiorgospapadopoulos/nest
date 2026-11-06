@@ -1,7 +1,20 @@
-// Where a new chat works (B55, B96), ported from NestKit's ChatPlace.swift (NewChatChoice,
-// NewChatPlace), PlacePicker.swift and LaneColors: the "Work on" picker built from the
-// project's branch map, a block per branch that is not a worktree, the folder's first.
-import type { BranchMap, BranchMapBranch, CreateSessionBody, RepoConfig } from "../../api/types.ts";
+// Where a new chat works (B55, B96, B131), ported from NestKit's ChatPlace.swift
+// (NewChatChoice, NewChatPlace), PlacePicker.swift and LaneColors: the "Work on" picker built
+// from the project's branch map, and where a new chat starts from the selected place.
+import type {
+  BranchMap,
+  BranchMapBranch,
+  CreateSessionBody,
+  RepoConfig,
+  SelectedPlace,
+  SelectPlaceBody,
+} from "../../api/types.ts";
+import {
+  branchLanes,
+  INDENT_CAP,
+  type BranchLanes,
+  type LaneRow,
+} from "../shell/frame/branchLanes.ts";
 
 export type NewChatChoice =
   | { kind: "inPlace" }
@@ -12,21 +25,55 @@ export type NewChatChoice =
 
 export const IN_PLACE: NewChatChoice = { kind: "inPlace" };
 
-/** The choice a mode stands for, as the defaults and the plain menu set it (D038). */
-export function choiceOfMode(mode: "in_place" | "worktree" | null): NewChatChoice {
-  return mode === "worktree" ? { kind: "newWorktree", from: null } : IN_PLACE;
+/**
+ * Where a new chat starts with no pick of its own (B131): the selected place through the
+ * mode the defaults set (D038), Autopilot counting as worktree. A selected branch asks for
+ * that branch even when it is the folder's, so a folder moved in a terminal is not worked on.
+ */
+export function selectedChoice(
+  selected: SelectedPlace | null,
+  mode: "in_place" | "worktree",
+): NewChatChoice {
+  if (selected?.worktree_path != null) {
+    return { kind: "worktree", path: selected.worktree_path, branch: selected.branch };
+  }
+  if (mode === "worktree") return { kind: "newWorktree", from: selected?.branch ?? null };
+  return selected === null ? IN_PLACE : { kind: "onBranch", branch: selected.branch };
 }
 
 export function sameChoice(a: NewChatChoice, b: NewChatChoice): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** A new worktree from no named branch starts from the folder's, as the picker marks it. */
+/**
+ * What a choice shows as: a new worktree from no named branch starts from the folder's, and
+ * the folder's own branch is the folder. For display only; the request keeps the choice.
+ */
 export function resolvedChoice(choice: NewChatChoice, repo: RepoConfig | undefined): NewChatChoice {
   if (choice.kind === "newWorktree" && choice.from === null && repo?.current_branch != null) {
     return { kind: "newWorktree", from: repo.current_branch };
   }
+  if (choice.kind === "onBranch" && choice.branch === repo?.current_branch) return IN_PLACE;
   return choice;
+}
+
+/** Whether the picker marks this branch as where the choice starts. */
+export function isSelected(
+  branch: BranchMapBranch,
+  choice: NewChatChoice,
+  repo: RepoConfig | undefined,
+): boolean {
+  const shown = resolvedChoice(choice, repo);
+  switch (shown.kind) {
+    case "inPlace":
+      return branch.here;
+    case "newWorktree":
+      return shown.from === branch.name;
+    case "worktree":
+      return shown.path === branch.worktree?.path;
+    case "onBranch":
+      return shown.branch === branch.name;
+  }
 }
 
 export const WORKTREE_TITLE = "New worktree";
@@ -90,7 +137,14 @@ export function placeBody(
   }
 }
 
-/** Where a click on a branch of the map starts a chat (A8). */
+/** What selecting a row of the map asks the daemon for. */
+export function selectionOf(branch: BranchMapBranch): SelectPlaceBody {
+  return branch.worktree === null
+    ? { branch: branch.name }
+    : { worktree_path: branch.worktree.path };
+}
+
+/** Where a click on a row of the picker works, for that one chat. */
 export function branchChoice(branch: BranchMapBranch): NewChatChoice {
   if (branch.here) return IN_PLACE;
   if (branch.worktree !== null) {
@@ -99,219 +153,114 @@ export function branchChoice(branch: BranchMapBranch): NewChatChoice {
   return { kind: "onBranch", branch: branch.name };
 }
 
-export interface PickerLine {
-  depth: number;
-  // The branch the line belongs to, for its colour.
-  lane: string;
-  fromTop: boolean;
-  toBottom: boolean;
-}
-
-export type PickerRowKind = "folder" | "branch" | "newWorktree" | "worktree";
-
-export interface PickerRow {
-  kind: PickerRowKind;
-  id: string;
-  // For a new worktree, the branch it starts from.
-  branch: string;
-  depth: number;
-  lines: PickerLine[];
-  // The lane the curve into a worktree's node starts from.
-  parentDepth: number | null;
+export type PickerRow = LaneRow & {
   choice: NewChatChoice;
-  title: string;
-  detail: string | null;
-  label: string;
-}
-
-export interface PickerBlock {
-  id: string;
-  rows: PickerRow[];
-}
+  // "New worktree from" this row; a remote-only row has none.
+  newWorktree: NewChatChoice | null;
+  // What the row says to a screen reader.
+  words: string;
+};
 
 export const ROW_HEIGHT = 30;
-export const DIVIDER_HEIGHT = 9;
-export const MAX_HEIGHT = 330;
+// The rows that show under the pinned top row; the rest scroll.
+export const VISIBLE_ROWS = 8;
 
-/** A lane's centre, from the graph's left edge. */
-export const laneX = (depth: number) => 12 + 14 * depth;
-
-interface Entry {
-  kind: PickerRowKind;
-  branch: string;
-  depth: number;
-  parent: number | null;
-  choice: NewChatChoice;
+function rowWords(branch: BranchMapBranch): string {
+  if (branch.here) return `Work on ${branch.name} in the project folder`;
+  if (branch.worktree !== null) return `Work in worktree ${branch.name}`;
+  return `Work on ${branch.name}, branch`;
 }
 
-const children = (map: BranchMap, name: string) => map.branches.filter((b) => b.parent === name);
-
-function rowOf(entry: Entry, lines: PickerLine[], parentDepth: number | null): PickerRow {
-  const { kind, branch } = entry;
-  const title = kind === "newWorktree" ? `New worktree from ${branch}` : branch;
-  const label = {
-    folder: `Work on ${branch} in the project folder`,
-    branch: `Work on ${branch}, branch`,
-    newWorktree: title,
-    worktree: `Work in worktree ${branch}`,
-  }[kind];
-  return {
-    kind,
-    id: kind === "newWorktree" ? `new:${branch}` : branch,
-    branch,
-    depth: entry.depth,
-    lines,
-    parentDepth,
-    choice: entry.choice,
-    title,
-    detail: kind === "folder" ? "project folder" : kind === "branch" ? "branch" : null,
-    label,
-  };
-}
-
-/** Each lane runs from its node down to its last child; a worktree's curve starts at its top. */
-function rows(entries: Entry[]): PickerRow[] {
-  const lines: PickerLine[][] = entries.map(() => []);
-  entries.forEach((entry, index) => {
-    let last = -1;
-    entries.forEach((other, at) => {
-      if (other.parent === index) last = at;
-    });
-    if (last === -1) return;
-    const line = (fromTop: boolean, toBottom: boolean): PickerLine => ({
-      depth: entry.depth,
-      lane: entry.branch,
-      fromTop,
-      toBottom,
-    });
-    lines[index]?.push(line(false, true));
-    for (let between = index + 1; between < last; between++) lines[between]?.push(line(true, true));
-    if (entries[last]?.kind === "newWorktree") lines[last]?.push(line(true, false));
-  });
-  return entries.map((entry, index) =>
-    rowOf(
-      entry,
-      (lines[index] ?? []).sort((a, b) => a.depth - b.depth),
-      entry.kind === "worktree" && entry.parent !== null
-        ? (entries[entry.parent]?.depth ?? null)
-        : null,
-    ),
-  );
-}
-
+/** The "Work on" picker: the top row pinned, every other branch under it in its lane. */
 export class PlacePicker {
-  readonly blocks: PickerBlock[];
+  readonly lanes: BranchLanes;
+  readonly top: PickerRow | null;
+  readonly rows: PickerRow[];
 
   constructor(map: BranchMap) {
-    const seen = new Set<string>();
-    const blocks: PickerBlock[] = [];
-    const add = (branch: BranchMapBranch, depth: number, parent: number | null, to: Entry[]) => {
-      if (seen.has(branch.name)) return;
-      seen.add(branch.name);
-      to.push({
-        kind: "worktree",
-        branch: branch.name,
-        depth,
-        parent,
-        choice: branchChoice(branch),
-      });
-      addWorktrees(branch.name, depth + 1, to.length - 1, to);
-    };
-    const addWorktrees = (name: string, depth: number, parent: number, to: Entry[]) => {
-      for (const child of children(map, name)) {
-        if (child.worktree !== null) add(child, depth, parent, to);
-      }
-    };
-    const heads = map.branches.filter((b) => b.worktree === null);
-    for (const head of [...heads.filter((b) => b.here), ...heads.filter((b) => !b.here)]) {
-      seen.add(head.name);
-      const entries: Entry[] = [
-        {
-          kind: head.here ? "folder" : "branch",
-          branch: head.name,
-          depth: 0,
-          parent: null,
-          choice: head.here ? IN_PLACE : { kind: "onBranch", branch: head.name },
-        },
-        {
-          kind: "newWorktree",
-          branch: head.name,
-          depth: 0,
-          parent: 0,
-          choice: { kind: "newWorktree", from: head.name },
-        },
-      ];
-      addWorktrees(head.name, 1, 0, entries);
-      blocks.push({ id: head.name, rows: rows(entries) });
-    }
-    // A worktree whose parent is not shown, or a loop, still shows, in a block of its own.
-    for (const branch of map.branches) {
-      if (branch.worktree === null || seen.has(branch.name)) continue;
-      const entries: Entry[] = [];
-      add(branch, 0, null, entries);
-      blocks.push({ id: branch.name, rows: rows(entries) });
-    }
-    this.blocks = blocks;
-  }
-
-  /** The graph's width: the deepest lane and a lane's room after it. */
-  get width(): number {
-    const depths = this.blocks.flatMap((b) => b.rows.map((r) => r.depth));
-    return laneX(depths.length === 0 ? 0 : Math.max(...depths)) + 14;
-  }
-
-  /** As tall as the rows and dividers, up to about eleven rows; the rest scroll. */
-  get height(): number {
-    const count = this.blocks.reduce((sum, b) => sum + b.rows.length, 0);
-    return Math.min(
-      count * ROW_HEIGHT + Math.max(this.blocks.length - 1, 0) * DIVIDER_HEIGHT,
-      MAX_HEIGHT,
-    );
+    this.lanes = branchLanes(map, INDENT_CAP);
+    const row = (lane: LaneRow): PickerRow => ({
+      ...lane,
+      choice: branchChoice(lane.branch),
+      newWorktree:
+        lane.branch.remote === null ? { kind: "newWorktree", from: lane.branch.name } : null,
+      words: rowWords(lane.branch),
+    });
+    this.top = this.lanes.top === null ? null : row(this.lanes.top);
+    this.rows = this.lanes.rest.map(row);
   }
 }
 
 export const LANES = ["root", "violet", "teal", "blue", "pink", "lime", "orange", "yellow"];
 
+const topBranch = (map: BranchMap) => map.branches.find((b) => b.parent === null)?.name;
+
+/** Where a project's lane colours are kept between runs. */
+export interface LaneMemory {
+  saved: Record<string, number>;
+  save: (colours: Record<string, number>) => void;
+}
+
 /**
- * The lane colours of a project's branches, as NestKit's LaneColors: the default branch
- * grey, the others the first colour no shown branch uses, cycling once all are in use. A
- * branch keeps its colour while the app runs.
+ * The lane colours of a project's branches, as NestKit's LaneColors: the top row grey, the
+ * others the first colour no shown branch uses, cycling once all are in use. A plain branch
+ * takes no colour of its own until something asks for one (see rowLane). A branch keeps its
+ * colour for as long as it is on the map: the colours are kept, because giving them out
+ * again by position would change them when the app starts or another branch appears.
  */
 export class LaneColors {
-  private readonly assigned = new Map<string, number>();
+  private readonly assigned: Map<string, number>;
+  private readonly memory: LaneMemory | null;
   private cycle = 0;
 
+  constructor(memory: LaneMemory | null = null) {
+    this.memory = memory;
+    this.assigned = new Map(Object.entries(memory?.saved ?? {}));
+  }
+
   assign(map: BranchMap): void {
+    const parents = new Set(map.branches.map((b) => b.parent));
+    for (const branch of map.branches) {
+      if (branch.worktree !== null || parents.has(branch.name)) this.index(branch.name, map);
+    }
+  }
+
+  /** The branch's palette index: 0 for the top row, else its colour, given the first time. */
+  index(branch: string, map: BranchMap): number {
+    if (branch === topBranch(map)) return 0;
+    return this.assigned.get(branch) ?? this.give(branch, map);
+  }
+
+  private give(branch: string, map: BranchMap): number {
     const used = new Set(
       map.branches.flatMap((b) => {
         const index = this.assigned.get(b.name);
         return index === undefined ? [] : [index];
       }),
     );
-    for (const branch of map.branches) {
-      if (branch.name === map.default_branch || this.assigned.has(branch.name)) continue;
-      let index = -1;
-      for (let colour = 1; colour < LANES.length; colour++) {
-        if (!used.has(colour)) {
-          index = colour;
-          break;
-        }
+    let index = -1;
+    for (let colour = 1; colour < LANES.length; colour++) {
+      if (!used.has(colour)) {
+        index = colour;
+        break;
       }
-      if (index === -1) {
-        index = (this.cycle % (LANES.length - 1)) + 1;
-        this.cycle += 1;
-      }
-      this.assigned.set(branch.name, index);
-      used.add(index);
     }
-  }
-
-  /** The branch's palette index: 0 for the default branch, null for one never assigned. */
-  index(branch: string, map: BranchMap): number | null {
-    return branch === map.default_branch ? 0 : (this.assigned.get(branch) ?? null);
+    if (index === -1) {
+      index = (this.cycle % (LANES.length - 1)) + 1;
+      this.cycle += 1;
+    }
+    this.assigned.set(branch, index);
+    this.memory?.save(
+      Object.fromEntries(
+        map.branches.flatMap((b) => {
+          const colour = this.assigned.get(b.name);
+          return colour === undefined ? [] : [[b.name, colour]];
+        }),
+      ),
+    );
+    return index;
   }
 }
 
 /** A palette index's CSS colour. */
-export const laneColor = (index: number | null) =>
-  `var(--lane-${LANES[(index ?? 0) % LANES.length] ?? "root"})`;
+export const laneColor = (index: number) => `var(--lane-${LANES[index % LANES.length] ?? "root"})`;

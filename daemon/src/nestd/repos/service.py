@@ -2,10 +2,12 @@
 
 import asyncio
 import re
+from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
+from typing import Protocol
 
-from pydantic import JsonValue, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from nestd.config.loader import (
     delete_repo,
@@ -19,12 +21,13 @@ from nestd.errors import ConflictError, InvalidInputError, NotFoundError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.gitops.hardened import run_hardened_git
-from nestd.gitops.remotes import push_urls
+from nestd.gitops.remotes import push_urls, scrub_credentials
 from nestd.gitops.runner import GitError, run_command
 from nestd.paths import AppPaths
 
 FALLBACK_BRANCH = "main"
 BRANCH_REF = "refs/heads/"
+REMOTE_REF = "refs/remotes/"
 # Project settings outside `[worktree]` that `edit` sets.
 _TOP_LEVEL_KEYS = frozenset({"icon", "icon_color", "default_branch", "remote_url"})
 # Settings only a git repository has (D104).
@@ -36,13 +39,43 @@ LINK_PATTERNS = (".env", ".env.*", "*.local", "*.local.*")
 SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "dist", "build", ".git"})
 
 
+class SelectedPlace(BaseModel):
+    """Where the user last clicked in a project's branch map (B131): a branch, or the
+    linked worktree at `worktree_path`, which is on `branch`.
+    """
+
+    branch: str
+    worktree_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class PlaceReading:
+    """A repo's selected place, or the name of one found gone and not yet cleared."""
+
+    place: SelectedPlace | None = None
+    gone: str | None = None
+
+
+class SelectedPlaces(Protocol):
+    """The projects' selected places (`repos/places.py`)."""
+
+    async def current(self, repo: RepoConfig) -> PlaceReading:
+        """The repo's selected place, if it is still there."""
+        ...
+
+
 class RepoView(RepoConfig):
-    """A repo as clients see it: its config and the branch checked out in its folder now,
-    read fresh from git (B55); None when HEAD is detached, the branch has no commits yet,
-    or the folder is not a git repository.
+    """A repo as clients see it: its config, the branch checked out in its folder now, read
+    fresh from git (B55), and its selected place.
+
+    `current_branch` is None when HEAD is detached, the branch has no commits yet, or the
+    folder is not a git repository. `selected_place_gone` names a selected place that went
+    away, until a client has told the user and cleared it.
     """
 
     current_branch: str | None = None
+    selected_place: SelectedPlace | None = None
+    selected_place_gone: str | None = None
 
 
 class RepoNotFoundError(NotFoundError):
@@ -63,6 +96,14 @@ class RepoFolderMissingError(ConflictError):
 
 class RepoInUseError(ConflictError):
     pass
+
+
+class RepoUnreadableError(ConflictError):
+    """git refused to read the repo, such as a broken `.git/config`."""
+
+    def __init__(self, error: GitError) -> None:
+        lines = error.stderr.strip().splitlines() or [str(error)]
+        super().__init__(scrub_credentials(lines[0]))
 
 
 class BuiltInRepoError(ConflictError):
@@ -100,9 +141,15 @@ def is_link_candidate(path: str) -> bool:
 
 
 class RepoService:
-    def __init__(self, paths: AppPaths, bus: EventBus | None = None) -> None:
+    def __init__(
+        self,
+        paths: AppPaths,
+        bus: EventBus | None = None,
+        places: SelectedPlaces | None = None,
+    ) -> None:
         self._paths = paths
         self._bus = bus
+        self._places = places
 
     def list_repos(self) -> list[RepoConfig]:
         """In the saved project order (D090); repos it does not name follow in file order."""
@@ -155,7 +202,15 @@ class RepoService:
 
     async def view(self, repo: RepoConfig) -> RepoView:
         branch = await current_branch(repo.path) if repo.git else None
-        return RepoView(**repo.model_dump(), current_branch=branch)
+        reading = PlaceReading()
+        if repo.git and self._places is not None:
+            reading = await self._places.current(repo)
+        return RepoView(
+            **repo.model_dump(),
+            current_branch=branch,
+            selected_place=reading.place,
+            selected_place_gone=reading.gone,
+        )
 
     async def git_repo(self, name: str) -> RepoConfig:
         """The repo, which must be a git repository whose folder exists."""
@@ -211,7 +266,7 @@ class RepoService:
                 msg = f"{root} is already registered as {existing.name!r}"
                 raise RepoExistsError(msg)
         save_repo(self._paths, repo)
-        await self._announce(types.REPO_ADDED, repo)
+        await self.announce(types.REPO_ADDED, repo)
         return repo
 
     def update_worktree_config(self, name: str, config: WorktreeConfig) -> RepoConfig:
@@ -226,6 +281,7 @@ class RepoService:
         announce the repo to other devices (IMP-09, B36, D104).
         """
         repo = self.registered(name)
+        default_branch = repo.default_branch
         if _GIT_KEYS & changes.keys():
             if not repo.git:
                 msg = f"{name} is not a git repository"
@@ -247,7 +303,9 @@ class RepoService:
         except ValidationError as error:
             raise InvalidRepoError(_problems(error)) from None
         save_repo(self._paths, repo)
-        await self._announce(types.REPO_UPDATED, repo)
+        await self.announce(types.REPO_UPDATED, repo)
+        if repo.default_branch != default_branch and self._bus is not None:
+            await self._bus.publish_ephemeral(types.REPO_BRANCHES_CHANGED, {"name": repo.name})
         return repo
 
     def confirm_remote_url(self, name: str, url: str) -> RepoConfig:
@@ -293,10 +351,11 @@ class RepoService:
             }
         )
         save_repo(self._paths, updated)
-        await self._announce(types.REPO_UPDATED, updated)
+        await self.announce(types.REPO_UPDATED, updated)
         return updated
 
-    async def _announce(self, event_type: str, repo: RepoConfig) -> None:
+    async def announce(self, event_type: str, repo: RepoConfig) -> None:
+        """Publish the repo as clients see it."""
         if self._bus is not None:
             view = await self.view(repo)
             await self._bus.publish(

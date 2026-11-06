@@ -4,7 +4,7 @@ driver the agent could have added.
 """
 
 import stat
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,7 +12,7 @@ import pytest
 
 from nestd.config.models import RepoConfig
 from nestd.gitops import runner
-from nestd.gitops.hardened import nested_filter_overrides
+from nestd.gitops.hardened import nested_filter_overrides, run_fetch_git
 from nestd.gitops.runner import GitError, run_command
 from nestd.gitops.safety import HARDENED
 from nestd.paths import AppPaths
@@ -71,9 +71,15 @@ async def test_every_git_command_on_an_agent_writable_repo_is_hardened(
     commands: list[Sequence[str]] = []
     real = runner.run_command
 
-    async def recording(argv: Sequence[str], cwd: Path, time_limit: float = 300.0) -> str:
+    async def recording(
+        argv: Sequence[str],
+        cwd: Path,
+        time_limit: float = 300.0,
+        env: Mapping[str, str] | None = None,
+        own_group: bool = False,
+    ) -> str:
         commands.append(argv)
-        return await real(argv, cwd, time_limit)
+        return await real(argv, cwd, time_limit, env=env, own_group=own_group)
 
     monkeypatch.setattr(runner, "run_command", recording)
     repos = RepoService(paths)
@@ -90,9 +96,12 @@ async def test_every_git_command_on_an_agent_writable_repo_is_hardened(
     (plain / ".git").mkdir()  # a stat says maybe; git says no
     await repos.current(plain_repo.name)
     await manager.remove(repo, worktree)
+    git(repo_path, "remote", "add", "origin", str(repo_path))
+    await run_fetch_git("origin", repo_path, 30.0)
 
     git_commands = [argv for argv in commands if argv[0] == "git"]
     assert len(git_commands) > 10
+    assert any("fetch" in argv for argv in git_commands)
     assert [argv for argv in git_commands if tuple(argv[1 : 1 + len(HARDENED)]) != HARDENED] == []
 
 

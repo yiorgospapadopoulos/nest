@@ -21,37 +21,34 @@ public struct BranchLaneRow: Sendable, Hashable, Identifiable {
     public static let height = 34.0
 
     public let branch: BranchMap.Branch
+    /// The lane it is drawn in, at most the cap.
     public let depth: Int
     public let lines: [BranchLaneLine]
+    /// The lane its curve leaves from; its own lane past the cap, where it drops straight
+    /// down; nil for a root.
+    public let parentDepth: Int?
+    /// Its parent's name, on rows past the cap only.
+    public let fromParent: String?
+    /// No children and no worktree, so it wears its parent's lane until it needs its own.
+    public let plain: Bool
     /// "here" where the project folder is.
     public let label: String?
 
     public var id: String { branch.name }
 
-    /// The lane the curve into the node starts from; nil for a root.
-    public var parentDepth: Int? { depth > 0 ? depth - 1 : nil }
-
     /// A lane's centre, from the graph's left edge.
     public static func x(_ depth: Int) -> Double { 14 + 14 * Double(depth) }
 
-    /// What a click on the row does (A8): its tooltip.
-    public var newChatHelp: String {
-        let action = action
-        return action.prefix(1).uppercased() + action.dropFirst()
-    }
-
-    /// Where its click starts the chat (`BranchMap.Branch.newChatChoice`), in words.
-    private var action: String {
-        if branch.here {
-            "new chat in the project folder"
-        } else if branch.worktree != nil {
-            "new chat in this worktree"
-        } else {
-            "new chat working on \(branch.name)"
+    /// The branch whose colour the row draws in: its parent's while it is plain, its own
+    /// once it means something.
+    public func lane(selected: Bool, chat: BranchChatStatus?) -> String {
+        guard plain, !selected, chat == nil, let parent = branch.parent else {
+            return branch.name
         }
+        return parent
     }
 
-    /// The row for VoiceOver: its branch, "here", what a click does, and its chat's state.
+    /// The row for VoiceOver: its branch, "here", its remote, its note and its chat's state.
     public func accessibilityLabel(status: BranchChatStatus?) -> String {
         let chat: String? =
             switch status {
@@ -60,26 +57,40 @@ public struct BranchLaneRow: Sendable, Hashable, Identifiable {
             case .idle: "chat idle"
             case nil: nil
             }
-        return ([branch.name, label, action, chat].compactMap { $0 }).joined(separator: ", ")
+        let remote = branch.remote.map { "only on \($0)" }
+        return [branch.name, label, remote, branch.behindNote, chat]
+            .compactMap { $0 }.joined(separator: ", ")
     }
 }
 
-/// The branch map's rows, as A7 draws them (B96).
+/// The branch map's rows, as A7 draws them (B96): depth first, each lane down to its last
+/// child. `maxDepth` caps the indent (B131), rows past it naming their parent.
 public struct BranchLanes: Sendable, Hashable {
-    public let rows: [BranchLaneRow]
-    public let worktrees: Int
+    /// Where the small map and the picker stop indenting; the full tree has no cap.
+    public static let indentCap = 3
 
-    public init(map: BranchMap) {
+    public let rows: [BranchLaneRow]
+    /// The row with no parent, pinned over the rest.
+    public let top: BranchLaneRow?
+    public let rest: [BranchLaneRow]
+
+    public init(map: BranchMap, maxDepth: Int? = nil) {
+        let names = Set(map.branches.map(\.name))
+        var children: [String: [BranchMap.Branch]] = [:]
+        for branch in map.branches {
+            if let parent = branch.parent, names.contains(parent) {
+                children[parent, default: []].append(branch)
+            }
+        }
         var placed: [(branch: BranchMap.Branch, depth: Int)] = []
         var seen: Set<String> = []
         func visit(_ branch: BranchMap.Branch, _ depth: Int) {
             guard seen.insert(branch.name).inserted else { return }
             placed.append((branch, depth))
-            for child in map.children(of: branch.name) {
+            for child in children[branch.name] ?? [] {
                 visit(child, depth + 1)
             }
         }
-        let names = Set(map.branches.map(\.name))
         for branch in map.branches where branch.parent.map(names.contains) != true {
             visit(branch, 0)
         }
@@ -88,44 +99,60 @@ public struct BranchLanes: Sendable, Hashable {
             visit(branch, 0)
         }
 
-        var lines = Array(repeating: [BranchLaneLine](), count: placed.count)
-        for (index, row) in placed.enumerated() {
-            let children = placed.indices.filter {
-                $0 > index && placed[$0].branch.parent == row.branch.name
+        func shown(_ depth: Int) -> Int { maxDepth.map { min(depth, $0) } ?? depth }
+        var index: [String: Int] = [:]
+        for (at, row) in placed.enumerated() {
+            index[row.branch.name] = at
+        }
+        var lastChild: [String: Int] = [:]
+        for (at, row) in placed.enumerated() {
+            if let parent = row.branch.parent, let from = index[parent], from < at {
+                lastChild[parent] = at
             }
-            guard let last = children.last else { continue }
-            lines[index].append(
-                BranchLaneLine(depth: row.depth, lane: row.branch.name, fromMiddle: true))
-            for between in (index + 1)..<last {
-                lines[between].append(
-                    BranchLaneLine(depth: row.depth, lane: row.branch.name, fromMiddle: false))
+        }
+        var lines = Array(repeating: [BranchLaneLine](), count: placed.count)
+        func add(_ at: Int, _ depth: Int, _ lane: String, fromMiddle: Bool) {
+            lines[at].append(
+                BranchLaneLine(
+                    depth: min(depth, shown(placed[at].depth)), lane: lane, fromMiddle: fromMiddle))
+        }
+        for (at, row) in placed.enumerated() {
+            guard let last = lastChild[row.branch.name] else { continue }
+            add(at, row.depth, row.branch.name, fromMiddle: true)
+            for between in (at + 1)..<max(last, at + 1) {
+                add(between, row.depth, row.branch.name, fromMiddle: false)
             }
         }
 
-        rows = placed.enumerated().map { index, row in
-            BranchLaneRow(
-                branch: row.branch, depth: row.depth,
-                lines: lines[index].sorted { $0.depth < $1.depth },
-                label: row.branch.here ? "here" : nil)
+        let rows = placed.enumerated().map { at, row in
+            let branch = row.branch
+            return BranchLaneRow(
+                branch: branch, depth: shown(row.depth),
+                lines: lines[at].sorted { $0.depth < $1.depth },
+                parentDepth: row.depth == 0 ? nil : shown(row.depth - 1),
+                fromParent: row.depth > shown(row.depth) ? branch.parent : nil,
+                plain: branch.worktree == nil && children[branch.name] == nil
+                    && branch.parent.map(names.contains) == true,
+                label: branch.here ? "here" : nil)
         }
-        worktrees = placed.filter { $0.depth > 0 && $0.branch.worktree != nil }.count
+        let top = rows.first { $0.branch.parent == nil }
+        self.rows = rows
+        self.top = top
+        rest = rows.filter { $0.id != top?.id }
     }
 
     /// The graph's width: the deepest lane and a lane's room after it.
     public var width: Double {
         BranchLaneRow.x(rows.map(\.depth).max() ?? 0) + 14
     }
-
-    /// The header's count: "5 worktrees".
-    public var count: String {
-        "\(worktrees) worktree\(worktrees == 1 ? "" : "s")"
-    }
 }
 
-/// The lane colours of a project's branches (B96): the default branch always grey, the
-/// others in the palette's order. A branch keeps its colour while the app runs; a new one
-/// takes the first colour no shown branch uses, cycling once all are in use.
-public struct LaneColors: Sendable {
+/// The lane colours of a project's branches (B96, B131): the top row always grey, the others
+/// the first colour no shown branch uses, cycling once all are in use. A plain branch takes
+/// no colour until something asks for one (`BranchLaneRow.lane`). A branch keeps its colour
+/// for as long as it is on the map: the colours are kept, because giving them out again by
+/// position would change them when the app starts or another branch appears.
+public struct LaneColors {
     public static let palette: [ThemedColor] = {
         typealias Lane = DesignTokens.Colors.Lane
         return [
@@ -134,35 +161,49 @@ public struct LaneColors: Sendable {
         ]
     }()
 
-    private var assigned: [String: Int] = [:]
+    private var assigned: [String: Int]
     private var cycle = 0
+    /// Keeps the colours of the branches on the map for the next run.
+    private let save: (([String: Int]) -> Void)?
 
-    public init() {}
+    public init(saved: [String: Int] = [:], save: (([String: Int]) -> Void)? = nil) {
+        let colours = 1..<Self.palette.count
+        assigned = saved.filter { colours.contains($0.value) }
+        self.save = save
+    }
 
     public static func color(_ index: Int) -> ThemedColor {
         palette[index % palette.count]
     }
 
-    /// Gives the map's new branches their colours.
+    /// Gives the branches that draw a lane of their own their colours.
     public mutating func assign(_ map: BranchMap) {
-        var used = Set(map.branches.compactMap { assigned[$0.name] })
-        for branch in map.branches
-        where branch.name != map.defaultBranch && assigned[branch.name] == nil {
-            let colours = 1..<Self.palette.count
-            let index =
-                colours.first { !used.contains($0) }
-                ?? {
-                    defer { cycle += 1 }
-                    return cycle % colours.count + 1
-                }()
-            assigned[branch.name] = index
-            used.insert(index)
+        let parents = Set(map.branches.compactMap(\.parent))
+        for branch in map.branches where branch.worktree != nil || parents.contains(branch.name) {
+            _ = index(of: branch.name, in: map)
         }
     }
 
-    /// The branch's palette index: 0 for the default branch, nil for one never assigned.
-    public func index(of branch: String, in map: BranchMap) -> Int? {
-        branch == map.defaultBranch ? 0 : assigned[branch]
+    /// The branch's palette index, given the first time: 0 for the top row, nil for a branch
+    /// not on the map.
+    public mutating func index(of branch: String, in map: BranchMap) -> Int? {
+        guard map.branch(branch) != nil else { return nil }
+        guard branch != map.top?.name else { return 0 }
+        return assigned[branch] ?? give(branch, in: map)
+    }
+
+    private mutating func give(_ branch: String, in map: BranchMap) -> Int {
+        let used = Set(map.branches.compactMap { assigned[$0.name] })
+        let colours = 1..<Self.palette.count
+        let index =
+            colours.first { !used.contains($0) }
+            ?? {
+                defer { cycle += 1 }
+                return cycle % colours.count + 1
+            }()
+        assigned[branch] = index
+        save?(assigned.filter { name, _ in map.branch(name) != nil })
+        return index
     }
 }
 
@@ -191,16 +232,27 @@ extension BranchMap {
     ) -> [String: BranchChatStatus] {
         let live = sessions.filter { !$0.isArchived }
         let chats = claudeChats.filter { !$0.archived && $0.worktree != nil }
+        // Filed once, since a project can have hundreds of branches.
+        var byName: [String: [Session]] = [:]
+        var byFolder: [String: [Session]] = [:]
+        for session in live {
+            if let name = ChatPlace.of(session, repo: repo)?.branchName {
+                byName[name, default: []].append(session)
+            }
+            if let path = session.worktreePath {
+                byFolder[path, default: []].append(session)
+            }
+        }
+        let claudeFolders = Set(chats.map(\.cwd))
         var found: [String: BranchChatStatus] = [:]
         for branch in branches {
             let path = branch.worktree?.path
-            let nest = live.filter {
-                (path != nil && $0.worktreePath == path)
-                    || ChatPlace.of($0, repo: repo)?.branchName == branch.name
-            }
-            let claude = chats.contains { path != nil && $0.cwd == path }
-            guard !nest.isEmpty || claude else { continue }
-            found[branch.name] = nest.map { BranchChatStatus(tone($0)) }.max() ?? .idle
+            let named = byName[branch.name] ?? []
+            let foldered = path.flatMap { byFolder[$0] } ?? []
+            let claude = path.map(claudeFolders.contains) ?? false
+            guard !named.isEmpty || !foldered.isEmpty || claude else { continue }
+            found[branch.name] =
+                (named + foldered).map { BranchChatStatus(tone($0)) }.max() ?? .idle
         }
         return found
     }

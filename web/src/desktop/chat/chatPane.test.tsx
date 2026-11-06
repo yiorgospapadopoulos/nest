@@ -6,7 +6,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BranchMap, NestEvent, Session } from "../../api/types.ts";
+import type { BranchMap, NestEvent, RepoConfig, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
@@ -188,11 +188,12 @@ interface Open {
   panes: string[];
   events?: NestEvent[];
   api?: FakeApi;
+  project?: Partial<RepoConfig>;
 }
 
 /** The desktop window with `panes` open in the todo-ui tab, the last one focused. */
-async function openDesktop({ chats, panes, events = [], api = fakeApi() }: Open) {
-  api.repos.mockResolvedValue([{ ...repo("todo-ui"), current_branch: "redesign" }]);
+async function openDesktop({ chats, panes, events = [], api = fakeApi(), project: shown }: Open) {
+  api.repos.mockResolvedValue([{ ...repo("todo-ui"), current_branch: "redesign", ...shown }]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : chats));
   api.session.mockImplementation((id) =>
     Promise.resolve(detail(chats.find((c) => c.id === id) ?? chats[0])),
@@ -479,22 +480,32 @@ describe("Run (B108)", () => {
 const map: BranchMap = {
   default_branch: "main",
   current_branch: "redesign",
+  detached: false,
   branches: [
-    { name: "main", parent: null, worktree: null, here: false },
-    { name: "redesign", parent: "main", worktree: null, here: true },
+    { name: "main", parent: null, worktree: null, here: false, behind: 0, remote: null },
+    { name: "redesign", parent: "main", worktree: null, here: true, behind: 0, remote: null },
     {
       name: "agent/icons",
       parent: "redesign",
       worktree: { path: "/w/icons", owner: "nest" },
       here: false,
+      behind: 0,
+      remote: null,
     },
   ],
+  remote_branches: [],
 };
 
-async function newChat(api: FakeApi) {
-  await openDesktop({ chats: [session({ title: "Other" })], panes: ["s1"], api });
+async function newChat(api: FakeApi, project?: Partial<RepoConfig>) {
+  const opened = await openDesktop({
+    chats: [session({ title: "Other" })],
+    panes: ["s1"],
+    api,
+    ...(project === undefined ? {} : { project }),
+  });
   fireEvent.click(defined(screen.getAllByRole("button", { name: "New chat" })[0]));
-  return screen.findByRole("region", { name: "New chat" });
+  const pane = await screen.findByRole("region", { name: "New chat" });
+  return Object.assign(pane, { push: opened.push });
 }
 
 function sendFirst(pane: HTMLElement, text: string) {
@@ -577,6 +588,126 @@ describe("a new chat's place (B55, B96)", () => {
       mode: "worktree",
       worktree_path: "/w/icons",
     });
+  });
+});
+
+describe("a new chat follows the selected place (B131)", () => {
+  const onBranch = { branch: "feature", worktree_path: null };
+  const inPlace = { worktree: { ...repo("todo-ui").worktree, default: false } };
+
+  it("works on the selected branch, in place by default", async () => {
+    const api = fakeApi();
+    const pane = await newChat(api, { ...inPlace, selected_place: onBranch });
+    expect(
+      await within(pane).findByRole("button", { name: /^Where the chat works: Work on feature/ }),
+    ).toBeInTheDocument();
+    sendFirst(pane, "Go");
+    await waitFor(() => {
+      expect(api.createSession).toHaveBeenCalled();
+    });
+    expect(api.createSession.mock.calls[0]?.[0]).toMatchObject({ on_branch: "feature" });
+    expect(api.createSession.mock.calls[0]?.[0]).not.toHaveProperty("mode");
+  });
+
+  it("gets its own worktree from the selection with the worktree default on", async () => {
+    const api = fakeApi();
+    const pane = await newChat(api, { selected_place: onBranch });
+    sendFirst(pane, "Go");
+    await waitFor(() => {
+      expect(api.createSession).toHaveBeenCalled();
+    });
+    expect(api.createSession.mock.calls[0]?.[0]).toMatchObject({
+      mode: "worktree",
+      base: "feature",
+    });
+  });
+
+  it("joins a selected worktree", async () => {
+    const api = fakeApi();
+    const pane = await newChat(api, {
+      selected_place: { branch: "agent/icons", worktree_path: "/w/icons" },
+    });
+    sendFirst(pane, "Go");
+    await waitFor(() => {
+      expect(api.createSession).toHaveBeenCalled();
+    });
+    expect(api.createSession.mock.calls[0]?.[0]).toMatchObject({
+      mode: "worktree",
+      worktree_path: "/w/icons",
+    });
+  });
+
+  it("stays live for an unsent draft, a pick of its own wins, and open chats do not move", async () => {
+    const api = fakeApi();
+    api.branchMap.mockResolvedValue(map);
+    const chat = session({ title: "Other", branch: "agent/open", worktree_path: "/w/open" });
+    const opened = await openDesktop({
+      chats: [chat],
+      panes: ["s1"],
+      api,
+      project: inPlace,
+    });
+    fireEvent.click(defined(screen.getAllByRole("button", { name: "New chat" })[0]));
+    const pane = await screen.findByRole("region", { name: "New chat" });
+    const open = await screen.findByRole("region", { name: "Other" });
+    const before = open.textContent;
+    const button = () => within(pane).getByRole("button", { name: /^Where the chat works/ });
+    expect(button()).toHaveAccessibleName("Where the chat works: Work on redesign");
+
+    const place = (branch: string) => ({
+      type: "repo.updated",
+      payload: {
+        repo: {
+          ...repo("todo-ui"),
+          ...inPlace,
+          current_branch: "redesign",
+          selected_place: { branch, worktree_path: null },
+        },
+      },
+    });
+    opened.push(place("feature"));
+    expect(button()).toHaveAccessibleName("Where the chat works: Work on feature");
+    expect(open.textContent).toBe(before);
+    expect(api.updateSession).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(button()).toHaveAttribute("aria-haspopup", "dialog");
+    });
+    fireEvent.click(button());
+    fireEvent.click(await screen.findByRole("button", { name: "New worktree from agent/icons" }));
+    expect(button()).toHaveAccessibleName("Where the chat works: New worktree from agent/icons");
+    opened.push(place("other"));
+    expect(button()).toHaveAccessibleName("Where the chat works: New worktree from agent/icons");
+  });
+
+  it("says a place is gone on first load and clears it once", async () => {
+    const api = fakeApi();
+    await openDesktop({
+      chats: [session({ title: "Other" })],
+      panes: ["s1"],
+      api,
+      project: { selected_place_gone: "wip" },
+    });
+    expect(
+      await screen.findByText("wip is gone. New chats start in the project folder."),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.clearGonePlace).toHaveBeenCalledWith("todo-ui");
+    });
+    expect(api.clearGonePlace).toHaveBeenCalledTimes(1);
+    expect(api.selectPlace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the text when a stale pick is refused", async () => {
+    const api = fakeApi();
+    const pane = await newChat(api, { ...inPlace, selected_place: onBranch });
+    api.createSession.mockRejectedValue(new Error("No branch feature"));
+    sendFirst(pane, "Keep me");
+    await waitFor(() => {
+      expect(api.createSession).toHaveBeenCalled();
+    });
+    await screen.findByText("No branch feature");
+    expect(within(pane).getByRole("textbox", { name: "Message" })).toHaveValue("Keep me");
   });
 });
 

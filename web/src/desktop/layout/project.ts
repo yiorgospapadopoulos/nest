@@ -1,5 +1,6 @@
 // What a project tab remembers, ported from NestKit's ProjectState (AppStore.swift): its
 // workspace, its tool panes and how its side panels are arranged.
+import type { NewChatChoice } from "../chat/placePicker.ts";
 import { normalizedFolder, runPane, terminalPane, type ToolPane } from "./tools.ts";
 import { WorkspaceLayout, type DropSide, type OpenOutcome, type Size } from "./workspace.ts";
 
@@ -23,6 +24,8 @@ export class ProjectState {
   selectedChat: string | null = null;
   // The terminal, browser and run panes in the workspace, by pane id.
   tools = new Map<string, ToolPane>();
+  // A draft pane opened on a place of its own, by pane id.
+  draftPlaces = new Map<string, NewChatChoice>();
 
   copy(): ProjectState {
     const next = new ProjectState();
@@ -33,6 +36,7 @@ export class ProjectState {
     next.view = this.view;
     next.selectedChat = this.selectedChat;
     next.tools = new Map(this.tools);
+    next.draftPlaces = new Map(this.draftPlaces);
     return next;
   }
 
@@ -142,6 +146,9 @@ export class ProjectState {
   private pruneTools(): void {
     for (const id of [...this.tools.keys()]) {
       if (!this.layout.contains(id)) this.tools.delete(id);
+    }
+    for (const id of [...this.draftPlaces.keys()]) {
+      if (!this.layout.contains(id)) this.draftPlaces.delete(id);
     }
   }
 }

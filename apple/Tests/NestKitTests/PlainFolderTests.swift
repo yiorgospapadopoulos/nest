@@ -27,7 +27,8 @@ import Testing
     }
 
     @Test func plainFoldersAlwaysWorkInPlace() {
-        let repo = Fixture.repos[0]
+        var repo = Fixture.repos[0]
+        repo.worktree.isDefault = nil
         #expect(repo.mode(for: .worktree) == .worktree)
         #expect(repo.mode(for: nil) == nil)
         #expect(Fixture.plainRepo.mode(for: .worktree) == .inPlace)

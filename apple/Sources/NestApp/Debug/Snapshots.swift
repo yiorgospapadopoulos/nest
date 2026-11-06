@@ -243,7 +243,7 @@
                 try await renderAccounts(model, shell, controller, folder)
                 return
             }
-            if only == "b96" {
+            if only == "b96" || only == "b131" {
                 try await renderBranchMap(model, shell, controller, folder)
                 return
             }
@@ -1320,11 +1320,11 @@
             }
             try await pair(controller, "b90-start", folder)
             let draft = shell.startDraft()
-            let mode = draft.place
-            draft.place = .newWorktree(from: nil)
+            let mode = draft.chosenPlace
+            draft.chosenPlace = .newWorktree(from: nil)
             draft.permission = .bypassPermissions
             try await snap(controller, "b90-start-worktree-dark", .darkAqua, folder)
-            draft.place = mode
+            draft.chosenPlace = mode
             draft.permission = model.agents.current.permissionMode
             try await pair(
                 controller, "b90-start-narrow", folder, size: CGSize(width: 1180, height: 820))
@@ -1437,8 +1437,8 @@
         /// otherwise (the icon only when narrow). New chats, in a pane and in the start
         /// box, offer "Work on <branch>" or "New worktree" with an optional branch name.
         /// B96: the branch label closed and the branch map open, the chats' branches in their
-        /// lane colours; a hovered row's "New chat"; new chats started from the map in a
-        /// worktree and from a branch; the "Work on" picker, long enough to scroll.
+        /// lane colours; B131: a hovered row's "+ Worktree", a selected place far down the
+        /// list, the chip tinted, the draft that follows it and the picker; the full tree.
         private static func renderBranchMap(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -1454,44 +1454,112 @@
             await model.branchMaps.show("todo-ui")
             try await pair(controller, "b96-closed", folder)
             model.branchMaps.toggle("todo-ui")
+            await model.branchMaps.load("todo-ui")
             try await pair(controller, "b96-open-all", folder)
-            if let lanes = model.branchMaps.lanes("todo-ui") {
-                try await pairView(
-                    BranchMapPanel(project: "todo-ui", lanes: lanes, hovered: "agent/dark-polish")
-                        .frame(width: 280).environment(shell), "b96-map-hover", folder)
-            }
-            // A click on a worktree's row: a new chat there, its branch in its lane colour.
-            if let polish = model.branchMaps.map("todo-ui")?.branch("agent/dark-polish") {
-                shell.newChat(at: polish.newChatChoice)
-            }
-            try await pair(controller, "b96-new-chat-in-worktree", folder)
+            guard let lanes = model.branchMaps.lanes("todo-ui"),
+                let map = model.branchMaps.map("todo-ui"),
+                let picker = model.branchMaps.picker("todo-ui"),
+                let repo = model.app.repo("todo-ui")
+            else { return }
+            try await pairView(
+                BranchMapPanel(
+                    project: "todo-ui", map: map, lanes: lanes, hovered: "agent/dark-polish"
+                )
+                .frame(width: 236).environment(shell), "b131-map-hover", folder)
+            // A branch far down the list: the chip and the rows show it, no chat starts.
+            try await model.app.selectPlace(
+                "todo-ui", SelectPlaceRequest(branch: "agent/search-ui-filters-empty-state"))
+            try await pair(controller, "b131-selected", folder)
+            shell.newChat()
+            try await pair(controller, "b131-draft-follows", folder)
             shell.closeFocused()
-            shell.newChat(at: .newWorktree(from: "release"))
-            try await pair(controller, "b96-new-chat-from-release", folder)
-            shell.closeFocused()
-            // A click on a branch row without a worktree: a new chat on that branch itself.
-            if let release = model.branchMaps.map("todo-ui")?.branch("release") {
-                shell.newChat(at: release.newChatChoice)
-            }
-            try await pair(controller, "b96-new-chat-on-release", folder)
-            shell.closeFocused()
+            try await model.app.selectPlace("todo-ui", SelectPlaceRequest(branch: "release"))
+            try await model.branchMaps.refreshRemotes("todo-ui")
+            try await pair(controller, "b131-failed-remote", folder)
+            model.branchMaps.dismissFailures(of: "todo-ui")
+            shell.show(.branchTree("todo-ui"))
+            try await pair(controller, "b131-tree", folder)
+            shell.close()
+            // A name past the sheet's edge: the tree opens scrolled to it, the top row stays.
+            try await model.app.selectPlace(
+                "todo-ui", SelectPlaceRequest(branch: SampleAPI.longBranch))
+            shell.show(.branchTree("todo-ui"))
+            try await pair(controller, "b131-tree-sideways", folder)
+            shell.close()
+            try await pairView(
+                longHerePanel.frame(width: 236).environment(shell), "b131-long-here", folder)
+            // The folder detached: the chip and the rows say so, and the row goes back.
+            (model.api as? SampleAPI)?.detached = true
+            try await model.app.selectPlace("todo-ui", SelectPlaceRequest())
+            try await model.app.loadRepos()
+            await model.branchMaps.load("todo-ui")
+            try await pair(controller, "b131-detached", folder)
+            try await model.app.selectPlace("todo-ui", SelectPlaceRequest(branch: "release"))
+            shell.show(.branchTree("todo-ui"))
+            try await pair(controller, "b131-detached-tree", folder)
+            shell.close()
+            (model.api as? SampleAPI)?.detached = false
+            try await model.app.loadRepos()
+            await model.branchMaps.load("todo-ui")
+            // A remote row picked in the tree: its branch lands in view, the selection on it.
+            shell.show(.branchTree("todo-ui"))
+            shell.select(
+                BranchMap.RemoteBranch(remote: "origin", name: "zz/pricing-page"), in: "todo-ui")
+            try await Task.sleep(for: .milliseconds(300))
+            try await pair(controller, "b131-tree-remote-picked", folder)
+            shell.close()
             model.branchMaps.toggle("todo-ui")
-            if let picker = model.branchMaps.picker("todo-ui") {
-                try await pairView(
-                    PlacePickerList(
-                        project: "todo-ui", picker: picker, selected: .inPlace, choose: { _ in }
-                    ).environment(shell), "b96-picker", folder)
-                try await pairView(
-                    PlacePickerList(
-                        project: "todo-ui", picker: picker,
-                        selected: .newWorktree(from: "main"), choose: { _ in }
-                    ).environment(shell), "b96-picker-new-worktree", folder)
-                try await pairView(
-                    PlacePickerList(
-                        project: "todo-ui", picker: picker, selected: .onBranch("main"),
-                        choose: { _ in }
-                    ).environment(shell), "b96-picker-on-branch", folder)
+            try await pairView(
+                PlacePickerList(
+                    repo: repo, map: map, picker: picker, selected: .onBranch("release"),
+                    hovered: "agent/search", choose: { _ in }
+                ).environment(shell), "b131-picker", folder)
+            shell.newWorktree(from: "agent/search")
+            try await pair(controller, "b131-new-worktree", folder)
+            shell.closeFocused()
+            try await renderLongPlaces(model, shell, controller, folder)
+        }
+
+        /// B131: names too long for the Work on chip, in a half-width pane and on the start
+        /// screen of a narrow window: they are cut, and the chevron, send and model controls
+        /// stay on screen.
+        private static func renderLongPlaces(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            let size = CGSize(width: 900, height: 620)
+            let name = String(repeating: "agent/long-place-name-", count: 9)
+            let choices: [(String, NewChatChoice)] = [
+                ("188", .onBranch(String(name.prefix(188)))),
+                ("67", .onBranch(String(name.prefix(67)))),
+                ("30", .newWorktree(from: String(name.prefix(30)))),
+            ]
+            for (length, choice) in choices {
+                shell.newChat().chosenPlace = choice
+                try await pair(controller, "b131-chip-pane-\(length)", folder, size: size)
+                shell.closeFocused()
+                model.app.update("todo-ui") { $0.layout = WorkspaceLayout() }
+                shell.startDraft().chosenPlace = choice
+                try await pair(controller, "b131-chip-start-\(length)", folder, size: size)
+                shell.startDraft().chosenPlace = nil
+                model.app.update("todo-ui") {
+                    $0.openChat("c1", in: CGSize(width: 660, height: 620))
+                }
             }
+        }
+
+        /// The folder on a long name, two levels in, hovered: the tightest row there is.
+        private static var longHerePanel: some View {
+            let name = "feat/b53-tidy-archives-second-pass"
+            let map = BranchMap(
+                defaultBranch: "main", currentBranch: name,
+                branches: [
+                    .init(name: "main", parent: nil, worktree: nil, here: false),
+                    .init(name: "wip", parent: "main", worktree: nil, here: false),
+                    .init(name: name, parent: "wip", worktree: nil, here: true),
+                ])
+            return BranchMapPanel(
+                project: "todo-ui", map: map, lanes: BranchLanes(map: map, maxDepth: 3),
+                hovered: name)
         }
 
         private static func renderWorkingCopies(
@@ -1539,9 +1607,9 @@
                 state.openChat("c1", in: workspace)
             }
             let draft = shell.newChat()
-            draft.place = .inPlace
+            draft.chosenPlace = .inPlace
             try await pair(controller, "b55-pane-draft-branch", folder)
-            draft.place = .newWorktree(from: nil)
+            draft.chosenPlace = .newWorktree(from: nil)
             draft.branchName = "fix/contact-copy"
             try await pair(controller, "b55-pane-draft-worktree", folder)
 
@@ -1550,12 +1618,12 @@
                 state.rightCollapsed = false
             }
             let start = shell.startDraft()
-            let mode = start.place
-            start.place = .inPlace
+            let mode = start.chosenPlace
+            start.chosenPlace = .inPlace
             try await snap(controller, "b55-start-branch-light", .aqua, folder)
-            start.place = .newWorktree(from: nil)
+            start.chosenPlace = .newWorktree(from: nil)
             try await snap(controller, "b55-start-worktree-dark", .darkAqua, folder)
-            start.place = mode
+            start.chosenPlace = mode
         }
 
         /// B33: Always allow with Claude Code's rule, how a plan goes on, project settings,
@@ -2802,10 +2870,10 @@
             try await pair(controller, "b39-start-composer-typed", folder)
             draft.text = ""
             draft.attachments = []
-            let mode = draft.place
-            draft.place = .newWorktree(from: nil)
+            let mode = draft.chosenPlace
+            draft.chosenPlace = .newWorktree(from: nil)
             try await pair(controller, "b39-start-composer-worktree", folder)
-            draft.place = mode
+            draft.chosenPlace = mode
             for (percent, name) in [(0.85, "amber"), (0.95, "red")] {
                 let now = Date()
                 model.usage.apply(

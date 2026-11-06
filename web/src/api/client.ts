@@ -73,6 +73,7 @@ import type {
   PushSubscriptionBody,
   RedeemResponse,
   RepoConfig,
+  RemotesRefresh,
   RepoPatch,
   ResolveBody,
   ForkReply,
@@ -86,6 +87,7 @@ import type {
   RunVerb,
   ShellResult,
   SearchResults,
+  SelectPlaceBody,
   SendResponse,
   Session,
   SetAutopilot,
@@ -318,6 +320,14 @@ export interface Api {
   branches(repo: string): Promise<{ branches: string[] }>;
   // The project's branches and worktrees, each under the branch it comes from (B96).
   branchMap(repo: string): Promise<BranchMap>;
+  // Where the project's new chats start (B131); announced as `repo.updated`.
+  selectPlace(repo: string, body: SelectPlaceBody): Promise<RepoConfig>;
+  // Clears only a place marked gone, so a selection made meanwhile stays.
+  clearGonePlace(repo: string): Promise<RepoConfig>;
+  // Fetches every remote, reporting each one; `repo.branches_changed` follows.
+  refreshRemotes(repo: string): Promise<RemotesRefresh>;
+  // Makes a local branch tracking a remote-only one and names it; nothing is checked out.
+  trackRemoteBranch(repo: string, remote: string, name: string): Promise<{ branch: string }>;
   storage(): Promise<StorageUsage>;
   storageSettings(): Promise<StorageSettings>;
   saveStorageSettings(settings: StorageSettings): Promise<StorageSettings>;
@@ -1032,6 +1042,25 @@ export class HttpApi implements Api {
 
   branchMap(name: string) {
     return this.json<BranchMap>("GET", `${repo(name)}/branch-map`);
+  }
+
+  selectPlace(name: string, body: SelectPlaceBody) {
+    return this.json<RepoConfig>("PUT", `${repo(name)}/selected-place`, body);
+  }
+
+  clearGonePlace(name: string) {
+    return this.json<RepoConfig>("DELETE", `${repo(name)}/selected-place/gone`);
+  }
+
+  refreshRemotes(name: string) {
+    return this.json<RemotesRefresh>("POST", `${repo(name)}/refresh`);
+  }
+
+  trackRemoteBranch(name: string, remote: string, branch: string) {
+    return this.json<{ branch: string }>("POST", `${repo(name)}/remote-branches`, {
+      remote,
+      name: branch,
+    });
   }
 
   storage() {

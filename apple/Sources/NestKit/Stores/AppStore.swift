@@ -222,6 +222,11 @@ public final class AppStore {
     public var syncError: APIError?
     /// The latest repo reload `reloadRepos` started.
     @ObservationIgnored public private(set) var reloadingRepos: Task<Void, Never>?
+    /// The daemon reports a project's selected place gone, with its branch's name (B131).
+    @ObservationIgnored public var onPlaceGone: ((String) -> Void)?
+    /// The name already told, by project, until it has a selection again, so the clear in
+    /// flight, or a list read before it landed, tells nothing twice.
+    @ObservationIgnored private var toldGone: [String: String] = [:]
     /// The latest project order save `moveProject` started; saves run one at a time.
     @ObservationIgnored public private(set) var savingOrder: Task<Void, Never>?
     public private(set) var repos: [Repo] = []
@@ -268,6 +273,7 @@ public final class AppStore {
 
     private func show(_ repos: [Repo]) {
         self.repos = repos
+        repos.forEach(tellGone)
         let names = Set(repos.map(\.name) + [Repo.generalName])
         openProjects.removeAll { !names.contains($0) }
         for name in projects.keys where !names.contains(name) {
@@ -300,6 +306,32 @@ public final class AppStore {
 
     public func repo(_ name: String) -> Repo? {
         name == Repo.generalName ? .general : repos.first { $0.name == name }
+    }
+
+    /// Sets where the project's new chats start (B131). No open chat moves.
+    public func selectPlace(_ name: String, _ request: SelectPlaceRequest) async throws {
+        place(try await api.selectPlace(name, request))
+    }
+
+    private func place(_ repo: Repo) {
+        repos = repos.map { $0.name == repo.name ? repo : $0 }
+        tellGone(repo)
+    }
+
+    /// One notice for a selected place the daemon reports gone, then it is cleared there.
+    /// The clear is quiet: a failure shows nothing and is not tried again in this run.
+    private func tellGone(_ repo: Repo) {
+        if repo.selectedPlace != nil {
+            toldGone[repo.name] = nil
+        }
+        guard let gone = repo.selectedPlaceGone, toldGone[repo.name] != gone else { return }
+        toldGone[repo.name] = gone
+        onPlaceGone?(gone)
+        Task {
+            if let cleared = try? await api.clearGonePlace(repo.name) {
+                place(cleared)
+            }
+        }
     }
 
     /// Whether General's tab is open, for the add-project popover, which always lists it.

@@ -306,7 +306,7 @@ public final class AppModel {
         performance = PerformanceStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
-        branchMaps = BranchMapStore(api: api)
+        branchMaps = BranchMapStore(api: api, store: daemonPreferences ?? preferences)
         issues = IssuesStore(api: api, store: daemonPreferences ?? preferences)
         runs = RunStore(api: api)
         updates = UpdatesStore(api: api)

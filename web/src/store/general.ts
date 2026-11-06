@@ -10,6 +10,8 @@ export const GENERAL_REPO: RepoConfig = {
   git: false,
   default_branch: null,
   current_branch: null,
+  selected_place: null,
+  selected_place_gone: null,
   remote_url: null,
   icon: null,
   icon_color: null,

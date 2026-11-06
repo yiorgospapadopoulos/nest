@@ -2265,18 +2265,20 @@ button.dc-line:disabled {
 .dc-placel {
   padding: 6px 4px 6px 6px;
 }
-.dc-placeh {
-  display: block;
-  padding: 4px 8px 6px;
-  font-size: var(--dc-meta);
-  color: var(--t3);
+.dc-placef {
+  padding: 3px 8px 7px;
+}
+.dc-placef input {
+  font-size: var(--dc-ui);
 }
 .dc-placerows {
   overflow-y: auto;
   padding-right: 2px;
+  scrollbar-width: thin;
 }
 .dc-placediv {
   position: relative;
+  height: 9px;
 }
 .dc-placediv::after {
   content: "";
@@ -2286,47 +2288,6 @@ button.dc-line:disabled {
   top: 50%;
   height: 1px;
   background: var(--div);
-}
-.dc-placer {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  height: 30px;
-  padding-right: 10px;
-  border-radius: 6px;
-  text-align: left;
-  font-size: var(--dc-ui);
-  color: var(--t1);
-}
-.dc-placer:hover:not(.on) {
-  background: var(--mac-hover);
-}
-.dc-lanes {
-  flex: none;
-}
-.dc-placet {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dc-placer.folder .dc-placet {
-  font-weight: 600;
-}
-.dc-placer.worktree .dc-placet {
-  font: var(--dc-meta) var(--mono);
-}
-.dc-placer.newWorktree .dc-placet {
-  color: var(--t2);
-}
-.dc-placed {
-  flex: none;
-  font-size: var(--dc-micro);
-  color: var(--t3);
-}
-.dc-placeck {
-  display: inline-flex;
 }
 
 /* A new chat's pane, and a Claude Code chat's Continue in Nest. */

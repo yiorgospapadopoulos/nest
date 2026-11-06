@@ -56,6 +56,13 @@ UNSAFE_REASONS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"interactive\.difffilter$", "runs a program"),
     )
 )
+# The part of `UNSAFE_REASONS` a fetch can reach, and what only a fetch reads.
+_FETCH_REACH = re.compile(
+    r"core\.(?:sshcommand|gitproxy|askpass|alternaterefscommand)$"
+    r"|ssh\.variant$|credential\.|url\.|http\.|protocol\.|hook\."
+    r"|remote\..*\.(?:uploadpack|proxy|vcs)$"
+)
+_FETCH_ONLY = re.compile(r"fetch\.bundleuri$|bundle\.")
 
 
 @dataclass(frozen=True)
@@ -81,6 +88,21 @@ def unsafe_settings(settings: list[RepoSetting]) -> list[str]:
     found: list[str] = []
     for setting in settings:
         reason = _unsafe_reason(setting.key.lower(), setting.value)
+        if reason is not None and f"{setting.key} ({reason})" not in found:
+            found.append(f"{setting.key} ({reason})")
+    return found
+
+
+def fetch_blockers(settings: list[RepoSetting]) -> list[str]:
+    """`key (reason)` for each setting that would run a program or send data elsewhere in
+    a fetch. Narrower than `unsafe_settings`: a `diff.*.textconv` cannot stop one.
+    """
+    found: list[str] = []
+    for setting in settings:
+        key = setting.key.lower()
+        reason = _unsafe_reason(key, setting.value) if _FETCH_REACH.match(key) else None
+        if _FETCH_ONLY.match(key):
+            reason = "fetches from elsewhere"
         if reason is not None and f"{setting.key} ({reason})" not in found:
             found.append(f"{setting.key} ({reason})")
     return found

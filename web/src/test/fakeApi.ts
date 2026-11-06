@@ -248,6 +248,10 @@ export function fakeApi(): FakeApi {
     branchMap: vi
       .fn<Api["branchMap"]>()
       .mockImplementation(() => Promise.reject(new Error("no branch map"))),
+    selectPlace: vi.fn<Api["selectPlace"]>().mockResolvedValue(repo("todo-ui")),
+    clearGonePlace: vi.fn<Api["clearGonePlace"]>().mockResolvedValue(repo("todo-ui")),
+    refreshRemotes: vi.fn<Api["refreshRemotes"]>().mockResolvedValue({ remotes: [] }),
+    trackRemoteBranch: vi.fn<Api["trackRemoteBranch"]>().mockResolvedValue({ branch: "main" }),
     storage: vi.fn<Api["storage"]>().mockResolvedValue(storageUsage()),
     storageSettings: vi
       .fn<Api["storageSettings"]>()

@@ -6,13 +6,14 @@ from pathlib import Path
 from pydantic import JsonValue
 
 from nestd.config.models import RepoConfig
+from nestd.errors import ConflictError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.gitops.runner import GitError
 from nestd.sessions.joining import linked_checkout
 from nestd.sessions.models import Session
 from nestd.sessions.store import SessionStore
-from nestd.worktrees.manager import Worktree, WorktreeManager
+from nestd.worktrees.manager import Worktree, WorktreeManager, held_at
 from nestd.worktrees.setup import LinkResult, SetupResult
 
 
@@ -94,10 +95,17 @@ async def _check_out(
     assert session.base_ref is not None  # noqa: S101
     try:
         worktree = await worktrees.check_out(repo, session.id, session.branch, session.base_ref)
-    except GitError:
+    except GitError as error:
         found = await linked_checkout(repo, session.branch)
         if found is None:
-            raise
+            held = held_at(error)
+            if held is None:
+                raise
+            msg = (
+                f"{session.branch} is in use at {held}, perhaps by a rebase or merge there."
+                " Finish that, then start the chat again."
+            )
+            raise ConflictError(msg) from None
         await store.update(session.id, cwd=found, worktree_path=found)
         await publish_workspace(
             bus, session.id, Worktree(found, session.branch, session.base_ref), LinkResult()

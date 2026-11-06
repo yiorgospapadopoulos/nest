@@ -275,10 +275,11 @@ block = "B119"
 id = "branch-map"
 group = "git"
 name = "Branch map"
-text = "Your branches and worktrees drawn as a tree. Start a chat on any of them."
+text = "Your branches and worktrees drawn as a tree. Click one and every new chat starts there, while chats already running stay where they are. Reload checks your remotes and shows branches that are only there."
 where = "Sidebar"
 added = 2026-10-21
-block = "B96"
+changed = 2026-11-06
+block = "B131"
 
 [[features]]
 id = "dev-servers"

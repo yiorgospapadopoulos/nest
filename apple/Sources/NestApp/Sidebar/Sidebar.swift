@@ -64,8 +64,10 @@ private struct SidebarFull: View {
         let groups = shell.sidebarGroups(in: project)
         VStack(spacing: 0) {
             ProjectHeader()
-            if shell.branchMaps.isOpen(project), let lanes = shell.branchMaps.lanes(project) {
-                BranchMapPanel(project: project, lanes: lanes)
+            if shell.branchMaps.isOpen(project), let lanes = shell.branchMaps.lanes(project),
+                let map = shell.branchMaps.map(project)
+            {
+                BranchMapPanel(project: project, map: map, lanes: lanes)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 

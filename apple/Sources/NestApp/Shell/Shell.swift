@@ -92,6 +92,8 @@ enum Overlay: Equatable {
     case image(String)
     /// A subagent's, pixie's or team's work in a chat, read-only (B46).
     case work(WorkTarget)
+    /// A project's whole branch map, by project name (B131).
+    case branchTree(String)
 }
 
 /// What the Pixies tab's right-hand panel shows for the focused pixie: the details, or a
@@ -192,6 +194,9 @@ final class Shell {
         self.model = model
         self.userName = userName.isEmpty ? NSUserName() : userName
         webPanes.shell = self
+        app.onPlaceGone = { [weak self] branch in
+            self?.show("\(branch) is gone. New chats start in the project folder.")
+        }
     }
 
     var app: AppStore { model.app }
@@ -248,6 +253,9 @@ final class Shell {
 
     /// The Pixies tab is showing in place of a project.
     var pixiesOpen = false
+    /// Goes up when the maps' selected row needs showing: a selection landed that was not
+    /// clicked in its row, or the full tree closed.
+    private(set) var mapReveals = 0
     /// The details panel on the right of the Pixies tab, for the focused pixie pane.
     var pixieDetailsOpen = false
     /// The list shows hidden pixies too, so they can be opened and shown again.
@@ -868,9 +876,75 @@ final class Shell {
         return draft
     }
 
-    /// A new chat that works where a branch map row is (B96, A8), as New chat opens one.
-    func newChat(at choice: NewChatChoice) {
-        newChat().place = choice
+    /// A new chat's draft on a new worktree from the branch, for that one chat (B131). The
+    /// full tree gives way, as the draft opens under it.
+    func newWorktree(from branch: String) {
+        close()
+        newChat().chosenPlace = .newWorktree(from: branch)
+    }
+
+    // MARK: The branch map (B131)
+
+    /// Selects where the project's new chats start; a remote-only row makes its local
+    /// branch first. Starts nothing and moves nothing open.
+    /// With `reveals`, picked from a list that hid the row, which comes into view once the
+    /// selection has landed; that list goes, so it holds picks. A row clicked where it stands
+    /// stays where it is, and does nothing while a pick holds.
+    func select(_ branch: BranchMap.Branch, in project: String, reveals: Bool = false) {
+        if let remote = branch.remote {
+            select(BranchMap.RemoteBranch(remote: remote, name: branch.name), in: project)
+        } else if reveals {
+            run("Could not select \(branch.name)") {
+                try await self.branchMaps.holdPicks(project) {
+                    try await self.app.selectPlace(project, branch.selection)
+                    self.mapReveals += 1
+                }
+            }
+        } else if !branchMaps.picksHeld(project) {
+            run("Could not select \(branch.name)") {
+                try await self.app.selectPlace(project, branch.selection)
+            }
+        }
+    }
+
+    func select(_ remote: BranchMap.RemoteBranch, in project: String) {
+        run("Could not get \(remote.name)") {
+            try await self.branchMaps.holdPicks(project) {
+                let branch = try await self.branchMaps.track(remote, in: project)
+                try await self.app.selectPlace(project, SelectPlaceRequest(branch: branch))
+                self.mapReveals += 1
+            }
+        }
+    }
+
+    /// Back to the project folder, from the detached row.
+    func clearPlace(in project: String) {
+        run("Could not go back to the folder") {
+            try await self.app.selectPlace(project, SelectPlaceRequest())
+        }
+    }
+
+    /// Makes the local branch for a remote-only row of the picker, then hands it over.
+    func track(
+        _ remote: BranchMap.RemoteBranch, in project: String, then done: @escaping (String) -> Void
+    ) {
+        run("Could not get \(remote.name)") {
+            try await self.branchMaps.holdPicks(project) {
+                done(try await self.branchMaps.track(remote, in: project))
+            }
+        }
+    }
+
+    /// A map or picker opened: what it shows must be right, the folder's branch included.
+    func readBranches(of project: String) {
+        branchMaps.refresh(project)
+        app.reloadRepos()
+    }
+
+    /// The map's Reload: its own failures show per remote, a dead daemon as a toast.
+    func reloadRemotes(of project: String) {
+        app.reloadRepos()
+        run("Could not reload") { try await self.branchMaps.refreshRemotes(project) }
     }
 
     /// The empty workspace's composer (B39): a new chat's draft for the current project,
@@ -895,8 +969,7 @@ final class Shell {
         draft.model = choices.model
         draft.effort = choices.effort
         draft.permission = choices.permission
-        draft.defaultPlace = NewChatChoice(
-            mode: repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode)
+        draft.defaultMode = defaults.mode
         draft.chosenPlace = nil
     }
 
@@ -1238,7 +1311,8 @@ final class Shell {
         from draftID: String, draft: ComposerDraft, prompt: String, attachments: [String]
     ) async throws -> String {
         guard let repo = project else { return draftID }
-        let place = NewChatPlace(draft.place, typed: draft.branchName, repo: app.repo(repo))
+        let info = app.repo(repo)
+        let place = NewChatPlace(draft.place(in: info), typed: draft.branchName, repo: info)
         let request = CreateSessionRequest(
             repo: repo, prompt: prompt, mode: place.mode, model: draft.model,
             effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments,
@@ -1840,6 +1914,9 @@ final class Shell {
         if overlay == .usage {
             model.usage.hideDetails()
         }
+        if case .branchTree = overlay {
+            mapReveals += 1
+        }
         withAnimation(.smooth(duration: 0.18)) { overlay = nil }
     }
 
@@ -2262,13 +2339,15 @@ final class ComposerDraft {
     var model: String?
     var effort: Effort?
     var permission = PermissionMode.default
-    /// The place the user chose, and the one a new chat starts with.
+    /// The place the user chose for this one chat, and the mode the defaults set.
     var chosenPlace: NewChatChoice?
-    var defaultPlace = NewChatChoice.inPlace
-    /// Where the chat works (B55, B96).
-    var place: NewChatChoice {
-        get { autopilot.place(chosen: chosenPlace, fallback: defaultPlace) }
-        set { chosenPlace = newValue }
+    var defaultMode: SessionMode?
+    /// Where the chat works (B55, B96): read live, so an unsent draft follows the project's
+    /// selected place until the user picks one for it (B131).
+    func place(in repo: Repo?) -> NewChatChoice {
+        autopilot.place(
+            chosen: chosenPlace, selected: repo?.selectedPlace,
+            mode: repo.map { $0.mode(for: defaultMode) } ?? defaultMode)
     }
     /// What the composer's Autopilot popover chose (B120).
     var autopilot = AutopilotChoice()

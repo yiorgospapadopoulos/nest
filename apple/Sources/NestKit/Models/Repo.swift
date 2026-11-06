@@ -18,6 +18,11 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     public var iconColor: String?
     /// The one address Nest pushes to; nil before it is set or for a plain folder.
     public var remoteURL: String?
+    /// Where the project's new chats start (B131); nil starts them in the project folder.
+    public var selectedPlace: SelectedPlace?
+    /// The branch of a selected place that went, until the app has told the user and cleared
+    /// it; `selectedPlace` is nil meanwhile.
+    public var selectedPlaceGone: String?
 
     public var id: String { name }
 
@@ -27,6 +32,8 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         case currentBranch = "current_branch"
         case iconColor = "icon_color"
         case remoteURL = "remote_url"
+        case selectedPlace = "selected_place"
+        case selectedPlaceGone = "selected_place_gone"
     }
 
     /// `git` and the icon are optional, since older daemons do not send them. A sprite this
@@ -44,6 +51,8 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         }
         iconColor = try container.decodeIfPresent(String.self, forKey: .iconColor)
         remoteURL = try container.decodeIfPresent(String.self, forKey: .remoteURL)
+        selectedPlace = try container.decodeIfPresent(SelectedPlace.self, forKey: .selectedPlace)
+        selectedPlaceGone = try container.decodeIfPresent(String.self, forKey: .selectedPlaceGone)
     }
 
     private init(name: String) {
@@ -76,9 +85,36 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         return checkoutBranch.map(ProjectBadge.branch)
     }
 
-    /// Where a new chat works: as chosen, except that a plain folder has no worktrees.
+    /// What the header names: the selected place, never read for an open chat, so open chats
+    /// do not look as if they moved (B131); else the folder's branch; else "detached" when
+    /// the map says so, else the default branch: no branch there may also be a branch with no
+    /// commits yet, or a map not read.
+    public func startBranch(map: BranchMap?) -> String? {
+        selectedPlace?.branch ?? currentBranch
+            ?? (map?.detached == true ? "detached" : defaultBranch)
+    }
+
+    /// Where a new chat works: the project's own choice, else as preferred; a plain folder
+    /// has no worktrees.
     public func mode(for preferred: SessionMode?) -> SessionMode? {
-        git ? preferred : .inPlace
+        guard git else { return .inPlace }
+        return worktree.isDefault.map { $0 ? .worktree : .inPlace } ?? preferred
+    }
+}
+
+/// Where a project's new chats start (B131): a branch, or the worktree at `worktreePath`.
+public struct SelectedPlace: Codable, Sendable, Hashable {
+    public var branch: String
+    public var worktreePath: String?
+
+    public init(branch: String, worktreePath: String? = nil) {
+        self.branch = branch
+        self.worktreePath = worktreePath
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case branch
+        case worktreePath = "worktree_path"
     }
 }
 

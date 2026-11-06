@@ -1,6 +1,7 @@
 """Create, link, set up and remove per-session worktrees; inspect in-place checkouts."""
 
 import asyncio
+import contextlib
 import logging
 import re
 import shutil
@@ -14,9 +15,10 @@ from nestd.config.models import RepoConfig
 from nestd.errors import ConflictError, InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.gitops.hardened import run_checkout_git, run_hardened_git
+from nestd.gitops.hardened import remote_names, run_checkout_git, run_hardened_git
 from nestd.gitops.runner import GitError
 from nestd.paths import AppPaths
+from nestd.repos.service import RepoUnreadableError
 from nestd.worktrees.setup import LinkResult, SetupResult, link_files, run_commands
 
 BRANCH_PREFIX = "agent/"
@@ -29,6 +31,8 @@ OWNED_WORKTREE_PREFIXES = (WORKTREE_PREFIX, "harness-")
 EXCLUDE_LINE = "/.claude/worktrees/"
 # What `git branch -d` says when it refuses a branch with work it cannot find elsewhere.
 NOT_MERGED = "not fully merged"
+# What `git worktree add` says of a branch checked out elsewhere, naming where.
+USED_AT = re.compile(r"already used by worktree at '(.+)'")
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +153,7 @@ class WorktreeManager:
         path = claude_worktrees_dir(repo.path) / f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
         path.parent.mkdir(parents=True, exist_ok=True)
         async with self._checking_out:
-            await run_checkout_git(["worktree", "add", "-q", str(path), branch], repo.path)
+            await _add_worktree(repo, path, branch)
         await self._branches_changed(repo)
         return Worktree(path=path, branch=branch, base_ref=base)
 
@@ -207,6 +211,51 @@ class WorktreeManager:
             msg = f"{repo.name} has no local branch named {branch!r}"
             raise InvalidBranchError(msg) from None
         return output.strip()
+
+    async def track_remote(self, repo: RepoConfig, remote: str, name: str) -> str:
+        """A local branch `name` tracking the one of that name on `remote`, with nothing
+        checked out. Accepted when it exists already at the same commit, as after a double
+        click. Not `git branch --track`, which refuses a branch outside the remote's
+        configured refspec, as on a single-branch clone.
+        """
+        try:
+            remotes = await remote_names(repo.path)
+        except GitError as error:
+            raise RepoUnreadableError(error) from None
+        if remote not in remotes:
+            msg = f"{repo.name} has no remote named {remote!r}"
+            raise InvalidInputError(msg)
+        if name.startswith("refs/"):
+            msg = f"{name!r} is not a valid branch name"
+            raise InvalidBranchError(msg)
+        with contextlib.suppress(BranchExistsError):
+            await self.check_new_branch(repo, name)
+        ref = f"refs/remotes/{remote}/{name}"
+        try:
+            output = await run_hardened_git(["show-ref", "--verify", "--hash", ref], repo.path)
+        except GitError:
+            msg = f"{remote} has no branch named {name!r}"
+            raise InvalidBranchError(msg) from None
+        # Read from the refs as stored and compared blind to case on every system: on a
+        # case-insensitive disk `git branch Case` would write over `case`, and asking git
+        # for `Case` by name does not find a packed `case` first.
+        heads = await _exact_heads(repo)
+        if name in heads:
+            if heads[name] == output.strip():
+                return name
+            msg = f"a branch named {name!r} already exists in {repo.name}"
+            raise BranchExistsError(msg)
+        if any(head.casefold() == name.casefold() for head in heads):
+            msg = f"{name!r} differs only in case from a local branch of {repo.name}"
+            raise BranchExistsError(msg)
+        try:
+            await run_hardened_git(["branch", "--no-track", name, ref], repo.path)
+        except GitError as error:
+            raise ConflictError(error.stderr.strip().splitlines()[0]) from None
+        await run_hardened_git(["config", f"branch.{name}.remote", remote], repo.path)
+        await run_hardened_git(["config", f"branch.{name}.merge", f"refs/heads/{name}"], repo.path)
+        await self._branches_changed(repo)
+        return name
 
     def link(self, repo: RepoConfig, worktree_path: Path) -> LinkResult:
         return link_files(repo.worktree.link, repo.path, worktree_path)
@@ -335,6 +384,34 @@ class WorktreeManager:
         return bool(changes) or await self.head_at(worktree.path) != worktree.base_ref
 
 
+def held_at(error: GitError) -> Path | None:
+    """The checkout `git worktree add` says holds the branch, if that is why it refused."""
+    found = USED_AT.search(error.stderr)
+    return None if found is None else Path(found[1])
+
+
+async def _add_worktree(repo: RepoConfig, path: Path, branch: str) -> None:
+    """`branch` checked out at `path`. A folder deleted by hand leaves a record that still
+    holds the branch: only then is that one record dropped. Others stay, as their folders
+    may only be moved away; a real checkout and a locked worktree still refuse.
+    """
+    args = ["worktree", "add", "-q", "--", str(path), branch]
+    try:
+        await run_checkout_git(args, repo.path)
+    except GitError as error:
+        held = held_at(error)
+        if held is None or await asyncio.to_thread(held.exists):
+            raise
+        try:
+            await run_hardened_git(["worktree", "remove", "--force", "--", str(held)], repo.path)
+        except GitError:
+            raise error from None
+        await run_checkout_git(args, repo.path)
+    if branch.startswith("-"):
+        # git takes such a name for a commit and detaches: commits would land on no branch.
+        await run_hardened_git(["symbolic-ref", "HEAD", f"refs/heads/{branch}"], path)
+
+
 async def _exclude_worktrees(repo: RepoConfig) -> None:
     """Add EXCLUDE_LINE to the repo's local exclude file unless it is there already."""
     output = await run_hardened_git(["rev-parse", "--git-path", "info/exclude"], repo.path)
@@ -376,6 +453,14 @@ async def _has_branch(repo: RepoConfig, branch: str) -> bool:
     except GitError:
         return False
     return True
+
+
+async def _exact_heads(repo: RepoConfig) -> dict[str, str]:
+    """Each local branch's commit, by the name as it is stored."""
+    output = await run_hardened_git(
+        ["for-each-ref", "--format=%(objectname) %(refname:lstrip=2)", "refs/heads/"], repo.path
+    )
+    return {name: commit for commit, name in (line.split(" ", 1) for line in output.splitlines())}
 
 
 async def _current_branch(repo: RepoConfig) -> str | None:

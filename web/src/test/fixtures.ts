@@ -79,6 +79,8 @@ export function repo(name: string): RepoConfig {
     git: true,
     default_branch: "main",
     current_branch: "main",
+    selected_place: null,
+    selected_place_gone: null,
     remote_url: `git@github.com:me/${name}.git`,
     icon: null,
     icon_color: null,

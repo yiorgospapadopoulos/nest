@@ -3,11 +3,13 @@ branch, in the worktree that has it checked out, or in a new Nest worktree with 
 checked out. Removing such a worktree never deletes the branch: Nest deletes no branch.
 """
 
+import shutil
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 import pytest
 
+from nestd.errors import ConflictError
 from nestd.events import types
 from nestd.gitops.runner import GitError
 from nestd.sessions.models import NewSession
@@ -120,6 +122,77 @@ async def test_another_branch_gets_a_nest_worktree_with_it_checked_out(
     assert [(e["path"], e["branch"], e["linked"]) for e in events] == [
         (str(path), "feat", [".env"])
     ]
+
+
+async def test_a_branch_whose_worktree_folder_was_deleted_by_hand_gets_a_new_one(
+    api: Api, tmp_path: Path
+) -> None:
+    repo = repo_of(tmp_path)
+    add_worktree(repo, tmp_path / "gone", "feat")
+    shutil.rmtree(tmp_path / "gone")
+
+    chat = await started(api, on_branch="feat")
+
+    path = Path(str(chat["worktree_path"]))
+    assert path.name.startswith("nest-")
+    assert git(path, "branch", "--show-current").strip() == "feat"
+
+
+async def test_only_the_stale_record_of_the_branch_asked_for_is_dropped(
+    api: Api, tmp_path: Path
+) -> None:
+    """Another worktree whose folder is only moved away must still work when it comes back."""
+    repo = repo_of(tmp_path)
+    add_worktree(repo, tmp_path / "gone", "feat")
+    add_worktree(repo, tmp_path / "moved", "other")
+    shutil.rmtree(tmp_path / "gone")
+    (tmp_path / "moved").rename(tmp_path / "away")
+
+    chat = await started(api, on_branch="feat")
+    (tmp_path / "away").rename(tmp_path / "moved")
+
+    assert git(Path(str(chat["worktree_path"])), "branch", "--show-current").strip() == "feat"
+    assert git(tmp_path / "moved", "branch", "--show-current").strip() == "other"
+
+
+async def test_a_locked_worktree_with_its_folder_gone_is_still_refused(
+    env: Env, tmp_path: Path
+) -> None:
+    await env.register()
+    locked = (tmp_path / "locked").resolve()
+    git(env.repo_path, "worktree", "add", "-q", "-b", "feat", str(locked))
+    git(env.repo_path, "worktree", "lock", str(locked))
+    shutil.rmtree(locked)
+
+    with pytest.raises(GitError, match="already used by worktree"):
+        await env.worktrees.check_out(env.repos.get("repo"), "0123456789", "feat", "base")
+
+
+async def test_a_branch_in_a_real_worktree_elsewhere_is_still_refused(
+    env: Env, tmp_path: Path
+) -> None:
+    await env.register()
+    other = (tmp_path / "other").resolve()
+    git(env.repo_path, "worktree", "add", "-q", "-b", "feat", str(other))
+
+    with pytest.raises(GitError, match="already used by worktree"):
+        await env.worktrees.check_out(env.repos.get("repo"), "0123456789", "feat", "base")
+
+    assert other.is_dir()
+
+
+async def test_a_branch_named_like_an_option_is_worked_on_not_detached(
+    api: Api, tmp_path: Path
+) -> None:
+    repo = repo_of(tmp_path)
+    git(repo, "update-ref", "refs/heads/-x", "HEAD")
+
+    chat = await started(api, on_branch="-x")
+
+    path = Path(str(chat["worktree_path"]))
+    assert git(path, "branch", "--show-current").strip() == "-x"
+    commit_file(path, "work.txt")
+    assert git(repo, "rev-parse", "refs/heads/-x") == git(path, "rev-parse", "HEAD")
 
 
 async def test_the_default_branch_is_based_on_its_own_commit(api: Api, tmp_path: Path) -> None:
@@ -358,7 +431,7 @@ async def test_a_branch_the_folder_switched_to_meanwhile_fails_to_check_out(env:
         branch="feat",
     )
 
-    with pytest.raises(GitError):
+    with pytest.raises(ConflictError, match=r"feat is in use at .* Finish that"):
         await prepare_worktree(session, repo, env.worktrees, env.store, env.bus)
 
     assert (await env.store.get(session.id)).worktree_path is None

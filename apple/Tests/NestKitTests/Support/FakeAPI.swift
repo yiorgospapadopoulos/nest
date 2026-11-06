@@ -87,6 +87,8 @@ final class FakeAPI: NestAPI {
         var branches: [String: [String]] = [:]
         /// Each repo's branch map (B96); a repo without one is not found.
         var branchMaps: [String: BranchMap] = [:]
+        /// How each repo's remotes answer a reload (B131).
+        var remotesRefresh = RemotesRefresh(remotes: [])
         var storage = StorageUsage(
             totalBytes: 1_400, chatsBytes: 800, attachmentsBytes: 500, artifactsBytes: 40,
             otherBytes: 60)
@@ -1223,6 +1225,37 @@ final class FakeAPI: NestAPI {
             throw APIError.notFound("unknown repo")
         }
         return map
+    }
+
+    func selectPlace(_ name: String, _ request: SelectPlaceRequest) async throws -> Repo {
+        await pass("selectPlace")
+        return try call("selectPlace", "\(name) \(Fixture.json(request))") { state in
+            let index = state.repos.firstIndex { $0.name == name }!
+            let branch = request.branch ?? request.worktreePath
+            state.repos[index].selectedPlace = branch.map {
+                SelectedPlace(branch: $0, worktreePath: request.worktreePath)
+            }
+            state.repos[index].selectedPlaceGone = nil
+            return state.repos[index]
+        }
+    }
+
+    func clearGonePlace(_ name: String) async throws -> Repo {
+        try call("clearGonePlace", name) { state in
+            let index = state.repos.firstIndex { $0.name == name }!
+            state.repos[index].selectedPlaceGone = nil
+            return state.repos[index]
+        }
+    }
+
+    func refreshRemotes(_ name: String) async throws -> RemotesRefresh {
+        await pass("refreshRemotes")
+        return try call("refreshRemotes", name) { $0.remotesRefresh }
+    }
+
+    func trackRemoteBranch(_ name: String, remote: String, branch: String) async throws -> String {
+        await pass("trackRemoteBranch")
+        return try call("trackRemoteBranch", "\(name) \(remote) \(branch)") { _ in branch }
     }
 
     func storage() async throws -> StorageUsage {

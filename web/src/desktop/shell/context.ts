@@ -34,6 +34,8 @@ export interface Shell {
   dropPane: (pane: string, target: string | null, side: DropSide) => void;
   closePane: (pane: string) => void;
   newChat: () => void;
+  // A new chat's draft on a new worktree from the branch, for that one chat.
+  newWorktreeFrom: (branch: string) => void;
   newTerminal: () => void;
   newBrowser: (url?: string) => void;
   openPixie: (id: string) => void;

@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.config.models import Color, Mascot
+from nestd.events import types
 from nestd.repos.branch_map import BranchMap, read_branch_map
+from nestd.repos.fetching import RefreshReport
 from nestd.repos.service import RepoView
 from nestd.sessions.commands import CommandList
 from nestd.sessions.repo_removal import remove_repo
@@ -67,6 +69,26 @@ class RepoOrder(BaseModel):
     order: list[str]
 
 
+class SelectPlace(BaseModel):
+    """One of the two, or neither to clear the selection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    branch: str | None = None
+    worktree_path: Path | None = None
+
+
+class TrackRemoteBranch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    remote: str
+    name: str
+
+
+class TrackedBranch(BaseModel):
+    branch: str
+
+
 @router.get("")
 async def list_repos(ctx: Context) -> list[RepoView]:
     """Plain folders that became git repositories are updated on the way (D041)."""
@@ -99,6 +121,7 @@ async def unregister_repo(name: str, ctx: Context, purge_sessions: bool = False)
         sessions=ctx.sessions,
         bus=ctx.bus,
         runs=ctx.runs,
+        places=ctx.places,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -122,12 +145,49 @@ async def repo_branches(name: str, ctx: Context) -> BranchList:
 
 @router.get("/{name}/branch-map")
 async def repo_branch_map(name: str, ctx: Context) -> BranchMap:
-    """The default branch, the project folder's branch and the branches of linked
-    worktrees, each with the branch it comes from (B96); `repo.branches_changed` says when
-    to read it again.
+    """Every local branch with the branch it comes from (B96, B131), and the branches only
+    a remote has; `repo.branches_changed` says when to read it again.
     """
     repo = await ctx.repos.git_repo(name)
     return await read_branch_map(repo, await ctx.sessions.worktree_bases(name))
+
+
+@router.put("/{name}/selected-place")
+async def select_place(name: str, body: SelectPlace, ctx: Context) -> RepoView:
+    """Set where new chats start in the project (B131); it moves nothing. Any call clears
+    `selected_place_gone`. 422 for an unknown branch or worktree, or for both; 409 for a
+    plain folder, or a repo git cannot read. Announced as `repo.updated`.
+    """
+    repo = await ctx.repos.git_repo(name)
+    await ctx.places.select(repo, body.branch, body.worktree_path)
+    await ctx.repos.announce(types.REPO_UPDATED, repo)
+    return await ctx.repos.view(repo)
+
+
+@router.delete("/{name}/selected-place/gone")
+async def clear_gone_place(name: str, ctx: Context) -> RepoView:
+    """Clear `selected_place_gone` once the user has been told (B131). It takes only a place
+    marked gone, so a selection another client just made stays. Announced as `repo.updated`.
+    """
+    repo = await ctx.repos.git_repo(name)
+    await ctx.places.forget_gone(name)
+    await ctx.repos.announce(types.REPO_UPDATED, repo)
+    return await ctx.repos.view(repo)
+
+
+@router.post("/{name}/refresh")
+async def refresh_repo(name: str, ctx: Context) -> RefreshReport:
+    """Fetch every remote, each reporting its own failure (B131). It waits for the slowest
+    remote; `repo.branches_changed` follows. 409 for a repo git cannot read.
+    """
+    return await ctx.fetcher.refresh(await ctx.repos.git_repo(name))
+
+
+@router.post("/{name}/remote-branches", status_code=status.HTTP_201_CREATED)
+async def track_remote_branch(name: str, body: TrackRemoteBranch, ctx: Context) -> TrackedBranch:
+    """A local branch tracking a remote-only one (B131); nothing is checked out."""
+    repo = await ctx.repos.git_repo(name)
+    return TrackedBranch(branch=await ctx.sessions.track_remote(repo, body.remote, body.name))
 
 
 @router.get("/{name}/link-suggestions")

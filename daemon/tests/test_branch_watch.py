@@ -88,6 +88,32 @@ async def test_worktrees_added_or_removed_and_a_branch_switch_are_announced(
     assert setup.names() == ["alpha", "alpha", "beta"]
 
 
+async def test_a_branch_made_or_deleted_in_a_terminal_is_announced(setup: Setup) -> None:
+    """Neither shows in `git worktree list`: a removed main stayed on screen."""
+    alpha = setup.tmp_path / "alpha"
+    await setup.watch.scan()
+
+    git(alpha, "branch", "wip")
+    await setup.watch.scan()
+    made = setup.names()
+    git(alpha, "branch", "-D", "wip")
+    await setup.watch.scan()
+
+    assert made == ["alpha"]
+    assert setup.names() == ["alpha", "alpha"]
+
+
+async def test_a_fetch_is_announced(setup: Setup) -> None:
+    """What moved was a tracking ref, for the behind notes and the remote rows."""
+    alpha = setup.tmp_path / "alpha"
+    await setup.watch.scan()
+
+    git(alpha, "update-ref", "refs/remotes/origin/wip", "HEAD")
+    await setup.watch.scan()
+
+    assert setup.names() == ["alpha"]
+
+
 async def test_a_repo_registered_later_is_recorded_first(setup: Setup) -> None:
     await setup.watch.scan()
     gamma = init_repo(setup.tmp_path / "gamma")

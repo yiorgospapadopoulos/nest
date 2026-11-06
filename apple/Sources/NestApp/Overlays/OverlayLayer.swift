@@ -52,6 +52,10 @@ struct OverlayLayer: View {
             ImageSheet(attachment: id).padding(.vertical, 40).padding(.horizontal, 48)
         case .work(let target):
             WorkSheet(target: target).padding(.vertical, 40)
+        case .branchTree(let project):
+            BranchTreeSheet(project: project)
+                .padding(.vertical, 40)
+                .frame(maxHeight: .infinity)
         case .usage:
             EmptyView()
         }
@@ -65,6 +69,8 @@ struct SheetFrame<Content: View>: View {
     var maxHeight: Double = 700
     /// A view id inside the content to bring into view when it appears.
     var scrollTarget: String?
+    /// False when the content holds its own scroll box and fills the sheet.
+    var scrolls = true
     @ViewBuilder let content: () -> Content
     @Environment(Shell.self) private var shell
 
@@ -87,26 +93,31 @@ struct SheetFrame<Content: View>: View {
             .padding(.trailing, 10)
             .frame(height: 42)
             .overlay(alignment: .bottom) { Separator() }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) { content() }
-                        .padding(EdgeInsets(top: 2, leading: 18, bottom: 16, trailing: 18))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .scrollIndicators(.never)
-                .onChange(of: scrollTarget, initial: true) { _, target in
-                    if let target {
-                        withAnimation(.smooth(duration: 0.3)) {
-                            proxy.scrollTo(target, anchor: .bottom)
+            if scrolls {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) { content() }
+                            .padding(EdgeInsets(top: 2, leading: 18, bottom: 16, trailing: 18))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .scrollIndicators(.never)
+                    .onChange(of: scrollTarget, initial: true) { _, target in
+                        if let target {
+                            withAnimation(.smooth(duration: 0.3)) {
+                                proxy.scrollTo(target, anchor: .bottom)
+                            }
                         }
                     }
                 }
+            } else {
+                VStack(alignment: .leading, spacing: 0) { content() }
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
         }
         .foregroundStyle(Palette.t1)
         .frame(width: width)
         .frame(maxHeight: maxHeight)
-        .fixedSize(horizontal: false, vertical: true)
+        .fixedSize(horizontal: false, vertical: scrolls)
         .sheetSurface()
     }
 }

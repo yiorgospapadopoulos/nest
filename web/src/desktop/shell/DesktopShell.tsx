@@ -32,7 +32,9 @@ import { Board } from "./Board.tsx";
 import { ShellContext, type Shell } from "./context.ts";
 import { loadDesk, saveDesk, type Desk } from "./desk.ts";
 import { Palette } from "./Palette.tsx";
+import type { NewChatChoice } from "../chat/placePicker.ts";
 import { initTextLeft } from "./frame/gitInit.ts";
+import { useGonePlaces } from "./frame/projectMap.ts";
 import { draftPane } from "./panes.ts";
 import { PixiesSidebar } from "./PixiesSidebar.tsx";
 import { RightPanel } from "./RightPanel.tsx";
@@ -108,6 +110,20 @@ export function DesktopShell() {
     };
     const update = (change: (s: ProjectState) => void) => {
       updateIn(project, change);
+    };
+    const openDraft = (place: NewChatChoice | null) => {
+      // From the Pixies tab, in the project it came from, as the Mac's newChat.
+      const name = project ?? desk.tabs.last ?? desk.tabs.open[0];
+      if (name === undefined) return;
+      // Settings sits over the chats, so it gives way for the draft.
+      setSettings(null);
+      setPalette(false);
+      if (project === null) setTabs((tabs) => selectProject(tabs, name));
+      const pane = draftPane();
+      updateIn(name, (s) => {
+        if (place !== null) s.draftPlaces.set(pane, place);
+        s.openChat(pane, size.current);
+      });
     };
     const setTabs = (change: (tabs: Desk["tabs"]) => Desk["tabs"]) => {
       setDesk((d) => ({ ...d, tabs: change(withRepos(d.tabs, repoNames)) }));
@@ -203,14 +219,10 @@ export function DesktopShell() {
         });
       },
       newChat: () => {
-        // From the Pixies tab, in the project it came from, as the Mac's newChat.
-        const name = project ?? desk.tabs.last ?? desk.tabs.open[0];
-        if (name === undefined) return;
-        // Settings sits over the chats, so it gives way for the draft.
-        setSettings(null);
-        setPalette(false);
-        if (project === null) setTabs((tabs) => selectProject(tabs, name));
-        updateIn(name, (s) => s.openChat(draftPane(), size.current));
+        openDraft(null);
+      },
+      newWorktreeFrom: (branch) => {
+        openDraft({ kind: "newWorktree", from: branch });
       },
       newTerminal: () => {
         // One more terminal every time, as the Mac's New terminal; none in General, whose
@@ -329,6 +341,7 @@ export function DesktopShell() {
   useShortcuts(shell);
   usePlatformEvents(shell);
   useWindowWatch(shell);
+  useGonePlaces();
 
   const pixies = project === null;
   const noPixies = pixies && Object.keys(state.pixies).length === 0;

@@ -2,6 +2,7 @@
 
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.repos.places import PlaceBook
 from nestd.repos.service import RepoInUseError, RepoService
 from nestd.runs.manager import RunManager
 from nestd.sessions.manager import SessionManager
@@ -15,6 +16,7 @@ async def remove_repo(
     sessions: SessionManager,
     bus: EventBus,
     runs: RunManager,
+    places: PlaceBook,
 ) -> None:
     """Without `purge_sessions`, a repo that still has sessions (archived too) is refused.
 
@@ -39,5 +41,6 @@ async def remove_repo(
     for session in owned:
         await sessions.purge(session.id, along_with=ids)
     await runs.forget_repo(repo.name)
+    await places.forget(repo.name)
     repos.unregister(repo.name)
     await bus.publish(types.REPO_REMOVED, {"name": repo.name})

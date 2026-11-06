@@ -87,6 +87,27 @@ enum Icon {
     }
 }
 
+/// Its one view at its own width, but no wider than `maxWidth`.
+struct WidthCap: Layout {
+    let maxWidth: Double
+
+    func sizeThatFits(
+        proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) -> CGSize {
+        subviews.first?.sizeThatFits(capped(proposal)) ?? .zero
+    }
+
+    func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+        subviews.first?.place(at: bounds.origin, proposal: capped(proposal))
+    }
+
+    private func capped(_ proposal: ProposedViewSize) -> ProposedViewSize {
+        ProposedViewSize(width: min(proposal.width ?? maxWidth, maxWidth), height: proposal.height)
+    }
+}
+
 /// A small status dot in the tone's color; hollow marks a missing or skipped result, such as
 /// a pull request without checks. No glow and no pulse.
 struct StatusDot: View {

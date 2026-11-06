@@ -89,6 +89,19 @@ public enum NewChatChoice: Sendable, Hashable {
         self = mode == .worktree ? .newWorktree(from: nil) : .inPlace
     }
 
+    /// Where a new chat starts with no pick of its own (B131): the selected place through
+    /// the mode the defaults set. A selected branch asks for that branch even when it is
+    /// the folder's, so a folder moved in a terminal is not worked on.
+    public init(selected: SelectedPlace?, mode: SessionMode?) {
+        if let selected, let path = selected.worktreePath {
+            self = .worktree(path: path, branch: selected.branch)
+        } else if mode == .worktree {
+            self = .newWorktree(from: selected?.branch)
+        } else {
+            self = selected.map { .onBranch($0.branch) } ?? .inPlace
+        }
+    }
+
     /// Nil on a branch: the daemon works in place when it is the folder's branch by then.
     public var mode: SessionMode? {
         switch self {
@@ -98,13 +111,27 @@ public enum NewChatChoice: Sendable, Hashable {
         }
     }
 
-    /// The branch a new worktree starts from named: the folder's when none was chosen, as
-    /// the picker marks it.
+    /// What it shows as: a new worktree from no named branch starts from the folder's, and
+    /// the folder's own branch is the folder. For display only; the request keeps the choice.
     public func resolved(_ repo: Repo?) -> NewChatChoice {
-        if case .newWorktree(nil) = self, let branch = repo?.checkoutBranch {
-            return .newWorktree(from: branch)
+        switch self {
+        case .newWorktree(nil):
+            repo?.checkoutBranch.map { .newWorktree(from: $0) } ?? self
+        case .onBranch(let branch) where branch == repo?.currentBranch:
+            .inPlace
+        default:
+            self
         }
-        return self
+    }
+
+    /// Whether the picker marks this row as where the choice starts.
+    public func marks(_ branch: BranchMap.Branch, repo: Repo?) -> Bool {
+        switch resolved(repo) {
+        case .inPlace: branch.here
+        case .newWorktree(let from): from == branch.name
+        case .worktree(let path, _): path == branch.worktree?.path
+        case .onBranch(let name): name == branch.name
+        }
     }
 }
 

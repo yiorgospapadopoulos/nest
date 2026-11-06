@@ -269,6 +269,15 @@ public protocol NestAPI: Sendable {
     func repoBranches(_ name: String) async throws -> [String]
     /// The repo's branches and worktrees, each with the branch it comes from (B96).
     func repoBranchMap(_ name: String) async throws -> BranchMap
+    /// Sets where the repo's new chats start and returns the repo (B131). Nothing open moves.
+    func selectPlace(_ name: String, _ request: SelectPlaceRequest) async throws -> Repo
+    /// Clears a selected place the daemon marked gone, and only that: a selection just made
+    /// by another client stays. Returns the repo.
+    func clearGonePlace(_ name: String) async throws -> Repo
+    /// Fetches every remote of the repo. A dead remote can take minutes.
+    func refreshRemotes(_ name: String) async throws -> RemotesRefresh
+    /// Makes the local branch for a remote-only one and returns its name.
+    func trackRemoteBranch(_ name: String, remote: String, branch: String) async throws -> String
     func storage() async throws -> StorageUsage
     func storageSettings() async throws -> StorageSettings
     func updateStorageSettings(_ settings: StorageSettings) async throws -> StorageSettings

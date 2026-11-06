@@ -544,6 +544,28 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("GET", "/api/repos/todo-ui/branch-map", response: BranchMapFixture.json) {
             _ = try await $0.repoBranchMap("todo-ui")
         },
+        RouteCase(
+            "PUT", "/api/repos/todo-ui/selected-place", body: #"{"branch":"feat/x"}"#,
+            response: Self.repoJSON
+        ) { _ = try await $0.selectPlace("todo-ui", SelectPlaceRequest(branch: "feat/x")) },
+        RouteCase(
+            "PUT", "/api/repos/todo-ui/selected-place", body: #"{"worktree_path":"/r/w"}"#,
+            response: Self.repoJSON
+        ) { _ = try await $0.selectPlace("todo-ui", SelectPlaceRequest(worktreePath: "/r/w")) },
+        RouteCase(
+            "PUT", "/api/repos/todo-ui/selected-place", body: "{}", response: Self.repoJSON
+        ) { _ = try await $0.selectPlace("todo-ui", SelectPlaceRequest()) },
+        RouteCase("DELETE", "/api/repos/todo-ui/selected-place/gone", response: Self.repoJSON) {
+            _ = try await $0.clearGonePlace("todo-ui")
+        },
+        RouteCase(
+            "POST", "/api/repos/todo-ui/refresh",
+            response: #"{"remotes": [{"name": "origin", "error": null}]}"#
+        ) { _ = try await $0.refreshRemotes("todo-ui") },
+        RouteCase(
+            "POST", "/api/repos/todo-ui/remote-branches",
+            body: #"{"name":"feat/x","remote":"origin"}"#, response: #"{"branch": "feat/x"}"#
+        ) { _ = try await $0.trackRemoteBranch("todo-ui", remote: "origin", branch: "feat/x") },
         RouteCase("GET", "/api/storage", response: storageJSON) { _ = try await $0.storage() },
         RouteCase("GET", "/api/storage/settings", response: #"{"archive_after_days": null}"#) {
             _ = try await $0.storageSettings()
@@ -1179,6 +1201,13 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
         let contentType = request.value(forHTTPHeaderField: "Content-Type")
         #expect(contentType == (route.body == nil ? nil : "application/json"))
+    }
+
+    /// B131: a dead remote holds the fetch for two minutes, past URLSession's 60 seconds.
+    @Test func aReloadOutlastsTheDaemonsFetchLimit() async throws {
+        transport.reply(200, #"{"remotes": []}"#)
+        _ = try await client.refreshRemotes("todo-ui")
+        #expect(transport.last.timeoutInterval == 150)
     }
 
     @Test func readsResponseValues() async throws {

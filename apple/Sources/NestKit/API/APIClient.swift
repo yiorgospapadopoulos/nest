@@ -492,6 +492,30 @@ public struct APIClient: NestAPI {
         try await get("repos", name, "branch-map")
     }
 
+    public func selectPlace(_ name: String, _ request: SelectPlaceRequest) async throws -> Repo {
+        try await call("PUT", ["repos", name, "selected-place"], body: request)
+    }
+
+    public func clearGonePlace(_ name: String) async throws -> Repo {
+        try await call("DELETE", ["repos", name, "selected-place", "gone"])
+    }
+
+    public func refreshRemotes(_ name: String) async throws -> RemotesRefresh {
+        var request = try encodedRequest("POST", ["repos", name, "refresh"], query: [], body: nil)
+        // Each remote may take the daemon's two minutes, past URLSession's default.
+        request.timeoutInterval = 150
+        return try decode(try await send(request))
+    }
+
+    public func trackRemoteBranch(
+        _ name: String, remote: String, branch: String
+    ) async throws -> String {
+        let made: TrackedBranch = try await call(
+            "POST", ["repos", name, "remote-branches"],
+            body: TrackRemoteBranchRequest(remote: remote, name: branch))
+        return made.branch
+    }
+
     public func storage() async throws -> StorageUsage {
         try await get("storage")
     }

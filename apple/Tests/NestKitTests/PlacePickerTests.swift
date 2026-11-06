@@ -3,154 +3,51 @@ import Testing
 
 @testable import NestKit
 
-/// B96: the "Work on" picker of a new chat (P1), built from the project's branch map: a
-/// block per branch that is not a worktree, the folder's first, each with its "New
-/// worktree from" row and the worktrees that come from it.
+/// B131: the "Work on" picker of a new chat (P1), built from the project's branch map: the
+/// top row pinned, every other branch in its lane, each offering a new worktree.
 @Suite struct PlacePickerTests {
-    typealias Line = PlacePickerLine
-
-    /// B96: the folder's branch leads, selectable as in place, then the others in map
-    /// order, each selectable to work on that branch itself, followed by its new worktree
-    /// row and its worktrees.
-    @Test func blocksStartWithTheFoldersBranch() {
+    /// B131: every branch has one row, under the pinned top row, with the same indent cap as
+    /// the small map.
+    @Test func everyBranchHasOneRowUnderThePinnedTop() {
         let picker = PlacePicker(map: BranchMapFixture.map)
-        #expect(picker.blocks.map(\.id) == ["wip", "main"])
-        let wip = picker.blocks[0].rows
-        #expect(wip.map(\.id) == ["wip", "new:wip", "pixie-search", "wip-icons", "wip-limits"])
-        #expect(wip.map(\.kind) == [.folder, .newWorktree, .worktree, .worktree, .worktree])
-        #expect(wip.map(\.depth) == [0, 0, 1, 1, 1])
-        #expect(wip.map(\.parentDepth) == [nil, nil, 0, 0, 0])
+        #expect(picker.top?.id == "main")
         #expect(
-            wip.map(\.choice) == [
-                .inPlace, .newWorktree(from: "wip"),
-                .worktree(path: "/r/.claude/worktrees/nest-pixie", branch: "pixie-search"),
-                .worktree(path: "/elsewhere/icons", branch: "wip-icons"),
-                .worktree(path: "/r/.claude/worktrees/nest-limits", branch: "wip-limits"),
+            picker.rows.map(\.id) == [
+                "b94-codex-settings", "lazy-scroll", "wip", "pixie-search", "wip-icons",
+                "wip-limits",
             ])
-        #expect(
-            wip.map(\.title) == [
-                "wip", "New worktree from wip", "pixie-search", "wip-icons", "wip-limits",
-            ])
-        #expect(wip.map(\.detail) == ["project folder", nil, nil, nil, nil])
-        // The branch's lane runs from its node through the rows to its last worktree.
-        let trunk = Line(depth: 0, lane: "wip", fromTop: true, toBottom: true)
-        #expect(
-            wip.map(\.lines) == [
-                [Line(depth: 0, lane: "wip", fromTop: false, toBottom: true)],
-                [trunk], [trunk], [trunk], [],
-            ])
-
-        let main = picker.blocks[1].rows
-        #expect(main.map(\.id) == ["main", "new:main", "b94-codex-settings", "lazy-scroll"])
-        #expect(main[0].kind == .branch)
-        #expect(main[0].choice == .onBranch("main"))
-        #expect(main[0].title == "main")
-        #expect(main[0].detail == "branch")
-        #expect(main[1].choice == .newWorktree(from: "main"))
-        #expect(picker.width == 40)
-    }
-
-    /// B96: a worktree made from another worktree's branch sits one level further in, in
-    /// the same block; a branch without worktrees still offers a new one; a worktree whose
-    /// parent is not shown gets a block of its own; with the folder detached, every block
-    /// follows the map's order.
-    @Test func nestsWorktreesAndKeepsOrphans() {
-        let map = BranchMapFixture.map([
-            BranchMapFixture.branch("main", parent: nil),
-            BranchMapFixture.branch("a", parent: "main", worktree: "/a"),
-            BranchMapFixture.branch("a2", parent: "a", worktree: "/a2"),
-            BranchMapFixture.branch("b", parent: "main"),
-            BranchMapFixture.branch("c", parent: "main", worktree: "/c"),
-            BranchMapFixture.branch("x", parent: "missing", worktree: "/x"),
-        ])
-        let picker = PlacePicker(map: map)
-        #expect(picker.blocks.map(\.id) == ["main", "b", "x"])
-
-        let main = picker.blocks[0].rows
-        #expect(main.map(\.id) == ["main", "new:main", "a", "a2", "c"])
-        #expect(main.map(\.depth) == [0, 0, 1, 2, 1])
-        #expect(main.map(\.parentDepth) == [nil, nil, 0, 1, 0])
-        let trunk = Line(depth: 0, lane: "main", fromTop: true, toBottom: true)
-        #expect(
-            main.map(\.lines) == [
-                [Line(depth: 0, lane: "main", fromTop: false, toBottom: true)],
-                [trunk],
-                [trunk, Line(depth: 1, lane: "a", fromTop: false, toBottom: true)],
-                [trunk],
-                [],
-            ])
-
-        let b = picker.blocks[1].rows
-        #expect(b.map(\.id) == ["b", "new:b"])
-        // The lane stops at the new worktree row when nothing follows.
-        #expect(
-            b.map(\.lines) == [
-                [Line(depth: 0, lane: "b", fromTop: false, toBottom: true)],
-                [Line(depth: 0, lane: "b", fromTop: true, toBottom: false)],
-            ])
-
-        let x = picker.blocks[2].rows
-        #expect(x.map(\.id) == ["x"])
-        #expect(x[0].depth == 0)
-        #expect(x[0].parentDepth == nil)
-        #expect(x[0].choice == .worktree(path: "/x", branch: "x"))
-        #expect(picker.width == 54)
-    }
-
-    /// B96: worktrees in a loop the daemon should never send still show, once each.
-    @Test func loopsShowOnce() {
-        let map = BranchMapFixture.map([
-            BranchMapFixture.branch("main", parent: nil),
-            BranchMapFixture.branch("p", parent: "q", worktree: "/p"),
-            BranchMapFixture.branch("q", parent: "p", worktree: "/q"),
-        ])
-        let picker = PlacePicker(map: map)
-        #expect(picker.blocks.map(\.id) == ["main", "p"])
-        #expect(picker.blocks[1].rows.map(\.id) == ["p", "q"])
-        #expect(picker.blocks[1].rows.map(\.depth) == [0, 1])
-        let empty = PlacePicker(map: BranchMapFixture.map([]))
-        #expect(empty.blocks.isEmpty)
-        #expect(empty.width == 26)
-        #expect(empty.height == 0)
-    }
-
-    /// B96: the list is as tall as its rows and dividers, up to about eleven rows, then
-    /// scrolls.
-    @Test func theListStopsGrowingAtElevenRows() {
-        let picker = PlacePicker(map: BranchMapFixture.map)
+        #expect(PlacePicker.visibleRows == 8)
         #expect(PlacePickerRow.height == 30)
-        #expect(PlacePicker.dividerHeight == 9)
-        #expect(picker.height == 9 * 30 + 9)
-        let many = BranchMapFixture.map(
-            [BranchMapFixture.branch("main", parent: nil)]
-                + (1...20).map {
-                    BranchMapFixture.branch("w\($0)", parent: "main", worktree: "/w\($0)")
-                })
-        #expect(PlacePicker(map: many).height == 330)
-        #expect(PlacePicker.maxHeight == 330)
+
+        let deep = PlacePicker(
+            map: BranchMapFixture.map([
+                BranchMapFixture.branch("main", parent: nil),
+                BranchMapFixture.branch("a", parent: "main"),
+                BranchMapFixture.branch("b", parent: "a"),
+                BranchMapFixture.branch("c", parent: "b"),
+                BranchMapFixture.branch("d", parent: "c"),
+            ]))
+        #expect(deep.rows.map(\.lane.depth) == [1, 2, 3, 3])
+        #expect(deep.rows.last?.lane.fromParent == "c")
     }
 
-    /// B96: lanes sit 14 points apart from 12, as P1 draws them.
-    @Test func lanesAreFourteenPointsApart() {
-        #expect(PlacePickerRow.x(0) == 12)
-        #expect(PlacePickerRow.x(1) == 26)
-    }
-
-    /// B96: each row tells VoiceOver what choosing it does.
-    @Test func rowsHaveAccessibilityLabels() {
+    /// B131: "New worktree from" is offered on every branch and worktree, the folder's and
+    /// the top row's too, and not on a branch only a remote has.
+    @Test func everyBranchAndWorktreeOffersANewWorktree() {
         let picker = PlacePicker(map: BranchMapFixture.map)
-        #expect(
-            picker.blocks[0].rows.map(\.accessibilityLabel) == [
-                "Work on wip in the project folder", "New worktree from wip",
-                "Work in worktree pixie-search", "Work in worktree wip-icons",
-                "Work in worktree wip-limits",
-            ])
-        #expect(picker.blocks[1].rows[0].accessibilityLabel == "Work on main, branch")
+        for row in picker.rows + [picker.top].compactMap({ $0 }) {
+            #expect(row.newWorktree == .newWorktree(from: row.id))
+        }
+        let remote = PlacePicker(
+            map: BranchMapFixture.map([
+                BranchMapFixture.branch("main", parent: nil, remote: "origin")
+            ]))
+        #expect(remote.top?.newWorktree == nil)
     }
 
-    /// B96 (A8): a click on a branch map row starts a chat there: in place on the folder's
-    /// branch, in a worktree's folder, or on any other branch itself.
-    @Test func aMapRowStartsAChatThere() throws {
+    /// B96: a row's click works in place on the folder's branch, in a worktree's folder, or
+    /// on any other branch itself.
+    @Test func aRowWorksWhereItIs() throws {
         let map = BranchMapFixture.map
         #expect(try #require(map.branch("wip")).newChatChoice == .inPlace)
         #expect(
@@ -159,26 +56,266 @@ import Testing
         #expect(try #require(map.branch("main")).newChatChoice == .onBranch("main"))
     }
 
-    /// B96 (A8): each map row says where its click starts the chat, with the chat dot's
-    /// state for VoiceOver.
-    @Test func mapRowsSayWhereTheChatStarts() {
-        let rows = BranchLanes(map: BranchMapFixture.map).rows
-        let byName = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
-        #expect(byName["wip"]?.newChatHelp == "New chat in the project folder")
-        #expect(byName["wip-icons"]?.newChatHelp == "New chat in this worktree")
-        #expect(byName["main"]?.newChatHelp == "New chat working on main")
+    /// B96: each row tells VoiceOver what choosing it does.
+    @Test func rowsHaveAccessibilityLabels() throws {
+        let picker = PlacePicker(map: BranchMapFixture.map)
+        #expect(picker.top?.accessibilityLabel == "Work on main, branch")
+        let wip = try #require(picker.rows.first { $0.id == "wip" })
+        #expect(wip.accessibilityLabel == "Work on wip in the project folder")
+        let icons = try #require(picker.rows.first { $0.id == "wip-icons" })
+        #expect(icons.accessibilityLabel == "Work in worktree wip-icons")
+    }
+
+    /// B131: a map row says its name, "here", its remote, its note and its chat's state.
+    @Test func mapRowsSayWhatTheyAre() throws {
+        let map = BranchMapFixture.map([
+            BranchMapFixture.branch("main", parent: nil, behind: 2, remote: "origin"),
+            BranchMapFixture.branch("wip", parent: "main", here: true, behind: 3),
+        ])
+        let rows = BranchLanes(map: map).rows
+        #expect(rows[0].accessibilityLabel(status: nil) == "main, only on origin")
         #expect(
-            byName["wip"]?.accessibilityLabel(status: nil)
-                == "wip, here, new chat in the project folder")
+            rows[1].accessibilityLabel(status: .running) == "wip, here, 3 behind, chat running")
+    }
+}
+
+/// B131: the table in the plan's answer 2: where a new chat starts with no pick of its own.
+@Suite struct SelectedPlaceChoiceTests {
+    let branch = SelectedPlace(branch: "wip")
+    let worktree = SelectedPlace(branch: "feat", worktreePath: "/r/w")
+
+    @Test func nothingSelectedFollowsTheMode() {
+        #expect(NewChatChoice(selected: nil, mode: .inPlace) == .inPlace)
+        #expect(NewChatChoice(selected: nil, mode: nil) == .inPlace)
+        #expect(NewChatChoice(selected: nil, mode: .worktree) == .newWorktree(from: nil))
+    }
+
+    @Test func aSelectedBranchIsWorkedOnOrStartsAWorktree() {
+        #expect(NewChatChoice(selected: branch, mode: .inPlace) == .onBranch("wip"))
+        #expect(NewChatChoice(selected: branch, mode: nil) == .onBranch("wip"))
+        #expect(NewChatChoice(selected: branch, mode: .worktree) == .newWorktree(from: "wip"))
+    }
+
+    @Test func aSelectedWorktreeIsJoinedInEitherMode() {
+        let joined = NewChatChoice.worktree(path: "/r/w", branch: "feat")
+        #expect(NewChatChoice(selected: worktree, mode: .inPlace) == joined)
+        #expect(NewChatChoice(selected: worktree, mode: .worktree) == joined)
+    }
+
+    /// Autopilot counts as worktree mode; a pick for this one chat wins over all of it.
+    @Test func autopilotCountsAsWorktreeAndAPickWins() {
+        let on = AutopilotChoice(on: true)
+        #expect(on.place(chosen: nil, selected: nil, mode: .inPlace) == .newWorktree(from: nil))
         #expect(
-            byName["main"]?.accessibilityLabel(status: .running)
-                == "main, new chat working on main, chat running")
+            on.place(chosen: nil, selected: branch, mode: .inPlace) == .newWorktree(from: "wip"))
         #expect(
-            byName["wip-icons"]?.accessibilityLabel(status: .needsYou)
-                == "wip-icons, new chat in this worktree, chat needs you")
+            on.place(chosen: nil, selected: worktree, mode: .inPlace)
+                == .worktree(path: "/r/w", branch: "feat"))
         #expect(
-            byName["wip-limits"]?.accessibilityLabel(status: .idle)
-                == "wip-limits, new chat in this worktree, chat idle")
+            on.place(chosen: .onBranch("x"), selected: branch, mode: .inPlace) == .onBranch("x"))
+        #expect(
+            AutopilotChoice().place(chosen: nil, selected: branch, mode: .inPlace)
+                == .onBranch("wip"))
+    }
+
+    /// The request says what the table says. A selected branch is asked for by name even
+    /// when it is the folder's, so a folder moved in a terminal is not worked on.
+    @Test func theRequestFollowsTheChoice() {
+        var repo = Fixture.repos[0]
+        repo.currentBranch = "wip"
+
+        let onBranch = NewChatPlace(.onBranch("wip"), typed: "", repo: repo)
+        #expect(onBranch.onBranch == "wip")
+        #expect(onBranch.mode == nil)
+
+        let fromBranch = NewChatPlace(.newWorktree(from: "feat"), typed: "", repo: repo)
+        #expect(fromBranch.mode == .worktree)
+        #expect(fromBranch.base == "feat")
+
+        let fromFolder = NewChatPlace(.newWorktree(from: nil), typed: "", repo: repo)
+        #expect(fromFolder.base == "wip")
+
+        let joined = NewChatPlace(.worktree(path: "/r/w", branch: "feat"), typed: "", repo: repo)
+        #expect(joined.worktreePath == "/r/w")
+        #expect(joined.mode == .worktree)
+    }
+
+    /// For display only, the folder's own branch shows as the folder.
+    @Test func theFoldersBranchShowsAsTheFolderButIsNotSentSo() throws {
+        var repo = Fixture.repos[0]
+        repo.currentBranch = "wip"
+        #expect(NewChatChoice.onBranch("wip").resolved(repo) == .inPlace)
+        #expect(NewChatChoice.onBranch("main").resolved(repo) == .onBranch("main"))
+        #expect(NewChatChoice.onBranch("wip").marks(try wipRow(), repo: repo))
+    }
+
+    private func wipRow() throws -> BranchMap.Branch {
+        try #require(BranchMapFixture.map.branch("wip"))
+    }
+
+    /// The picker marks the row the choice starts from.
+    @Test func thePickerMarksWhereTheChoiceStarts() throws {
+        let map = BranchMapFixture.map
+        var repo = Fixture.repos[0]
+        repo.currentBranch = "wip"
+        let main = try #require(map.branch("main"))
+        let icons = try #require(map.branch("wip-icons"))
+        #expect(NewChatChoice.inPlace.marks(try wipRow(), repo: repo))
+        #expect(!NewChatChoice.inPlace.marks(main, repo: repo))
+        #expect(NewChatChoice.newWorktree(from: nil).marks(try wipRow(), repo: repo))
+        #expect(NewChatChoice.newWorktree(from: "main").marks(main, repo: repo))
+        #expect(NewChatChoice.onBranch("main").marks(main, repo: repo))
+        #expect(
+            NewChatChoice.worktree(path: "/elsewhere/icons", branch: "x").marks(icons, repo: repo))
+    }
+}
+
+/// B131: selecting moves nothing and is told when it is gone.
+@MainActor
+@Suite struct SelectedPlaceStoreTests {
+    let api = FakeAPI()
+    let app: AppStore
+
+    init() async throws {
+        api.set { $0.repos = Fixture.repos }
+        app = AppStore(api: api, store: MemoryStore())
+        try await app.loadRepos()
+    }
+
+    @Test func aPickSendsThePUTAndNothingElse() async throws {
+        let before = try #require(app.repo("todo-ui"))
+        api.set { $0.calls = [] }
+        try await app.selectPlace("todo-ui", SelectPlaceRequest(branch: "wip"))
+        #expect(api.calls == [#"selectPlace todo-ui {"branch":"wip"}"#])
+        let after = try #require(app.repo("todo-ui"))
+        #expect(after.selectedPlace == SelectedPlace(branch: "wip"))
+        #expect(after.startBranch(map: nil) == "wip")
+        // What open chats read does not move.
+        #expect(after.currentBranch == before.currentBranch)
+        #expect(after.badge == before.badge)
+    }
+
+    /// Reports the project's selection gone, as the daemon does until it is cleared.
+    private func daemonReportsGone(_ name: String) {
+        api.set { state in
+            let index = state.repos.firstIndex { $0.name == "todo-ui" }!
+            state.repos[index].selectedPlace = nil
+            state.repos[index].selectedPlaceGone = name
+        }
+    }
+
+    private func clears() -> [String] {
+        api.calls.filter { $0 == "clearGonePlace todo-ui" }
+    }
+
+    /// The first load of a run tells it too: a selection can go while the app is shut.
+    @Test func aPlaceGoneAtTheFirstLoadGivesOneNoticeAndOneClear() async throws {
+        let fresh = AppStore(api: api, store: MemoryStore())
+        var gone: [String] = []
+        fresh.onPlaceGone = { gone.append($0) }
+        daemonReportsGone("wip")
+        try await fresh.loadRepos()
+        #expect(gone == ["wip"])
+        #expect(fresh.repo("todo-ui")?.selectedPlace == nil)
+        await api.untilCalls { $0.contains("clearGonePlace todo-ui") }
+        #expect(clears().count == 1)
+        // A PUT of nothing could wipe a click made that moment in another client.
+        #expect(!api.calls.contains { $0.hasPrefix("selectPlace") })
+    }
+
+    /// A list read before the clear landed still says gone, and tells nothing twice.
+    @Test func aListCrossingTheClearTellsNothingTwice() async throws {
+        var gone: [String] = []
+        app.onPlaceGone = { gone.append($0) }
+        daemonReportsGone("wip")
+        try await app.loadRepos()
+        await api.untilCalls { $0.contains("clearGonePlace todo-ui") }
+        daemonReportsGone("wip")
+        try await app.loadRepos()
+        #expect(gone == ["wip"])
+        #expect(clears().count == 1)
+    }
+
+    /// The name is told again once the project has had a selection since.
+    @Test func aNewSelectionThatGoesIsToldAgain() async throws {
+        var gone: [String] = []
+        app.onPlaceGone = { gone.append($0) }
+        daemonReportsGone("wip")
+        try await app.loadRepos()
+        await api.untilCalls { $0.contains("clearGonePlace todo-ui") }
+        try await app.selectPlace("todo-ui", SelectPlaceRequest(branch: "wip"))
+        daemonReportsGone("wip")
+        try await app.loadRepos()
+        #expect(gone == ["wip", "wip"])
+        await api.untilCalls { calls in calls.filter { $0 == "clearGonePlace todo-ui" }.count == 2 }
+    }
+
+    /// The clear is quiet: a failure shows nothing and is not tried again in this run.
+    @Test func aFailedClearIsNotRetried() async throws {
+        var gone: [String] = []
+        app.onPlaceGone = { gone.append($0) }
+        api.fail("clearGonePlace")
+        daemonReportsGone("wip")
+        try await app.loadRepos()
+        await api.untilCalls { $0.contains("clearGonePlace todo-ui") }
+        try await app.loadRepos()
+        #expect(gone == ["wip"])
+        #expect(clears().count == 1)
+    }
+
+    /// Going back to the folder from the detached row is a choice, so nothing is told.
+    @Test func clearingBySelectingNothingTellsNothing() async throws {
+        var gone: [String] = []
+        app.onPlaceGone = { gone.append($0) }
+        try await app.selectPlace("todo-ui", SelectPlaceRequest(branch: "wip"))
+        try await app.selectPlace("todo-ui", SelectPlaceRequest())
+        try await app.loadRepos()
+        #expect(gone.isEmpty)
+        #expect(app.repo("todo-ui")?.selectedPlace == nil)
+    }
+
+    /// An older daemon sends no gone name.
+    @Test func anOlderDaemonsRepoHasNoGoneName() {
+        #expect(Fixture.repos.allSatisfy { $0.selectedPlaceGone == nil })
+    }
+
+    /// The header says where new chats start: the selection, the folder's branch, else
+    /// "detached" only when the map says so: no map yet, or a branch with no commits, keeps
+    /// the default branch's name.
+    @Test func theHeaderNamesWhereNewChatsStart() {
+        var repo = Fixture.repos[0]
+        repo.currentBranch = "main"
+        #expect(repo.startBranch(map: nil) == "main")
+        repo.selectedPlace = SelectedPlace(branch: "wip")
+        #expect(repo.startBranch(map: nil) == "wip")
+
+        repo.selectedPlace = nil
+        repo.currentBranch = nil
+        repo.defaultBranch = "main"
+        var map = BranchMapFixture.map
+        map.currentBranch = nil
+        map.detached = true
+        #expect(repo.startBranch(map: map) == "detached")
+        map.detached = false
+        #expect(repo.startBranch(map: map) == "main")
+        #expect(repo.startBranch(map: nil) == "main")
+        repo.selectedPlace = SelectedPlace(branch: "wip")
+        map.detached = true
+        #expect(repo.startBranch(map: map) == "wip")
+        #expect(Fixture.plainRepo.startBranch(map: nil) == nil)
+    }
+
+    /// A project's own default decides the mode before the shared one; a plain folder works
+    /// in place.
+    @Test func theProjectsDefaultDecidesTheMode() {
+        var repo = Fixture.repos[0]
+        repo.worktree.isDefault = true
+        #expect(repo.mode(for: .inPlace) == .worktree)
+        repo.worktree.isDefault = false
+        #expect(repo.mode(for: .worktree) == .inPlace)
+        repo.worktree.isDefault = nil
+        #expect(repo.mode(for: .worktree) == .worktree)
+        #expect(Fixture.plainRepo.mode(for: .worktree) == .inPlace)
     }
 }
 
@@ -188,9 +325,9 @@ import Testing
     @Test func theStoreBuildsThePicker() async {
         let api = FakeAPI()
         api.set { $0.branchMaps = ["todo-ui": BranchMapFixture.map] }
-        let store = BranchMapStore(api: api)
+        let store = BranchMapStore(api: api, store: MemoryStore())
         #expect(store.picker("todo-ui") == nil)
         await store.show("todo-ui")
-        #expect(store.picker("todo-ui")?.blocks.count == 2)
+        #expect(store.picker("todo-ui")?.rows.count == 6)
     }
 }

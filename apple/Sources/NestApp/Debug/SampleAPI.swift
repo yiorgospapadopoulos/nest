@@ -28,6 +28,12 @@
         private var perfView: PerfView?
         private var updateStatus = EngineUpdates()
         private var usage = UsageSettings(refreshMinutes: 3)
+        /// Each project's selected place (B131).
+        private var places: [String: SelectedPlace] = [:]
+        /// todo-ui's folder on a detached HEAD.
+        var detached = false
+        /// Local branches made from todo-ui's remote rows.
+        private var tracked: [String] = []
         /// Chats' runs and their output, by session id (B108).
         private var runs: [String: RunStatus] = [:]
         private var runOutputs: [String: String] = [:]
@@ -109,10 +115,11 @@
             let icons: [String: (mascot: String, color: String)] = [
                 "todo-ui": ("bluebell", "#E2A16F"), "map-viewer": ("dragonfly", "#46A758"),
             ]
+            let (places, detached) = lock.withLock { (self.places, self.detached) }
             return try ["todo-ui", "weather-forecast", "map-viewer", "nest", "recipes"].map {
                 name in
                 let git = name != "recipes"
-                return try decode([
+                var repo: Repo = try decode([
                     "name": name, "path": "/Users/me/Projects/\(name)",
                     "default_branch": git ? "main" : NSNull(), "git": git,
                     "current_branch": git ? (name == "todo-ui" ? "redesign" : "main") : NSNull(),
@@ -122,6 +129,11 @@
                         "default": true, "link": [], "setup": [], "setup_timeout_seconds": 900,
                     ],
                 ])
+                repo.selectedPlace = places[name]
+                if detached, name == "todo-ui" {
+                    repo.currentBranch = nil
+                }
+                return repo
             }
         }
 
@@ -1454,8 +1466,9 @@
         }
 
         /// todo-ui as A7 draws it (B96): its folder on redesign with three Nest worktrees,
-        /// and two worktrees from main, one of them Claude Code's; the other projects are on
-        /// main alone.
+        /// and two worktrees from main, one of them Claude Code's, plus (B131) a stack past
+        /// the indent cap, branches behind their remotes and what only the remotes have; the
+        /// other projects are on main alone.
         func repoBranchMap(_ name: String) async throws -> BranchMap {
             typealias Branch = BranchMap.Branch
             guard name == "todo-ui" else {
@@ -1471,20 +1484,74 @@
                     worktree: BranchMap.Worktree(path: "\(folder)/\(path)", owner: owner),
                     here: false)
             }
+            let (made, detached) = lock.withLock { (tracked, self.detached) }
+            let onRemotes = [
+                BranchMap.RemoteBranch(remote: "origin", name: "feat/pricing-page"),
+                BranchMap.RemoteBranch(remote: "origin", name: "feat/testimonials"),
+                BranchMap.RemoteBranch(remote: "origin", name: "archive/2025-site"),
+                BranchMap.RemoteBranch(remote: "upstream", name: "feat/pricing-page"),
+                BranchMap.RemoteBranch(remote: "origin", name: "zz/pricing-page"),
+            ]
             return BranchMap(
-                defaultBranch: "main", currentBranch: "redesign",
+                defaultBranch: "main", currentBranch: detached ? nil : "redesign",
+                detached: detached,
                 branches: [
-                    Branch(name: "main", parent: nil, worktree: nil, here: false),
+                    Branch(name: "main", parent: nil, worktree: nil, here: false, behind: 3),
                     worktree("agent/mobile-nav", from: "main", "nest-c4"),
-                    Branch(name: "redesign", parent: "main", worktree: nil, here: true),
+                    Branch(name: "redesign", parent: "main", worktree: nil, here: !detached),
                     worktree("agent/contact-zod", from: "redesign", "nest-c1"),
                     worktree("agent/dark-polish", from: "redesign", "nest-c3"),
                     worktree("agent/search", from: "redesign", "nest-c8"),
                     worktree("agent/search-ui", from: "agent/search", "search-ui"),
-                    Branch(name: "release", parent: "main", worktree: nil, here: false),
+                    Branch(
+                        name: "agent/search-ui-filters", parent: "agent/search-ui", worktree: nil,
+                        here: false),
+                    Branch(
+                        name: "agent/search-ui-filters-empty-state",
+                        parent: "agent/search-ui-filters", worktree: nil, here: false),
+                    Branch(
+                        name: Self.longBranch, parent: "agent/search-ui-filters-empty-state",
+                        worktree: nil, here: false),
+                    Branch(name: "release", parent: "main", worktree: nil, here: false, behind: 12),
                     worktree("hotfix-login", from: "release", "nest-c9"),
                     worktree("worktree-pipeline", from: "main", "pipeline"),
-                ])
+                ] + made.map { Branch(name: $0, parent: "main", worktree: nil, here: false) },
+                remoteBranches: onRemotes.filter { !made.contains($0.name) })
+        }
+
+        /// Too long for the full tree without scrolling sideways.
+        static let longBranch =
+            "agent/search-ui-filters-empty-state-with-a-name-long-enough-to-pass-the-edge-of-the-"
+            + "sheet-and-then-some-more"
+
+        func selectPlace(_ name: String, _ request: SelectPlaceRequest) async throws -> Repo {
+            lock.withLock {
+                let branch = request.worktreePath?.split(separator: "/").last.map(String.init)
+                places[name] = (request.branch ?? branch).map {
+                    SelectedPlace(branch: $0, worktreePath: request.worktreePath)
+                }
+            }
+            let all = try await repos()
+            return all.first { $0.name == name } ?? all[0]
+        }
+
+        func clearGonePlace(_ name: String) async throws -> Repo {
+            let all = try await repos()
+            return all.first { $0.name == name } ?? all[0]
+        }
+
+        func refreshRemotes(_ name: String) async throws -> RemotesRefresh {
+            RemotesRefresh(remotes: [
+                .init(name: "origin"),
+                .init(name: "upstream", error: "could not resolve host: git.example.com"),
+            ])
+        }
+
+        func trackRemoteBranch(
+            _ name: String, remote: String, branch: String
+        ) async throws -> String {
+            lock.withLock { tracked.append(branch) }
+            return branch
         }
 
         func storage() async throws -> StorageUsage {

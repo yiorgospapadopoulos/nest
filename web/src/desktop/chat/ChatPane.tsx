@@ -20,6 +20,7 @@ import { Composer } from "./Composer.tsx";
 import { FileLinks } from "./FileLinks.tsx";
 import { Glyph } from "./glyphs.tsx";
 import { ChatHeaderParts, HeaderFrame, HeaderTitle } from "./PaneHeader.tsx";
+import type { NewChatChoice } from "./placePicker.ts";
 import { RunControlView } from "./RunControl.tsx";
 import { ReadOnlyRows, Transcript } from "./Transcript.tsx";
 import { useClaudeChat } from "./useClaudeChat.ts";
@@ -366,10 +367,13 @@ function WorkHeader({ title, running }: { title: string; running: boolean }) {
 /** A new chat's pane: "New chat" where the transcript will be, then its composer. */
 export function DraftPane({
   repo,
+  place,
   chrome,
   onCreated,
 }: {
   repo: string;
+  // Where it opened to start, for this one chat; null follows the selected place.
+  place: NewChatChoice | null;
   chrome: PaneChrome;
   onCreated: (session: Session) => void;
 }) {
@@ -385,7 +389,7 @@ export function DraftPane({
       }
     >
       <p className="dc-newph">New chat</p>
-      <Composer target={{ kind: "draft", repo, onCreated }} />
+      <Composer target={{ kind: "draft", repo, place, onCreated }} />
     </PaneFrame>
   );
 }
