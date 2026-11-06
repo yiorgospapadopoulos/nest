@@ -212,7 +212,7 @@ class RepoService:
                 msg = f"{root} is already registered as {existing.name!r}"
                 raise RepoExistsError(msg)
         save_repo(self._paths, repo)
-        await self._announce(types.REPO_ADDED, repo)
+        await self.announce(types.REPO_ADDED, repo)
         return repo
 
     def update_worktree_config(self, name: str, config: WorktreeConfig) -> RepoConfig:
@@ -227,6 +227,7 @@ class RepoService:
         announce the repo to other devices (IMP-09, B36, D104).
         """
         repo = self.registered(name)
+        default_branch = repo.default_branch
         if _GIT_KEYS & changes.keys():
             if not repo.git:
                 msg = f"{name} is not a git repository"
@@ -248,7 +249,9 @@ class RepoService:
         except ValidationError as error:
             raise InvalidRepoError(_problems(error)) from None
         save_repo(self._paths, repo)
-        await self._announce(types.REPO_UPDATED, repo)
+        await self.announce(types.REPO_UPDATED, repo)
+        if repo.default_branch != default_branch and self._bus is not None:
+            await self._bus.publish_ephemeral(types.REPO_BRANCHES_CHANGED, {"name": repo.name})
         return repo
 
     def confirm_remote_url(self, name: str, url: str) -> RepoConfig:
@@ -294,10 +297,11 @@ class RepoService:
             }
         )
         save_repo(self._paths, updated)
-        await self._announce(types.REPO_UPDATED, updated)
+        await self.announce(types.REPO_UPDATED, updated)
         return updated
 
-    async def _announce(self, event_type: str, repo: RepoConfig) -> None:
+    async def announce(self, event_type: str, repo: RepoConfig) -> None:
+        """Publish the repo as clients see it."""
         if self._bus is not None:
             view = await self.view(repo)
             await self._bus.publish(

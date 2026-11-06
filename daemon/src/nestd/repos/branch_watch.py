@@ -1,22 +1,23 @@
 """Announce a git project's branch map changing (B96), whoever changed it: a worktree
-added or removed by Nest, Claude Code or a terminal, or the project folder switched to
-another branch.
+added or removed by Nest, Claude Code or a terminal, the project folder switched to
+another branch, a branch made, moved or deleted, or a fetch.
 
 Every few seconds each git project's `git worktree list` (which names the project
-folder's branch) is compared with the last scan's. The first scan of a project only
-records it.
+folder's branch) and its branch refs are compared with the last scan's. The first scan of
+a project only records it.
 """
 
 import asyncio
 import logging
 from contextlib import suppress
 from datetime import timedelta
+from pathlib import Path
 
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.gitops.hardened import run_hardened_git
 from nestd.gitops.runner import GitError
-from nestd.repos.service import RepoService
+from nestd.repos.service import BRANCH_REF, REMOTE_REF, RepoService
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,7 @@ class BranchWatch:
             if not repo.git:
                 continue
             try:
-                signatures[repo.name] = await run_hardened_git(
-                    ["worktree", "list", "--porcelain", "-z"], repo.path
-                )
+                signatures[repo.name] = await _signature(repo.path)
             except GitError as error:
                 logger.debug("reading the worktrees of %s failed (%s)", repo.name, error)
                 if repo.name in self._signatures:
@@ -72,3 +71,12 @@ class BranchWatch:
             except Exception:
                 logger.exception("watching the branches of the projects failed")
             await asyncio.sleep(self._interval.total_seconds())
+
+
+async def _signature(path: Path) -> str:
+    checkouts = await run_hardened_git(["worktree", "list", "--porcelain", "-z"], path)
+    refs = await run_hardened_git(
+        ["for-each-ref", "--format=%(refname) %(objectname) %(symref)", BRANCH_REF, REMOTE_REF],
+        path,
+    )
+    return f"{checkouts}\0{refs}"

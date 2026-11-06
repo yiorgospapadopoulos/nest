@@ -468,6 +468,33 @@ async def test_remote_only_branches_are_listed_once_per_remote(
     ]
 
 
+async def test_changing_the_default_branch_refreshes_the_map(
+    api: Api, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A client that reads the map on `repo.branches_changed` was left with the old one."""
+    git(repo, "branch", "wip")
+    await api.ctx.branch_watch.stop()
+    announced: list[Mapping[str, JsonValue]] = []
+    publish = api.ctx.bus.publish_ephemeral
+
+    async def record(
+        event_type: str, payload: Mapping[str, JsonValue], session_id: str | None = None
+    ) -> object:
+        if event_type == types.REPO_BRANCHES_CHANGED:
+            announced.append(payload)
+        return await publish(event_type, payload, session_id)
+
+    monkeypatch.setattr(api.ctx.bus, "publish_ephemeral", record)
+
+    await api.http.patch("/api/repos/repo", json={"icon_color": "#112233"})
+    quiet = list(announced)
+    await api.http.patch("/api/repos/repo", json={"default_branch": "wip"})
+
+    assert quiet == []
+    assert announced == [{"name": "repo"}]
+    assert (await branch_map(api))["default_branch"] == "wip"
+
+
 async def test_branch_map_errors(api: Api, tmp_path: Path) -> None:
     unknown = await api.http.get("/api/repos/nope/branch-map")
     plain = await api.http.get("/api/repos/notes/branch-map")
