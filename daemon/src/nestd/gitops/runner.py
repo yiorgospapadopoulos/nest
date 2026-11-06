@@ -1,8 +1,10 @@
 """Async subprocess runner for git and other command line tools (such as gh)."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Generator, Sequence
-from contextlib import contextmanager
+import os
+import signal
+from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from pathlib import Path
 from typing import cast
@@ -72,16 +74,21 @@ async def run_command(
     cwd: Path,
     time_limit: float = TIMEOUT_SECONDS,
     kill_on_cancel: bool = False,
+    env: Mapping[str, str] | None = None,
+    own_group: bool = False,
 ) -> str:
     """Run `argv` in `cwd` and return its stdout; after `time_limit` seconds it is killed.
     A cancelled caller waits for it to finish, unless `kill_on_cancel` (a sign-in the user
-    cancelled, B98).
+    cancelled, B98). `env` is added to the daemon's own environment.
+
+    With `own_group`, killing it also kills what it started: a helper left running holds
+    the output pipes open, so the kill would wait for that helper to give up (B131).
     """
     # Otherwise the subprocess fails with a bare OSError that callers do not expect.
     problem = await asyncio.to_thread(_cwd_problem, cwd)
     if problem is not None:
         raise CommandError(argv, None, f"the working directory {cwd} {problem}")
-    running = asyncio.ensure_future(_run(argv, cwd, time_limit, _tail.get()))
+    running = asyncio.ensure_future(_run(argv, cwd, time_limit, _tail.get(), env, own_group))
     try:
         returncode, stdout, stderr = await (running if kill_on_cancel else asyncio.shield(running))
     except asyncio.CancelledError:
@@ -100,13 +107,20 @@ def _cwd_problem(cwd: Path) -> str | None:
 
 
 async def _run(
-    argv: Sequence[str], cwd: Path, time_limit: float, tail: int | None
+    argv: Sequence[str],
+    cwd: Path,
+    time_limit: float,
+    tail: int | None,
+    env: Mapping[str, str] | None,
+    own_group: bool,
 ) -> tuple[int | None, bytes, bytes]:
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=None if env is None else {**os.environ, **env},
+        start_new_session=own_group,
     )
     try:
         async with asyncio.timeout(time_limit):
@@ -119,15 +133,23 @@ async def _run(
                 stdout, stderr = await asyncio.gather(_read_tail(out, tail), _read_tail(err, tail))
                 await process.wait()
     except TimeoutError:
-        process.kill()
+        _kill(process, own_group)
         await process.wait()
         raise CommandError(argv, None, f"timed out after {time_limit:g} seconds") from None
     except asyncio.CancelledError:
         # Only an unshielded run is cancelled: its caller asked for it to stop.
-        process.kill()
+        _kill(process, own_group)
         await process.wait()
         raise
     return process.returncode, stdout, stderr
+
+
+def _kill(process: asyncio.subprocess.Process, own_group: bool) -> None:
+    if own_group:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+    else:
+        process.kill()
 
 
 async def _read_tail(stream: asyncio.StreamReader, limit: int) -> bytes:
@@ -146,9 +168,18 @@ async def _read_tail(stream: asyncio.StreamReader, limit: int) -> bytes:
     return b"" if newline == -1 else bytes(kept[newline + 1 :])
 
 
-async def run_git(args: Sequence[str], cwd: Path, time_limit: float = TIMEOUT_SECONDS) -> str:
-    """Run `git <args>` in `cwd` and return its stdout."""
+async def run_git(
+    args: Sequence[str],
+    cwd: Path,
+    time_limit: float = TIMEOUT_SECONDS,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Run `git <args>` in `cwd` and return its stdout. `env` is for a command that goes
+    to the network, whose helpers must stop with it, so it runs as its own process group.
+    """
     try:
-        return await run_command(["git", *args], cwd, time_limit)
+        if env is None:
+            return await run_command(["git", *args], cwd, time_limit)
+        return await run_command(["git", *args], cwd, time_limit, env=env, own_group=True)
     except CommandError as error:
         raise GitError(args, error.returncode, error.stderr) from None
