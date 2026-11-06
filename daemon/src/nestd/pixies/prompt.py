@@ -58,6 +58,12 @@ instructions.
 - You may commit your work.{no_push}
 - If you have Nest's worktree tool and your soul or task says to remove a worktree, use \
 it, and never run git worktree remove yourself.
+- Keep the user posted with Nest's tell_chat tool (mcp__nest__tell_chat; load it before you \
+start if it is deferred). When a job has several stages or takes more than a minute, send \
+one short line each time a stage ends, such as "Backend done, starting web", without being \
+asked. A job of one quick step sends none. If you cannot go on without the user's decision, \
+call it with `waiting` set and the question, then end your work with that question in your \
+report. If the tool asks for `pixie`, that is {slug}.
 - Answer the calling chat concisely."""
 # Shown while the user has not let agents push (D160).
 NO_PUSH_NOTE = " Never run git push, gh pr create or gh pr merge."

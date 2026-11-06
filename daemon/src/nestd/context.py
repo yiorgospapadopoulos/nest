@@ -634,6 +634,7 @@ class AppContext:
             defaults=lambda: context.settings.agents,
             store=bridged_calls,
             log=pixie_calls,
+            notifier=notifier,
             usage=usage.record_subagent,
         )
         sessions.bridge(call_runs)

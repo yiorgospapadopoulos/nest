@@ -32,6 +32,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal
 from uuid import uuid4
 
@@ -41,11 +42,13 @@ from nestd.config.models import AgentDefaults, PermissionMode
 from nestd.errors import NestError
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.notifications.notifier import Notifier
 from nestd.pixies.call_models import BridgedCall, BridgedState
 from nestd.pixies.call_store import BridgedCallStore
 from nestd.pixies.calls import PixieCallLog
 from nestd.pixies.models import Pixie, run_model
 from nestd.pixies.store import PixieStore
+from nestd.pixies.tell_chat import tell_chat_tool
 from nestd.providers.base import (
     CALL_PIXIE_TOOL,
     AgentTask,
@@ -104,6 +107,8 @@ NO_REPORT = "@{slug} finished without a report."
 FAILED_TEXT = "@{slug} failed: {error}"
 STOPPED_TEXT = "@{slug} was stopped before it finished."
 INTERRUPTED_TEXT = "@{slug} was interrupted, call it again to continue."
+NOT_CALLED = "This session is not on a call, so there is no chat to tell."
+NOT_WORKING = "@{slug} has no call running in this chat."
 type TaskEnd = Literal["completed", "failed", "stopped"]
 _STATUS: dict[BridgedState, TaskEnd] = {
     "done": "completed",
@@ -156,6 +161,7 @@ class PixieCallRuns:
         defaults: Callable[[], AgentDefaults],
         store: BridgedCallStore,
         log: PixieCallLog,
+        notifier: Notifier,
         usage: SubagentUsage | None = None,
         bind_seconds: float = BIND_SECONDS,
     ) -> None:
@@ -166,6 +172,7 @@ class PixieCallRuns:
         self._defaults = defaults
         self._store = store
         self._log = log
+        self._notifier = notifier
         self._usage = usage
         self._bind_seconds = bind_seconds
         # Calls in progress, by called session.
@@ -176,6 +183,21 @@ class PixieCallRuns:
         self._background: set[asyncio.Task[None]] = set()
 
     def tools(self, caller: Session, agents: ChatAgents) -> tuple[AgentTool, ...]:
+        """The tools of `caller`'s run for calling pixies and for those it called."""
+        return self._call_tools(caller, agents) + self._tell_tools(caller, agents)
+
+    def _tell_tools(self, caller: Session, agents: ChatAgents) -> tuple[AgentTool, ...]:
+        """How a pixie shows a line in the chat that called it (B133): a called session
+        speaks for itself, and a chat's own subagents through the chat's run.
+        """
+        if caller.called_by is not None:
+            return (tell_chat_tool((), partial(self._tell_as_called, caller.id)),)
+        slugs = [slug for slug in agents.pixies if slug not in agents.tool_calls]
+        if not slugs:
+            return ()
+        return (tell_chat_tool(slugs, partial(self._tell_as_subagent, caller.id, agents)),)
+
+    def _call_tools(self, caller: Session, agents: ChatAgents) -> tuple[AgentTool, ...]:
         """The call tool of `caller`'s run; none when it calls no pixie this way."""
         if not agents.tool_calls:
             return ()
@@ -310,6 +332,34 @@ class PixieCallRuns:
         if call is not None and not call.ended.done():
             call.ended.set_result(None)
         await self._stop_calls(session_id, background=True)
+
+    # What a working pixie tells its chat (B133).
+
+    async def _tell_as_called(
+        self, session_id: str, _slug: str | None, text: str, waiting: bool
+    ) -> None:
+        call = self._calls.get(session_id)
+        if call is None:
+            raise ToolRefusedError(NOT_CALLED)
+        await self._tell(call.caller, call.slug, text, waiting)
+
+    async def _tell_as_subagent(
+        self, chat: str, agents: ChatAgents, slug: str | None, text: str, waiting: bool
+    ) -> None:
+        pixie = None if slug is None else agents.pixies.get(slug)
+        if pixie is None or not await self._log.working(chat, pixie.id):
+            raise ToolRefusedError(NOT_WORKING.format(slug=slug))
+        await self._tell(chat, pixie.slug, text, waiting)
+
+    async def _tell(self, chat: str, slug: str, text: str, waiting: bool) -> None:
+        line = f"@{slug}: {text}"
+        kind = "pixie_waiting" if waiting else "pixie_update"
+        await self._bus.publish(types.SESSION_NOTICE, {"kind": kind, "text": line}, chat)
+        if waiting:
+            session = await self._sessions.get(chat)
+            await self._notifier.notify(
+                "pixie_waiting", session.id, session.repo, session.title, line
+            )
 
     # The call.
 

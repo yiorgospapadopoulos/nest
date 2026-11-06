@@ -172,6 +172,8 @@ class NotificationKinds(_Strict):
     stuck: bool = False
     # A pixie's report at or above `pixie_report_level` (B42, D109).
     pixie_report: bool = True
+    # A pixie a chat called stopped for the user's decision (B133).
+    pixie_waiting: bool = True
     # A chat paused at the usage limit; it goes on by itself after the reset (B78).
     usage_limit: bool = True
 

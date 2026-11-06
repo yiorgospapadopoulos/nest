@@ -33,6 +33,8 @@ def test_defaults_enable_agent_kinds_but_not_pr_checks_without_quiet_hours_or_nt
         "stuck": False,
         # Pixie reports at or above each pixie's own severity (B42).
         "pixie_report": True,
+        # A pixie a chat called stopped for the user's decision (B133).
+        "pixie_waiting": True,
         # A chat paused at the usage limit, instead of its turn's "finished" (B78).
         "usage_limit": True,
     }

@@ -19,6 +19,7 @@ _LABELS: dict[str, str] = {
     "ready_to_merge": "Ready to merge",
     "stuck": "Stuck",
     "pixie_report": "Report",
+    "pixie_waiting": "Waiting on you",
     "usage_limit": "Usage limit",
 }
 # Items that wait in the inbox open it; the rest open their chat.
@@ -26,7 +27,7 @@ _INBOX_KINDS = frozenset(
     {"needs_approval", "question", "review_ready", "ci_failed", "ready_to_merge", "stuck"}
 )
 # The agent is blocked until the user answers.
-_URGENT_KINDS = frozenset({"needs_approval", "question"})
+_URGENT_KINDS = frozenset({"needs_approval", "question", "pixie_waiting"})
 
 
 @dataclass(frozen=True)

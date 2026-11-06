@@ -184,6 +184,11 @@ class PixieCallLog:
         for session_id in await self._store.interrupt_all():
             await self._announce(session_id)
 
+    async def working(self, session_id: str, pixie_id: str) -> bool:
+        """Whether a call of the pixie in the chat's group runs."""
+        calls = await self._store.in_group(session_id, pixie_id)
+        return any(call.state == "running" for call in calls)
+
     async def group(self, session_id: str) -> list[GroupEntry]:
         """The chat's solo pixies and teams, in the order first called."""
         calls = list(reversed(await self._store.in_group(session_id)))
