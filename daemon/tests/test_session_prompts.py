@@ -93,6 +93,18 @@ async def test_a_permission_becomes_an_approval_item(env: Env) -> None:
     assert env.waiting == [(session_id, True), (session_id, False)]
 
 
+async def test_bypass_answers_what_the_engine_still_asks_about(env: Env) -> None:
+    """The engine asks about `rm` with a glob even in bypass: the user chose not to be asked."""
+    prompts = await env.prompts()
+    session = await env.store.list_sessions()
+    await env.store.update(session[0].id, permission_mode="bypassPermissions")
+
+    decision = await prompts.decide(PermissionRequest("Bash", {"command": "rm -f box/*"}))
+
+    assert decision == PermissionDecision("allow")
+    assert await env.queue.list_approvals(ApprovalStatus.PENDING) == []
+
+
 async def test_always_allows_the_tool_for_the_rest_of_the_session(env: Env) -> None:
     prompts = await env.prompts()
 

@@ -19,6 +19,7 @@ from nestd.providers.base import (
     QuestionAnswer,
     QuestionRequest,
 )
+from nestd.sessions.live import BYPASS
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import PixieCalls
 
@@ -82,6 +83,9 @@ class SessionPrompts:
             auto = await self._autopilot.permission(await self._owner(), request)
             if auto is not None:
                 return auto
+        if session.permission_mode == BYPASS:
+            # The engine still asks about a few commands in bypass, such as `rm` with a glob.
+            return PermissionDecision("allow")
         approval = await self._wait(
             ApprovalKind.PERMISSION,
             {
