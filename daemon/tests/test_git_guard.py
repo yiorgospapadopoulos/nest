@@ -1,3 +1,6 @@
+import os
+import subprocess
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -11,13 +14,26 @@ from claude_agent_sdk.types import (
 from nestd.providers.git_guard import (
     DENY_REASON,
     GIT_WRITE_RULES,
+    NO_PUSH_ENV,
     block_git_writes,
+    block_subagent_git_writes,
     is_git_write,
-    pixie_git_guard,
     tool_writes,
 )
 
 BLOCKED = [
+    "cd x && git push origin main",
+    "cd a && cd b && git push",
+    "cd x; git push && grep a b",
+    "cd $(git push) && grep a b",
+    'cd "$(git push)" && grep a b',
+    "cd `git push` && grep a b",
+    'grep "git push" b | sh',
+    'cd x && grep "git push" b | sh',
+    'echo "git push" | head -1 | sh',
+    'echo "git push" | sh',
+    'grep "git push" . | tail -5; git push',
+    'cd x && echo "git push" > y.sh',
     "git push -m 'x'",
     "git push",
     "git push origin main --force",
@@ -92,7 +108,18 @@ BLOCKED = [
     "env -S 'git push'",
     "python3 -c \"import subprocess; subprocess.run(['git', 'push'])\"",
     "printf 'git push' | sh",
-    "cat > ship.sh <<'EOF'\ngit push\nEOF",
+    "echo git push | bash -s",
+    "sh <<E\ngit push\nE",
+    "sh <<< 'git push'",
+    "cat <<E | sh\ngit push\nE",
+    "python3 <<E\nimport os; os.system('git push')\nE",
+    "cat <<E | python\nimport os; os.system('gh pr create')\nE",
+    "bash <(echo git push)",
+    "/bin/zsh -lc 'git push origin main'",
+    "bash -lc 'echo $(git push)'",
+    "ssh host 'cd x && git push'",
+    'echo "$(git push)"',
+    'git commit -m "run `git push`"',
     # Words built at run time.
     "$(echo git) push",
     "G=git; $G push",
@@ -100,6 +127,15 @@ BLOCKED = [
     "x=`git push`",
     "cmd=push; git $cmd",
     "git $(echo push) -m x",
+    "$(which git) push",
+    "`which git` push",
+    "$(echo git push)",
+    'C="git push"; $C',
+    'C="git push"; eval "$C"',
+    'C="git push"; sh -c "$C"',
+    "sudo $GIT push",
+    "$GH pr create",
+    "A=merge; gh pr $A",
     # Aliases.
     "git -c alias.ship=push ship",
     "git -c alias.ci=push ci -m x",
@@ -130,14 +166,161 @@ BLOCKED = [
     '"gh" pr create',
     "GH_REPO=o/r gh pr create",
     "gh pr -R ';' create",
-    # Accepted false positives: the command only mentions a blocked command.
-    "echo 'git push'",
-    'grep -r "git push" docs',
-    "echo git push",
-    "docker push $IMAGE",
+    # gh api calls that create or merge a pull request.
+    "gh api repos/o/r/pulls -f title=x -f head=y -f base=main",
+    "gh api --method POST /repos/o/r/pulls",
+    "gh api -X POST repos/{owner}/{repo}/pulls --input body.json",
+    "gh api -X PUT repos/o/r/pulls/3/merge",
+    "gh api repos/o/r/pulls/$N/merge --method=PUT -f merge_method=squash",
+    "gh api repos/o/r/merges -f base=main -f head=x",
+    "gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+    "gh api graphql -F query='mutation { createPullRequest(input: {}) { clientMutationId } }'",
+    "gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {}) { actor } }'",
+    "sh -c 'gh api -X PUT repos/o/r/pulls/3/merge'",
+    # gh api unless it is clearly a read (D160): direct commits, ref writes, and flags hidden.
+    "gh api -X PUT repos/o/r/contents/a.txt -f message=x -f content=eA==",
+    "gh api repos/o/r/git/refs -f ref=refs/heads/x -f sha=abc",
+    "gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc",
+    "gh api repos/o/r/merge-upstream -f branch=main",
+    "gh api -X POST repos/o/r/pulls/3/comments -f body=x",
+    "gh api -XPUT repos/o/r/contents/a.txt",
+    "gh api -X=PUT repos/o/r/contents/a.txt",
+    "gh api -iX PUT repos/o/r/contents/a.txt",
+    "gh api -iXPUT repos/o/r/contents/a.txt",
+    "gh api -if a=b repos/o/r/git/refs",
+    "gh api -fa=b repos/o/r/git/refs",
+    "gh api repos/o/r/git/refs --raw-field a=b",
+    "gh api repos/o/r/git/refs --input=b.json",
+    "gh api -X GET -X PUT repos/o/r/contents/a.txt",
+    "gh api -X $M repos/o/r/contents/a.txt",
+    'gh api "$URL"',
+    "gh api $ARGS",
+    "gh api $(cat args)",
+    "gh api repos/o/r/pulls/$(cat n)/merge -X PUT",
+    "gh api repos/o/r/pulls/`cat n`/merge -X PUT",
+    "gh $A -X PUT repos/o/r/contents/a.txt",
+    "gh $(echo api) -X PUT repos/o/r/contents/a.txt",
+    "gh api --jq graphql repos/o/r/git/refs -f a=b",
+    "gh api /graphql -f query=x",
+    # The path holds no meaning: flags decide (report item 8).
+    "gh api -X PUT repos/o/r/pulls/3/merge -f commit_title=graphql",
+    "gh api repos/o/graphql-tools/pulls -f title=x",
+    "gh api repos/o/r/pull%73 -f title=x",
+    # gh api graphql that may write.
+    "gh api graphql -f query='mutation { createCommitOnBranch(input: {}) { clientMutationId } }'",
+    "gh api graphql -f query='MUTATION { mergeBranch(input: {}) { clientMutationId } }'",
+    "gh api graphql -F query=@q.graphql",
+    "gh api graphql --input q.json",
+    'gh api graphql -f query="$Q"',
+    'gh api graphql -f query="$(cat q.graphql)"',
+    "gh api graphql -f query=`cat q.graphql`",
+    # The token, and other gh commands that write or run later.
+    "gh auth token",
+    'curl -H "Authorization: token $(gh auth token)" https://api.github.com/x',
+    "gh repo sync",
+    "gh repo sync o/r --force",
+    "gh alias set zz 'pr merge'",
+    "gh alias set --shell zz 'gh pr create --fill'",
+    "gh alias import aliases.yml",
+    "A=merge; gh pr $A 1",
+    # An apostrophe in a comment pairs with the next one (report item 1).
+    "# Let's ship it\ngit push origin main\n# Don't forget the tag",
+    "# Let's ship it\ngh pr create --fill\n# Don't forget the tag",
+    "# Let's ship it\ngh pr merge 1 --squash\n# Don't forget the tag",
+    # git or gh run inside another command (report item 3).
+    "git submodule foreach 'git push origin main'",
+    "git rebase -x 'gh pr merge 1' HEAD~1",
+    "git bisect run sh -c 'git push origin main'",
+    "git filter-branch --tree-filter 'git push origin main'",
+    "git -c core.pager='git push origin main' log",
+    "trap 'gh pr merge 1' EXIT",
+    "awk 'BEGIN{system(\"git push\")}'",
+    "osascript -e 'do shell script \"git push\"'",
+    "tcsh -c 'git push origin main'",
+    # Text in quotes hiding a real command (report item 4).
+    "echo \"don't $(gh pr merge 1 --admin) won't\"",
+    'echo "<<E"\ngit push origin main\nE',
+    "# <<E\ngit push origin main\nE",
+    "cat <<E |\ngit push origin main\nE\nsh",
+    'eval "$(cat <<E\ngit push origin main\nE\n)"',
+    "source /dev/stdin <<E\ngit push origin main\nE",
+    "$SHELL <<E\ngit push origin main\nE",
+    "python3 /dev/stdin <<E\nimport os; os.system('git push')\nE",
+    "python3 -c \"$(cat <<E\nimport os; os.system('git push')\nE\n)\"",
+    "source /dev/stdin <<< 'git push origin main'",
+    # Words built at run time (report item 5).
+    "g$()h pr merge 1",
+    "g$()it push origin main",
+    "$'\\x67it' push",
+    'C="git push origin main"; sh -c "$C" x',
+    'C="git push origin main"; eval "$C || true"',
+    'C="git push origin main"; python3 -c "$C"',
+    'C="git push origin main"; exec $C',
+    'C="git push origin main"; env $C',
+    'C="git push origin main"; X=1 $C',
+    'C="git push origin main"; if true; then $C; fi',
+    'C="gh pr merge 1 --admin"; exec $C',
+    "echo git push | sh -o errexit",
+    "echo git push | sh /dev/stdin",
+    "echo git push | xargs -I{} sh -c '{}'",
+    "echo git push | tee >(sh)",
+    # Lines that look harmless and are not.
+    "grep x src; git push",
+    "grep x src && git push",
+    "grep x src | sh -c 'git push'",
+    "grep x src\ngit push",
+    "echo hi & git push",
+    "echo hi > x; git push",
+    'echo "git push" | sh',
+    'echo "git push" > ship.sh',
+    'grep "$(git push)" src',
+    'rg --pre "git push" x',
+    'rg --p""re="git push" x',
+    "bash -lc 'grep x; git push'",
+    "bash -lc 'echo hi' && git push",
+    "docker push a; git push",
+    "docker push $(git push)",
+    "docker push `git push`",
+    "docker push ${A:-$(git push)}",
+    "docker push a git push",
+    "docker push $IMAGE && git push",
+    "/bin/zsh -lc 'docker push $IMAGE; git push'",
+    "/bin/zsh -lc 'docker push $(git push)'",
+    # Commit messages from a heredoc that are not what they look like.
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF\ngit push\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF\n)\"\ngit push",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF\n)\"; git push",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF\n)\" && git push",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF\n)\" ; gh pr merge 1",
+    "git add -A && git commit -m \"$(cat <<'EOF'\nfix git push\nEOF\n)\" && git push",
+    "git push && git commit -m \"$(cat <<'EOF'\nx\nEOF\n)\"",
+    'git commit -m "$(cat <<EOF\n$(git push)\nEOF\n)"',
+    'git commit -m "$(cat <<EOF\nfix git push\nEOF\n)"',
+    'git commit -m "$(cat <<"EOF"\nfix git push\nEOF\n)"',
+    "git commit -m \"$(cat <<'EOF'; git push\nx\nEOF\n)\"",
+    "git commit -m \"$(git push; cat <<'EOF'\nx\nEOF\n)\"",
+    "git commit --amend=x -m \"$(cat <<'EOF'\nx\nEOF\n)\" git push",
+    # bash 3.2 ends the `$(` at an unmatched `)`, even in the heredoc, and runs what follows.
+    'git commit -m "$(cat <<\'EOF\'\na) "; git push origin main; echo "\nEOF\n)"',
+    "git commit -m \"$(cat <<'EOF'\n' ( ' ) \"; git push origin main; echo \"\nEOF\n)\"",
+    'git commit -m "$(cat <<\'EOF\'\n\\(a) "; git push origin main; echo "\nEOF\n)"',
+    'git commit -m "$(cat <<\'EOF\'\n# (a\n) "; git push origin main; echo "\nEOF\n)"',
+    # Accepted false refusals: only the plainly harmless lines pass.
+    "cat <<E > n.md\ngit push\nE",
+    "cat > ship.sh <<'EOF'\ngit push\nEOF",
+    'echo "$X git push"',
+    'git commit -m "fix git push"',
+    "printf 'git push'",
+    'git stash push -m "$MSG"',
+    "docker push $IMAGE --quiet",
 ]
 
 ALLOWED = [
+    'cd repo && grep -rn "git push" .',
+    'cd "/tmp/a dir" && rg "gh pr create" .',
+    'grep -rn "git push" src | head -20',
+    'cd repo && grep -rn "git push" . 2>/dev/null | head -n 5',
+    'rg "git push" . | wc -l',
     "git status",
     "git diff",
     "git log --grep commit",
@@ -228,6 +411,52 @@ ALLOWED = [
     "git config alias.ci commit",
     "echo 'git commit'",
     "echo git commit",
+    # Lines plainly harmless that only mention a blocked command (B132).
+    'grep -rn "git push" src',
+    "grep 'gh pr merge' README.md",
+    'rg "gh pr create" .',
+    'rg -n "git push" --type py',
+    'echo "git push"',
+    "echo 'git push'",
+    "echo git push",
+    "echo gh pr merge 1\n",
+    "docker push $IMAGE",
+    'docker push "$IMAGE"',
+    "docker push ${IMAGE}",
+    "docker push ghcr.io/o/r:$TAG",
+    "git commit -m \"$(cat <<'EOF'\nfix: git push (again)\n\nit's fine\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nfix(daemon): stop git push\nEOF\n)\"",
+    "git commit -a -m \"$(cat <<'E'\ngh pr merge is off\nE\n)\"",
+    'git commit -am "$(cat <<\'EOF\'\nrun `git push` and $HOME; echo "x"\nEOF\n)"',
+    "git commit --amend --no-verify -m \"$(cat <<'EOF'\ngit push\nEOF\n)\"",
+    # The shell wrapper Codex runs commands in.
+    "bash -lc 'grep \"git push\" src'",
+    "/bin/zsh -lc \"grep 'gh pr create' .\"",
+    "/bin/zsh -lc 'docker push $IMAGE'",
+    # A `$` on a line that names neither push nor a pull request write.
+    'gh pr list --search "$Q"',
+    # gh api reads.
+    "gh api repos/o/r/pulls",
+    "gh api repos/o/r/pulls/3",
+    "gh api repos/o/r/pulls/3/merge",
+    "gh api repos/{owner}/{repo}/pulls --paginate",
+    "gh api repos/$O/$R/pulls",
+    "gh api repos/o/r/commits/$(git rev-parse HEAD)",
+    "gh api repos/o/r/pulls --jq '.[] | .title'",
+    "gh api repos/o/r/pulls | jq .",
+    "gh api -i repos/o/r",
+    "gh api -H 'Accept: application/json' repos/o/r",
+    "gh api --jq -f repos/o/r",
+    "gh api repos/o/r/pulls -X GET -f state=open",
+    "gh api --method GET search/issues -f q=x",
+    "gh api -XGET search/issues -F per_page=5",
+    "gh api graphql -f query='query { viewer { login } }'",
+    "gh api graphql -F owner=o -f query='query($owner: String!) { user(login: $owner) { id } }'",
+    "gh api graphql -f query='{ viewer { login } }' --jq .data",
+    # Other gh reads.
+    "gh auth status",
+    "gh repo view o/r",
+    "gh alias list",
 ]
 
 
@@ -328,9 +557,6 @@ async def test_hook_denies_blocked_bash_commands_with_a_reason() -> None:
     output = await block_git_writes(pre_tool_use({"command": "git push"}), "tu1", CONTEXT)
 
     assert output == DENIED
-    assert DENY_REASON == (
-        "Nest: pixies may commit, but pushing and opening or merging pull requests is left to you"
-    )
 
 
 async def test_hook_denies_other_tools_that_would_write() -> None:
@@ -348,22 +574,23 @@ async def test_hook_passes_other_commands_through(tool_input: dict[str, object])
     assert await block_git_writes(pre_tool_use(tool_input), "tu1", CONTEXT) == {}
 
 
-async def test_a_pixie_in_a_normal_chat_cannot_push_but_the_chat_can() -> None:
-    """B127: a chat may push when asked, but the pixie it calls never does."""
-    guard = pixie_git_guard(frozenset({"closer"}))
+async def test_a_subagent_in_a_normal_chat_cannot_push_but_the_chat_can() -> None:
+    """B127, and a pixie's ordinary subagent is `general-purpose`, which once passed."""
     pixie = pre_tool_use({"command": "git push origin main"})
     pixie["agent_type"] = "closer"
+    ordinary = pre_tool_use({"command": "git push origin main"})
+    ordinary["agent_type"] = "general-purpose"
     chat: dict[str, object] = dict(pre_tool_use({"command": "git push origin main"}))
     del chat["agent_id"], chat["agent_type"]
-    other = pre_tool_use({"command": "git push origin main"})
-    other["agent_type"] = "Explore"
+    # `claude --agent x`: the main agent has a type but no id.
+    named_chat = {**chat, "agent_type": "x"}
     merge = pre_tool_use({"command": "git merge --no-ff topic"})
-    merge["agent_type"] = "closer"
 
-    assert await guard(pixie, "tu1", CONTEXT) == DENIED
-    assert await guard(cast(HookInput, chat), "tu1", CONTEXT) == {}
-    assert await guard(other, "tu1", CONTEXT) == {}
-    assert await guard(merge, "tu1", CONTEXT) == {}
+    assert await block_subagent_git_writes(pixie, "tu1", CONTEXT) == DENIED
+    assert await block_subagent_git_writes(ordinary, "tu1", CONTEXT) == DENIED
+    assert await block_subagent_git_writes(cast(HookInput, chat), "tu1", CONTEXT) == {}
+    assert await block_subagent_git_writes(cast(HookInput, named_chat), "tu1", CONTEXT) == {}
+    assert await block_subagent_git_writes(merge, "tu1", CONTEXT) == {}
 
 
 async def test_hook_ignores_other_hook_events() -> None:
@@ -394,6 +621,15 @@ async def test_hook_ignores_other_hook_events() -> None:
         "sh -c 'git worktree remove ../other'",
         'git worktree "$ACTION" ../other',
         "W=worktree; git $W remove ../other",
+        # Inside another command, and hidden by text (report item 6).
+        "git rebase -x 'git worktree remove ../x' HEAD~1",
+        "git submodule foreach 'git worktree remove ../x'",
+        "git bisect run sh -c 'git worktree remove ../x'",
+        "trap 'git worktree remove ../x' EXIT",
+        'echo "<<E"\ngit worktree remove ../x\nE',
+        "# <<E\ngit worktree remove ../x\nE",
+        "cat <<E |\ngit worktree remove ../x\nE\nsh",
+        "# Let's tidy\ngit worktree remove ../x\n# Don't forget",
     ],
 )
 def test_autopilot_blocks_pushes_pull_requests_and_removing_worktrees(command: str) -> None:
@@ -419,6 +655,131 @@ def test_autopilot_blocks_pushes_pull_requests_and_removing_worktrees(command: s
 )
 def test_autopilot_may_do_the_rest_of_git(command: str) -> None:
     assert not is_git_write(command, worktrees=True)
+
+
+@pytest.mark.parametrize(
+    ("command", "flagged"),
+    [
+        ("git worktree remove ../other", True),
+        ("sh -c 'git worktree remove ../other'", True),
+        ("git push && git worktree remove ../other", True),
+        ("git push", False),
+        ("gh pr merge 1", False),
+        ("git -c alias.ship=push ship", False),
+        ("git config alias.p push", False),
+    ],
+)
+def test_with_pushes_allowed_only_removing_a_worktree_is_flagged(
+    command: str, flagged: bool
+) -> None:
+    assert is_git_write(command, pushes=False, worktrees=True) is flagged
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push",
+        "git worktree remove ../other",
+        "git --config-env=alias.p=X p",
+        "git -c 'alias.x=log \"a' x",
+        'git commit -m "unbalanced git push',
+    ],
+)
+def test_a_run_that_watches_nothing_flags_nothing(command: str) -> None:
+    assert not is_git_write(command, pushes=False)
+
+
+def test_a_tool_that_pushes_passes_with_pushes_allowed() -> None:
+    assert not tool_writes("mcp__github__create_pull_request", {"title": "x"}, pushes=False)
+
+
+def _git(
+    cwd: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603
+        ["git", *args],  # noqa: S607
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+
+@pytest.fixture
+def clone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """A clone with a commit that is not on its bare remote yet, and that remote."""
+    for name in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(name, "Nest")
+    for name in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(name, "nest@example.com")
+    remote = tmp_path / "remote.git"
+    work = tmp_path / "work"
+    assert _git(tmp_path, "init", "--bare", "-b", "main", str(remote)).returncode == 0
+    assert _git(tmp_path, "init", "-b", "main", str(work)).returncode == 0
+    (work / "a").write_text("a", encoding="utf-8")
+    assert _git(work, "add", "a").returncode == 0
+    assert _git(work, "commit", "-m", "one").returncode == 0
+    assert _git(work, "remote", "add", "origin", remote.as_uri()).returncode == 0
+    assert _git(work, "push", "origin", "main").returncode == 0
+    assert _git(work, "commit", "--allow-empty", "-m", "two").returncode == 0
+    return work, remote
+
+
+def _blocked_env() -> dict[str, str]:
+    return {**os.environ, **NO_PUSH_ENV}
+
+
+def _head(repo: Path) -> str:
+    return _git(repo, "rev-parse", "main").stdout
+
+
+def test_the_git_level_block_stops_a_real_push_and_leaves_fetch_and_pull(
+    clone: tuple[Path, Path],
+) -> None:
+    work, remote = clone
+    before = _head(remote)
+
+    pushed = _git(work, "push", "origin", "main", env=_blocked_env())
+
+    assert pushed.returncode != 0
+    assert "nest-pushing-is-off" in pushed.stderr
+    assert _head(remote) == before
+    assert _git(work, "fetch", "origin", env=_blocked_env()).returncode == 0
+    assert _git(work, "pull", "--no-edit", "origin", "main", env=_blocked_env()).returncode == 0
+
+
+@pytest.mark.parametrize(
+    "url", ["https://example.invalid/r.git", "git@example.invalid:r.git", "ssh://example.invalid/r"]
+)
+def test_the_git_level_block_never_reaches_a_network_remote(
+    clone: tuple[Path, Path], url: str
+) -> None:
+    work, _ = clone
+
+    pushed = _git(work, "push", url, "main", env=_blocked_env())
+
+    assert pushed.returncode != 0
+    assert "nest-pushing-is-off" in pushed.stderr
+
+
+def test_the_git_level_block_adds_no_remote_to_a_repo_without_origin(
+    clone: tuple[Path, Path],
+) -> None:
+    work, _ = clone
+    assert _git(work, "remote", "rename", "origin", "upstream").returncode == 0
+
+    assert _git(work, "remote", env=_blocked_env()).stdout.split() == ["upstream"]
+    assert _git(work, "fetch", "--all", env=_blocked_env()).returncode == 0
+    assert _git(work, "remote", "update", env=_blocked_env()).returncode == 0
+
+
+def test_without_the_block_the_same_push_works(clone: tuple[Path, Path]) -> None:
+    work, remote = clone
+
+    assert _git(work, "push", "origin", "main").returncode == 0
+    assert _head(remote) == _head(work)
 
 
 def test_a_pixie_may_still_commit() -> None:
