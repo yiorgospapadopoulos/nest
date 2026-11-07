@@ -1,0 +1,217 @@
+"""What the setup guide and `nest doctor` would get wrong in ways that hurt: opening Apple's
+install dialog by itself, sending someone to the wrong fix, or hanging on a locked keyring.
+"""
+
+import os
+import stat
+import time
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from nestd.doctor.checks import (
+    check_engine,
+    check_git,
+    check_secret_service,
+    check_service,
+    check_tailscale,
+    run_checks,
+)
+from nestd.doctor.machine import Machine, json_object, run_limited, within_limit
+from nestd.paths import AppPaths
+from nestd.platform import LINUX, MACOS
+from nestd.service.base import CommandResult, ServiceStatus
+
+
+class FakeService:
+    def __init__(self, status: ServiceStatus) -> None:
+        self._status = status
+        self.unit_path = Path("/nowhere")
+
+    def install(self) -> None: ...
+
+    def remove_legacy(self) -> bool:
+        return False
+
+    def uninstall(self) -> None: ...
+
+    def status(self) -> ServiceStatus:
+        return self._status
+
+
+class Commands:
+    """Answers by the command's first words; every command run is kept."""
+
+    def __init__(self, answers: Mapping[str, CommandResult] | None = None) -> None:
+        self.answers = answers or {}
+        self.ran: list[str] = []
+
+    def __call__(
+        self, args: Sequence[str], env: Mapping[str, str], limit: float = 10.0
+    ) -> CommandResult:
+        line = " ".join(Path(args[0]).name if i == 0 else a for i, a in enumerate(args))
+        self.ran.append(line)
+        for start, result in self.answers.items():
+            if line.startswith(start):
+                return result
+        return CommandResult(1, "", "")
+
+
+def _program(folder: Path, name: str) -> None:
+    path = folder / name
+    path.write_text("#!/bin/sh\n", encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _machine(
+    tmp_path: Path, commands: Commands, *, programs: Sequence[str] = (), mac: bool = True
+) -> Machine:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    (tmp_path / "home").mkdir(exist_ok=True)
+    for name in programs:
+        _program(bin_dir, name)
+    paths = AppPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        codex_home=tmp_path / "codex",
+    )
+    return Machine(
+        paths=paths,
+        platform=MACOS if mac else LINUX,
+        home=tmp_path / "home",
+        env={"PATH": str(bin_dir)},
+        port=8765,
+        service=FakeService(ServiceStatus(installed=True, loaded=True, detail="")),
+        read_secret=lambda: None,
+        packaged=True,
+        run=commands,
+        healthy=lambda _: True,
+    )
+
+
+def test_apples_git_stub_is_never_run(tmp_path: Path) -> None:
+    """Running it opens an install dialog, so the check may only look."""
+
+    class CleanMac(Machine):
+        def which(self, program: str) -> str | None:
+            return f"/usr/bin/{program}"
+
+    commands = Commands({"xcode-select -p": CommandResult(2, "", "no developer tools")})
+
+    check = check_git(CleanMac(**vars(_machine(tmp_path, commands))))
+
+    assert check.state == "missing"
+    assert check.fix is not None
+    assert check.fix.value == "xcode-select --install"
+    assert not [line for line in commands.ran if line.startswith("git")]
+
+
+def test_a_real_git_answers_with_its_version(tmp_path: Path) -> None:
+    commands = Commands({"git --version": CommandResult(0, "git version 2.43.0\n", "")})
+
+    check = check_git(_machine(tmp_path, commands, programs=["git"], mac=False))
+
+    assert (check.state, check.detail) == ("ok", "2.43.0")
+
+
+def test_an_engine_is_a_login_or_local_models(tmp_path: Path) -> None:
+    commands = Commands({"claude auth status": CommandResult(0, '{"loggedIn": false}', "")})
+    machine = _machine(tmp_path, commands, programs=["claude"])
+
+    assert check_engine(machine).state == "missing"
+
+    commands.answers = {"claude auth status": CommandResult(0, '{"loggedIn": true}', "")}
+    assert (check_engine(machine).state, check_engine(machine).detail) == ("ok", "Claude Code")
+
+
+def test_a_packaged_install_gets_the_one_line_repair(tmp_path: Path) -> None:
+    commands = Commands()
+    machine = replace(
+        _machine(tmp_path, commands),
+        service=FakeService(ServiceStatus(installed=False, loaded=False, detail="")),
+        env={"PATH": "", "NEST_RELEASE_URL": "http://127.0.0.1:41050"},
+    )
+
+    check = check_service(machine)
+
+    assert check.state == "missing"
+    assert check.fix is not None
+    assert check.fix.value == "curl -fsSL http://127.0.0.1:41050/install.sh | sh"
+
+
+def test_tailscale_walks_from_install_to_a_paired_phone(tmp_path: Path) -> None:
+    running = '{"BackendState": "Running", "Self": {"DNSName": "air.tail3f.ts.net."}}'
+    commands = Commands({"tailscale status": CommandResult(0, running, "")})
+    machine = _machine(tmp_path, commands, programs=["tailscale"], mac=False)
+
+    check = check_tailscale(machine)
+    assert check.fix is not None
+    assert check.fix.value == "tailscale serve --bg 8765"
+    assert check.detail == "air.tail3f.ts.net"
+
+    commands.answers = {
+        "tailscale status": CommandResult(0, running, ""),
+        "tailscale serve": CommandResult(0, '{"proxy": "http://127.0.0.1:8765"}', ""),
+    }
+    check = check_tailscale(machine)
+    assert (check.state, check.fix) == ("missing", None)
+
+
+def test_a_locked_keyring_cannot_hang_the_check(tmp_path: Path) -> None:
+    def stuck() -> None:
+        time.sleep(30)
+
+    started = time.monotonic()
+    failure = within_limit(stuck, limit=0.05)
+
+    assert failure == "it did not answer in time"
+    assert time.monotonic() - started < 5
+
+
+def test_a_missing_secret_service_says_what_to_install(tmp_path: Path) -> None:
+    def missing() -> None:
+        raise RuntimeError("no store")
+
+    machine = replace(_machine(tmp_path, Commands(), mac=False), read_secret=missing)
+
+    check = check_secret_service(machine)
+
+    assert check.state == "missing"
+    assert "gnome-keyring" in check.message
+
+
+def test_every_check_answers_with_nothing_installed_and_the_daemon_down(tmp_path: Path) -> None:
+    def down(_port: int) -> bool:
+        return False
+
+    machine = replace(
+        _machine(tmp_path, Commands(), mac=False),
+        service=FakeService(ServiceStatus(installed=False, loaded=False, detail="")),
+        healthy=down,
+    )
+
+    checks = run_checks(machine)
+
+    assert len({check.id for check in checks}) == len(checks)
+    assert next(check for check in checks if check.id == "service").state == "missing"
+
+
+def test_a_command_that_hangs_is_ended_and_a_missing_one_is_no_crash() -> None:
+    assert run_limited(["/bin/sleep", "30"], {}, 0.05).returncode == 124
+    assert run_limited(["/no/such/program"], {}, 1.0).returncode == 127
+
+
+@pytest.mark.parametrize("text", ["", "[]", "{not json"])
+def test_json_object_refuses_what_is_not_an_object(text: str) -> None:
+    assert json_object(text) is None
+
+
+def test_the_service_path_is_searched_first(tmp_path: Path) -> None:
+    machine = _machine(tmp_path, Commands())
+
+    parts = machine.search_env["PATH"].split(os.pathsep)
+
+    assert parts[-1] == str(tmp_path / "bin")
