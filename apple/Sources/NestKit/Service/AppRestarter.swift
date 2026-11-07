@@ -104,7 +104,8 @@ public enum AppRelaunch {
         let health = DaemonService.quoted(daemon.appending(path: "api/health").absoluteString)
         let opening = open(appPath: appPath, environment: environment)
         // The whole command line, so this script, which holds the path too, is not taken for it.
-        let running = DaemonService.quoted(Self.literal(appPath + "/Contents/MacOS/Nest") + "( .*)?")
+        let running = DaemonService.quoted(
+            Self.literal(appPath + "/Contents/MacOS/Nest") + "( .*)?")
         let waiting = [
             "say Nest \(pid) asked for \(DaemonService.quoted(version)): waiting for it to quit",
             waitForQuit(pid),
