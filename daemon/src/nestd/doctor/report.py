@@ -46,12 +46,6 @@ _PATTERNS = (
     (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*"), _REMOVED),
     # A command line's `--token value`.
     (re.compile(rf"(?i)(--{_LABEL}[= ])\S+"), rf"\1{_REMOVED}"),
-    # Anything labelled as a secret, in logs, JSON (escaped too) and URLs, quoted values whole.
-    (
-        re.compile(
-            rf"(?i)(?<!\w)({_LABEL}[\\\"']*\s*[:=]\s*)"
-            r"(?:\\?\"[^\"\n]*\"|'[^'\n]*'|[\\\"']*[^\s\"'&,;}\\]+)"
-        ),
         rf"\1{_REMOVED}",
     ),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"), _REMOVED),
@@ -59,6 +53,14 @@ _PATTERNS = (
     # Home folders of anyone, as paths also name the user.
     (re.compile(r"/(?:Users|home)/[^/\s\"':]+"), "~"),
 )
+
+
+# Anything labelled as a secret, in logs, JSON (escaped too) and URLs, quoted values whole.
+_LABELLED = (
+    re.compile(
+        rf"(?i)(?<!\w)({_LABEL}[\\\"']*\s*[:=]\s*)"
+        r"(?:\\?\"[^\"\n]*\"|'[^'\n]*'|[\\\"']*[^\s\"'&,;}\\]+)"
+    )
 
 
 class Report(BaseModel):
@@ -90,7 +92,10 @@ _PATH_PART_LIMIT = 24
 _WORD = re.compile(r"[a-z][a-z0-9_-]*[a-z]")
 # A log line's own start: time, level and the logger's dotted name, such as
 # `nestd.auth.token_socket:`, which would otherwise read as a label for what follows.
-_LOG_PREFIX = re.compile(r"^(\S+ \S+ [A-Z]+ [\w.]+: )(.*)$")
+_LOG_PREFIX = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} (?:DEBUG|INFO|WARNING|ERROR|CRITICAL) "
+    r"[A-Za-z_][\w.]*: )(.*)$"
+)
 # The routine answers of the daemon's own server, which say nothing about a problem.
 _ROUTINE = re.compile(r'uvicorn\.access: .*" [123]\d\d$')
 # How far back to look for the lines that are kept.
@@ -112,17 +117,21 @@ def _long_run(match: re.Match[str]) -> str:
     return run if path_like else _REMOVED
 
 
-def _clean(text: str) -> str:
+def _clean(text: str, *, labels: bool = True) -> str:
     for pattern, replacement in _PATTERNS:
         text = pattern.sub(replacement, text)
+    if labels:
+        text = _LABELLED[0].sub(_LABELLED[1], text)
     return _LONG_RUN.sub(_long_run, text)
 
 
 def _clean_line(line: str) -> str:
+    """A log line's start gets every rule but the labelled one, which would take the
+    logger's name, such as `nestd.auth.token_socket:`, for a label."""
     prefix = _LOG_PREFIX.match(line)
     if prefix is None:
         return _clean(line)
-    return prefix.group(1) + _clean(prefix.group(2))
+    return _clean(prefix.group(1), labels=False) + _clean(prefix.group(2))
 
 
 def redact(text: str, home: Path) -> str:

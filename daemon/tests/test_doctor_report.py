@@ -50,6 +50,8 @@ HOME = Path("/Users/alice")
         ("settings.api_key: abc123", "abc123"),
         ("blob aGVsbG8gd29y/bGQgZm9vYmFy/YmF6cXV4cXV1/eA9zZWNyZXQ stored", "aGVsbG8"),
         ("2026-11-07 09:59:44,920 INFO nestd.config: token=abc123", "abc123"),
+        ("token=abc123 x INFO y: shaped like a log line", "abc123"),
+        ("2026-11-07 09:59:44,920 INFO gho_16C7e42F292c6912E7710c838347Ae1: hi", "gho_16C7"),
         ("cookie=sid-1234", "sid-1234"),
         ("from alice.smith+nest@example.co.uk at 10:00", "alice.smith"),
         ("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJl", "eyJhbGci"),
