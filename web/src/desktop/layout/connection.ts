@@ -1,6 +1,8 @@
 // Reaching the daemon again, ported from NestKit's Backoff (EventStream.swift), DaemonText
 // and ServiceStarter: the banner's line and buttons, the service's start, and the retries.
 
+import type { Updating } from "../bridge.ts";
+
 /** The delay in seconds before retry `attempt` (1 for the first): 0.5, doubled, at most 30. */
 export function backoffDelay(attempt: number): number {
   return Math.min(30, 0.5 * 2 ** Math.max(0, attempt - 1));
@@ -41,9 +43,43 @@ export function installCommand(checkout: string | null): string {
   return `cd ${daemon} && uv run nestd service install`;
 }
 
-/** What repairs an install and keeps the data (release/install.sh). */
-export const INSTALL_LINE =
-  "curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/download/install.sh | sh";
+export const DEFAULT_RELEASE_URL =
+  "https://github.com/yiorgospapadopoulos/nest/releases/latest/download";
+
+/**
+ * What repairs an install and keeps the data (release/install.sh), from the address the
+ * install came from, as the daemon's install_line: a piped script cannot tell it otherwise.
+ */
+export function installLine(releaseUrl: string): string {
+  const url = releaseUrl.replace(/\/+$/, "");
+  return url === DEFAULT_RELEASE_URL
+    ? `curl -fsSL ${url}/install.sh | sh`
+    : `curl -fsSL ${url}/install.sh | NEST_RELEASE_URL=${url} sh`;
+}
+
+// An update's note older than this is left over, not an update under way.
+const UPDATE_FRESH_MS = 5 * 60_000;
+// After this an update says it is taking longer than usual; most take a few seconds.
+const UPDATE_SLOW_MS = 15_000;
+
+/** When it started, in ms; the daemon writes microseconds, which not every engine reads. */
+function startedAt(text: string): number {
+  return Date.parse(text.replace(/(\.\d{3})\d+/, "$1"));
+}
+
+/**
+ * What shows instead of the daemon-down screen while the daemon is down for an update
+ * (B130): the version it goes to, and whether it is slow. Null for none, or a stale one.
+ */
+export function updateView(
+  updating: Updating | null,
+  now: number,
+): { version: string; slow: boolean } | null {
+  if (updating === null) return null;
+  const started = startedAt(updating.started_at);
+  if (Number.isNaN(started) || now - started >= UPDATE_FRESH_MS) return null;
+  return { version: updating.to_version, slow: now - started >= UPDATE_SLOW_MS };
+}
 
 /** After a second failed try, so a daemon just starting shows no alarm. */
 export function daemonDown(connection: Connection): boolean {

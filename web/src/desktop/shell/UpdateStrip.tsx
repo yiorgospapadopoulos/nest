@@ -5,7 +5,6 @@ import {
   engineChange,
   restartQuestion,
   updateStrip,
-  useUpdateRestart,
   type UpdateStrip as Strip,
 } from "../../store/updates.ts";
 import { Icon } from "../../ui/Icon.tsx";
@@ -13,6 +12,7 @@ import { useHeightVar } from "../../ui/useHeightVar.ts";
 import { Confirm } from "../sheets/Alert.tsx";
 import { Button } from "../ui/controls.tsx";
 import "./frame/frame.css";
+import { useRelaunch } from "./useRelaunch.ts";
 
 /** Pinned to the bottom of the left bar, over the list: an update ready, or a notice. */
 export function UpdateStrip() {
@@ -43,7 +43,7 @@ function Notice({ text }: { text: string }) {
 function Ready({ strip }: { strip: Extract<Strip, { kind: "ready" }> }) {
   const { actions } = useStore();
   const box = useHeightVar("--update-strip");
-  const relaunch = useUpdateRestart("relaunch");
+  const relaunch = useRelaunch();
   const [open, setOpen] = useState(false);
   const { app, engines, relaunching } = strip;
   const question = relaunch.asking === null ? null : restartQuestion("relaunch", relaunch.asking);

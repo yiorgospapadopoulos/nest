@@ -102,7 +102,58 @@ describe("no daemon at launch", () => {
     expect(screen.queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
   });
 
-  it("starts the service on Try again and keeps the screen while it tries", async () => {
+  // Regression (the user's test run, 2026-11-07): the screen asked to install again for a
+  // service Nest can start itself, with GitHub's address for an install from elsewhere.
+  it("starts the service once by itself, then shows the line from the install's address", async () => {
+    vi.useFakeTimers();
+    let running = false;
+    const startService = vi.fn(() => Promise.resolve("started" as const));
+    const url = "http://192.168.64.1:41051";
+    const bridge = bridgeWith(
+      () => (running ? Promise.resolve(DAEMON) : Promise.reject(new Error("not running"))),
+      {
+        startService,
+        installState: () => Promise.resolve({ updating: null, releaseUrl: url, released: true }),
+      },
+    );
+    render(
+      <DesktopRoot
+        bridge={bridge}
+        open={() => ({ api: fakeApi(), connect: socketFactory().connect })}
+        storage={memoryStorage}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(startService).toHaveBeenCalledOnce();
+    expect(screen.getByText("Connecting to Nest")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(
+      screen.getByRole("heading", { name: "Nest's background service isn't running" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`curl -fsSL ${url}/install.sh | NEST_RELEASE_URL=${url} sh`),
+    ).toBeInTheDocument();
+    expect(startService).toHaveBeenCalledOnce();
+
+    startService.mockImplementation(() => {
+      running = true;
+      return Promise.resolve("started" as const);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(startService).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    vi.useRealTimers();
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("never shows the screen when starting the service brings Nest back", async () => {
     vi.useFakeTimers();
     let running = false;
     const startService = vi.fn(() => {
@@ -113,21 +164,65 @@ describe("no daemon at launch", () => {
       () => (running ? Promise.resolve(DAEMON) : Promise.reject(new Error("not running"))),
       { startService },
     );
-    const api = fakeApi();
     render(
       <DesktopRoot
         bridge={bridge}
-        open={() => ({ api, connect: socketFactory().connect })}
+        open={() => ({ api: fakeApi(), connect: socketFactory().connect })}
         storage={memoryStorage}
       />,
     );
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1600);
     });
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(startService).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /isn't running/ })).not.toBeInTheDocument();
+  });
+});
+
+// Regression (the user's test run, 2026-11-07): during an update the daemon-down screen
+// asked to install again, while the watcher was still bringing the new version up.
+describe("the daemon down for an update", () => {
+  it("shows the update, then that it is slow, and never the repair line", async () => {
+    vi.useFakeTimers();
+    let running = false;
+    const startService = vi.fn(() => Promise.resolve("started" as const));
+    const updating = {
+      from_version: "0.1.0",
+      to_version: "0.2.0",
+      started_at: new Date(Date.now()).toISOString().replace("Z", "123+00:00"),
+    };
+    const bridge = bridgeWith(
+      () => (running ? Promise.resolve(DAEMON) : Promise.reject(new Error("not running"))),
+      {
+        startService,
+        installState: () =>
+          Promise.resolve({ updating, releaseUrl: "https://example.com", released: true }),
+      },
+    );
+    render(
+      <DesktopRoot
+        bridge={bridge}
+        open={() => ({ api: fakeApi(), connect: socketFactory().connect })}
+        storage={memoryStorage}
+      />,
+    );
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByRole("heading", { name: "Updating Nest to 0.2.0..." })).toBeInTheDocument();
+    expect(screen.queryByText("Taking longer than usual")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(13_000);
+    });
+    expect(screen.getByText("Taking longer than usual")).toBeInTheDocument();
+    expect(screen.queryByText(/install\.sh/)).not.toBeInTheDocument();
+    expect(startService).not.toHaveBeenCalled();
+
+    running = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
     });
     vi.useRealTimers();
     expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
@@ -187,6 +282,32 @@ describe("a daemon lost while running", () => {
     });
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // Regression (the user's test run, 2026-11-07): with a new app in the update, the old app
+  // loaded again after the daemon's restart, only to quit for the swap.
+  it("hands a relaunch with a new app to the helper that opens it once", async () => {
+    const api = fakeApi();
+    api.checkUpdates.mockResolvedValue(
+      engineUpdates({ state: "ready", app: { version: "0.2.0", notes: "" } }),
+    );
+    const relaunchApp = vi.fn(() => Promise.resolve(true));
+    render(
+      <DesktopRoot
+        bridge={bridgeWith(() => Promise.resolve(DAEMON), { relaunchApp })}
+        open={() => ({ api, connect: socketFactory().connect })}
+        storage={memoryStorage}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Relaunch to update" }));
+
+    await vi.waitFor(() => {
+      expect(relaunchApp).toHaveBeenCalledWith("0.2.0");
+    });
+    expect(api.relaunchUpdate).toHaveBeenCalledOnce();
+    expect(api.relaunchUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      relaunchApp.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("shows the banner with Retry and recovers when the daemon answers", async () => {

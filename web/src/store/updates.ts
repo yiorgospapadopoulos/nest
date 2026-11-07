@@ -84,15 +84,16 @@ export function restartQuestion(kind: UpdateRestart, busy: number) {
 
 /**
  * Relaunch or Undo as a button runs it: Relaunch goes straight on when no chat would stop,
- * otherwise `asking` holds the chats mid-turn until `confirm` or `cancel`.
+ * otherwise `asking` holds the chats mid-turn until `confirm` or `cancel`. `after` follows
+ * a relaunch the daemon took (updateActions' relaunchUpdate).
  */
-export function useUpdateRestart(kind: UpdateRestart) {
+export function useUpdateRestart(kind: UpdateRestart, after?: () => Promise<unknown>) {
   const { state, actions } = useStore();
   const [asking, setAsking] = useState<number | null>(null);
   const reading = useRef(false);
   const confirm = () => {
     setAsking(null);
-    void (kind === "relaunch" ? actions.relaunchUpdate() : actions.undoUpdate());
+    void (kind === "relaunch" ? actions.relaunchUpdate(after) : actions.undoUpdate());
   };
   const start = async () => {
     if (reading.current) return;

@@ -73,7 +73,16 @@ export function updateActions(
       return (await read())?.busy_chats ?? known?.busy_chats ?? 0;
     },
 
-    relaunchUpdate: () => restart("relaunch", () => api.relaunchUpdate()),
+    /**
+     * `after` runs once the daemon took the relaunch, as the desktop app's handing over to
+     * the new app; if it fails, the page waits for the daemon as without it.
+     */
+    relaunchUpdate: (after?: () => Promise<unknown>) =>
+      restart("relaunch", async () => {
+        const answer = await api.relaunchUpdate();
+        await after?.().catch(() => undefined);
+        return answer;
+      }),
     undoUpdate: () => restart("undo", () => api.undoUpdate()),
 
     hideUpdateStrip: () => {

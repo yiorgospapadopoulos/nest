@@ -8,14 +8,14 @@ import { deviceStorage } from "../store/legacyKeys.ts";
 import { StoreProvider } from "../store/StoreProvider.tsx";
 import { connectionLost } from "../store/updates.ts";
 import { DesktopToast } from "./ui/Toast.tsx";
-import type { Bridge, DaemonConnection } from "./bridge.ts";
+import type { Bridge, DaemonConnection, InstallState } from "./bridge.ts";
 import { ApiContext, BridgeContext, useBridge } from "./context.ts";
 import { TranscriptPage } from "./chat/TranscriptPage.tsx";
 import type { TranscriptTarget } from "./chat/transcriptTarget.ts";
-import { daemonDown } from "./layout/connection.ts";
+import { DEFAULT_RELEASE_URL, daemonDown, installLine, updateView } from "./layout/connection.ts";
 import { Pill } from "./Pill.tsx";
 import { ConnectionBanner, Connecting } from "./shell/ConnectionBanner.tsx";
-import { DaemonDown } from "./shell/DaemonDown.tsx";
+import { DaemonDown, UpdatingNest } from "./shell/DaemonDown.tsx";
 import { DesktopShell } from "./shell/DesktopShell.tsx";
 import { useReconnect } from "./shell/useReconnect.ts";
 import { WindowFrame } from "./shell/WindowFrame.tsx";
@@ -121,30 +121,78 @@ export function DesktopRoot({
   );
 }
 
+// systemctl returns before the daemon listens; it gets a moment, as Try again's start.
+const SETTLE_MS = 1500;
+// How often the update's screen looks again, so it moves on as soon as the daemon is back.
+const UPDATE_TICK_MS = 1000;
+
+const wait = (ms: number) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
 /**
  * Before the daemon first answers: the frame and Connecting, then what to do about it (B130,
- * screens Z), with what stops the daemon when the Tauri side can tell. A small window stays
- * empty.
+ * screens Z). While an update has the daemon down, its progress instead, never the repair
+ * line. Otherwise the app first starts the service once by itself, and only if the daemon
+ * is still down shows the line, or what stops it when the Tauri side can tell. A small
+ * window stays empty.
  */
 function Launch({ pill, found }: { pill: boolean; found: () => Promise<boolean> }) {
   const bridge = useBridge();
   const [problem, setProblem] = useState<string | null>(null);
+  const [install, setInstall] = useState<InstallState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [started, setStarted] = useState(false);
+  const startedOnce = useRef(false);
   const tried = useCallback(async () => {
-    const reached = await found().catch(() => false);
-    if (!reached) setProblem(await bridge.daemonProblem().catch(() => null));
-    return reached;
+    if (await found().catch(() => false)) return true;
+    const [why, state] = await Promise.all([
+      bridge.daemonProblem().catch(() => null),
+      bridge.installState().catch(() => null),
+    ]);
+    const at = Date.now();
+    setProblem(why);
+    setInstall(state);
+    setNow(at);
+    // The watcher is at work during an update; starting the service would get in its way.
+    if (updateView(state?.updating ?? null, at) !== null || startedOnce.current) return false;
+    startedOnce.current = true;
+    const running = await bridge.startService().then(
+      (answer) => answer === "started",
+      () => false,
+    );
+    if (running) await wait(SETTLE_MS);
+    setStarted(true);
+    return running && (await found().catch(() => false));
   }, [bridge, found]);
   const reconnect = useReconnect(true, tried);
+  const update = updateView(install?.updating ?? null, now);
+  const updating = update !== null;
+  const { retry } = reconnect;
+  useEffect(() => {
+    if (!updating) return;
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      retry();
+    }, UPDATE_TICK_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [updating, retry]);
   // Kept once shown, as Try again starts the retries over.
   const [down, setDown] = useState(false);
-  if (!down && daemonDown(reconnect.connection)) setDown(true);
+  if (!down && started && update === null && daemonDown(reconnect.connection)) setDown(true);
   if (pill) return null;
   return (
     <div className="dk">
       <WindowFrame>
-        {down ? (
+        {update !== null ? (
+          <UpdatingNest version={update.version} slow={update.slow} />
+        ) : down ? (
           <DaemonDown
             problem={problem}
+            line={installLine(install?.releaseUrl ?? DEFAULT_RELEASE_URL)}
             starting={reconnect.service.kind === "starting"}
             onTryAgain={() => {
               reconnect.startService();
