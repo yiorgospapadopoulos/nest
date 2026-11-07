@@ -9,6 +9,7 @@ import {
   ledger,
   linuxKeys,
   movedBy,
+  PART_NAMES,
   refreshInterval,
   segments,
   shareText,
@@ -24,11 +25,15 @@ const usage = (
   attachments: number,
   artifacts: number,
   other: number,
+  { engines = 0, backups = 0, logs = 0 } = {},
 ): StorageUsage => ({
   total_bytes: total,
   chats_bytes: chats,
   attachments_bytes: attachments,
   artifacts_bytes: artifacts,
+  engines_bytes: engines,
+  backups_bytes: backups,
+  logs_bytes: logs,
   other_bytes: other,
 });
 
@@ -44,8 +49,13 @@ describe("storage words", () => {
   });
 
   it("shares each part of the total, none while empty", () => {
-    const parts = shares(usage(1_000_000_000, 500_000_000, 250_000_000, 0, 250_000_000));
-    expect(parts.map((p) => p.share)).toEqual([0.5, 0.25, 0, 0.25]);
+    const parts = shares(
+      usage(1_000_000_000, 400_000_000, 200_000_000, 0, 100_000_000, {
+        engines: 200_000_000,
+        backups: 100_000_000,
+      }),
+    );
+    expect(parts.map((p) => p.share)).toEqual([0.4, 0.2, 0, 0.2, 0.1, 0, 0.1]);
     expect(shares(usage(0, 0, 0, 0, 0))).toEqual([]);
   });
 
@@ -58,10 +68,29 @@ describe("storage words", () => {
       "75%",
       "100%",
     ]);
-    const lines = ledger(usage(18_900_000, 14_000_000, 1_500_000, 8_000, 3_392_000));
-    expect(lines.map((l) => l.size)).toEqual(["14 MB", "2 MB", "8 KB", "3 MB"]);
-    expect(lines.map((l) => l.share)).toEqual(["74%", "8%", "<1%", "18%"]);
-    expect(ledger(usage(0, 0, 0, 0, 0)).map((l) => l.share)).toEqual(["0%", "0%", "0%", "0%"]);
+    const lines = ledger(
+      usage(18_900_000, 14_000_000, 1_500_000, 8_000, 392_000, { logs: 3_000_000 }),
+    );
+    expect(lines.map((l) => PART_NAMES[l.part])).toEqual([
+      "Chats",
+      "Attachments",
+      "Artifacts",
+      "Engines",
+      "Backups",
+      "Logs",
+      "Other",
+    ]);
+    expect(lines.map((l) => l.size)).toEqual([
+      "14 MB",
+      "2 MB",
+      "8 KB",
+      "0 bytes",
+      "0 bytes",
+      "3 MB",
+      "392 KB",
+    ]);
+    expect(lines.map((l) => l.share)).toEqual(["74%", "8%", "<1%", "0%", "0%", "16%", "2%"]);
+    expect(ledger(usage(0, 0, 0, 0, 0)).map((l) => l.share)).toEqual(Array(7).fill("0%"));
   });
 
   it("keeps tiny parts visible and fills the width", () => {

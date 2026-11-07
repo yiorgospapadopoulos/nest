@@ -1,14 +1,20 @@
-"""How much disk space Nest's data folder uses, by kind (D104)."""
+"""How much disk space Nest's data folder uses, by kind (D104, D165)."""
 
 import os
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
 from nestd.paths import AppPaths
 
-# Where B79's artifacts live; counted as 0 until it exists.
-ARTIFACTS_DIR = "artifacts"
+type Part = Literal["chats", "attachments", "artifacts", "engines", "backups", "logs", "other"]
+
+# Backups made by Nest's config changes, and by deploys under `backups-<block>/`.
+CONFIG_BACKUPS_DIR = "config-backups"
+DEPLOY_BACKUPS_PREFIX = "backups"
+# The folder a move from the old name leaves behind (folder_move.py).
+MOVE_BACKUP_SUFFIX = ".harness-backup"
 
 
 class StorageUsage(BaseModel):
@@ -17,29 +23,61 @@ class StorageUsage(BaseModel):
     chats_bytes: int
     attachments_bytes: int
     artifacts_bytes: int
-    # Everything else in the data folder, such as worktrees and logs.
+    # The engine environments the daemon runs in (B121) and the extra engines it installed.
+    engines_bytes: int
+    # Copies of the database and of changed config files.
+    backups_bytes: int
+    logs_bytes: int
+    # Everything else in the data folder.
     other_bytes: int
 
 
 def measure(paths: AppPaths) -> StorageUsage:
     """Sizes of the files under the data folder; links are counted, never followed."""
-    database = {
-        paths.db_path.with_name(paths.db_path.name + suffix) for suffix in ("", "-wal", "-shm")
-    }
-    attachments = paths.attachments_dir
-    artifacts = paths.data_dir / ARTIFACTS_DIR
-    chats = sum(_size(file) for file in database)
-    attachments_bytes = _tree_size(attachments)
-    artifacts_bytes = _tree_size(artifacts)
-    everything = _tree_size(paths.data_dir)
-    other = max(everything - chats - attachments_bytes - artifacts_bytes, 0)
-    return StorageUsage(
-        total_bytes=chats + attachments_bytes + artifacts_bytes + other,
-        chats_bytes=chats,
-        attachments_bytes=attachments_bytes,
-        artifacts_bytes=artifacts_bytes,
-        other_bytes=other,
+    sizes: dict[Part, int] = dict.fromkeys(
+        ("chats", "attachments", "artifacts", "engines", "backups", "logs", "other"), 0
     )
+    try:
+        entries = list(os.scandir(paths.data_dir))
+    except OSError:
+        entries = []
+    for entry in entries:
+        path = Path(entry.path)
+        size = _tree_size(path) if entry.is_dir(follow_symlinks=False) else _size(path)
+        sizes[_part(paths, entry.name)] += size
+    return StorageUsage(
+        total_bytes=sum(sizes.values()),
+        chats_bytes=sizes["chats"],
+        attachments_bytes=sizes["attachments"],
+        artifacts_bytes=sizes["artifacts"],
+        engines_bytes=sizes["engines"],
+        backups_bytes=sizes["backups"],
+        logs_bytes=sizes["logs"],
+        other_bytes=sizes["other"],
+    )
+
+
+def _part(paths: AppPaths, name: str) -> Part:
+    """The part a top-level item of the data folder belongs to, by its name."""
+    database = paths.db_path.name
+    folders: dict[str, Part] = {
+        paths.attachments_dir.name: "attachments",
+        paths.artifacts_dir.name: "artifacts",
+        paths.environments_dir.name: "engines",
+        paths.engines_dir.name: "engines",
+        paths.logs_dir.name: "logs",
+        CONFIG_BACKUPS_DIR: "backups",
+    }
+    if name in (database, f"{database}-wal", f"{database}-shm"):
+        return "chats"
+    if name in folders:
+        return folders[name]
+    # `nest.db.before-b88-...` and its own -wal and -shm are copies of the database.
+    if name.startswith((f"{database}.", DEPLOY_BACKUPS_PREFIX)) or name.endswith(
+        MOVE_BACKUP_SUFFIX
+    ):
+        return "backups"
+    return "other"
 
 
 def _size(file: Path) -> int:

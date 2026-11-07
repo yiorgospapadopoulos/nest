@@ -62,27 +62,52 @@ async def test_space_used_is_split_by_kind(api: Api) -> None:
         "chats_bytes",
         "attachments_bytes",
         "artifacts_bytes",
+        "engines_bytes",
+        "backups_bytes",
+        "logs_bytes",
         "other_bytes",
     }
     assert body["attachments_bytes"] == 1000
     assert body["artifacts_bytes"] == 300
     assert body["chats_bytes"] >= (data / "nest.db").stat().st_size > 0
-    assert body["other_bytes"] >= 50
-    parts = ("chats_bytes", "attachments_bytes", "artifacts_bytes", "other_bytes")
+    assert body["logs_bytes"] >= 50
+    parts = [part for part in body if part != "total_bytes"]
     assert body["total_bytes"] == sum(body[part] for part in parts)
 
 
-def test_space_without_artifacts_or_database(tmp_path: Path) -> None:
+def test_other_is_split_into_engines_backups_and_logs(tmp_path: Path) -> None:
     paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
-    paths.data_dir.mkdir()
+    files = {
+        "nest.db": 1,
+        "nest.db-wal": 2,
+        "environments/abc/bin/python": 10,
+        "engines/gemini/run": 20,
+        "backups-b131/nest.db.before-b131": 100,
+        "nest.db.before-b88-202610201456": 200,
+        "nest.db.b89-backup-20261018-shm": 300,
+        "config-backups/2026-11-07-op/settings.toml": 400,
+        "logs/nestd.log": 1000,
+        "pixies/one/notes.md": 5000,
+    }
+    for name, size in files.items():
+        (paths.data_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (paths.data_dir / name).write_bytes(b"x" * size)
     (paths.data_dir / "elsewhere").symlink_to(tmp_path)  # links are not followed
-    (paths.data_dir / "note").write_bytes(b"abc")
 
     usage = measure(paths)
 
-    assert (usage.chats_bytes, usage.attachments_bytes, usage.artifacts_bytes) == (0, 0, 0)
-    assert usage.other_bytes == 3 + (paths.data_dir / "elsewhere").lstat().st_size
-    assert usage.total_bytes == usage.other_bytes
+    assert usage.chats_bytes == 3
+    assert usage.engines_bytes == 30
+    assert usage.backups_bytes == 1000
+    assert usage.logs_bytes == 1000
+    assert usage.other_bytes == 5000 + (paths.data_dir / "elsewhere").lstat().st_size
+    assert usage.total_bytes == sum(files.values()) + usage.other_bytes - 5000
+
+
+def test_space_without_a_data_folder(tmp_path: Path) -> None:
+    paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
+
+    assert measure(paths).total_bytes == 0
 
 
 async def test_archive_setting_round_trips(api: Api) -> None:

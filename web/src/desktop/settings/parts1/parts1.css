@@ -101,6 +101,15 @@
 .p-artifacts {
   background: var(--ok);
 }
+.p-engines {
+  background: var(--lane-pink);
+}
+.p-backups {
+  background: var(--lane-teal);
+}
+.p-logs {
+  background: var(--lane-violet);
+}
 .p-other {
   background: var(--dk-sel);
 }

@@ -698,3 +698,12 @@ text = "Uninstall Nest removes the app and its background service and keeps your
 where = "Settings > General > Uninstall Nest"
 added = 2026-11-07
 block = "B130"
+
+[[features]]
+id = "storage-breakdown"
+group = "chats"
+name = "See what takes the space"
+text = "Storage shows how much room the engines, backups and logs take, next to chats, attachments and artifacts, so little is left under Other."
+where = "Settings > Storage"
+added = 2026-11-07
+block = "B134"

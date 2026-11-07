@@ -91,6 +91,9 @@ function Ledger({ usage }: { usage: StorageUsage }) {
     { label: "Chats", bytes: usage.chats_bytes, tone: "s-run" },
     { label: "Attachments", bytes: usage.attachments_bytes, tone: "s-wait" },
     { label: "Artifacts", bytes: usage.artifacts_bytes, tone: "s-rev" },
+    { label: "Engines", bytes: usage.engines_bytes, tone: "s-eng" },
+    { label: "Backups", bytes: usage.backups_bytes, tone: "s-bak" },
+    { label: "Logs", bytes: usage.logs_bytes, tone: "s-log" },
     { label: "Other", bytes: usage.other_bytes, tone: "s-oth" },
   ];
   return (

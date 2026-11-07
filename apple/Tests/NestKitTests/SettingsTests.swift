@@ -143,11 +143,12 @@ import Testing
 
     @Test func storageShares() {
         let usage = StorageUsage(
-            totalBytes: 1_000_000_000, chatsBytes: 500_000_000, attachmentsBytes: 250_000_000,
-            artifactsBytes: 0, otherBytes: 250_000_000)
+            totalBytes: 1_000_000_000, chatsBytes: 400_000_000, attachmentsBytes: 200_000_000,
+            artifactsBytes: 0, enginesBytes: 200_000_000, backupsBytes: 100_000_000,
+            otherBytes: 100_000_000)
         let shares = StorageText.shares(usage)
         #expect(shares.map(\.part) == StorageText.Part.allCases)
-        #expect(shares.map(\.share) == [0.5, 0.25, 0, 0.25])
+        #expect(shares.map(\.share) == [0.4, 0.2, 0, 0.2, 0.1, 0, 0.1])
         #expect(
             StorageText.shares(
                 StorageUsage(
@@ -158,7 +159,9 @@ import Testing
 
     @Test func ledgerNamesPartsAndSharesInWholePercents() {
         #expect(
-            StorageText.Part.allCases.map(\.name) == ["Chats", "Attachments", "Artifacts", "Other"])
+            StorageText.Part.allCases.map(\.name) == [
+                "Chats", "Attachments", "Artifacts", "Engines", "Backups", "Logs", "Other",
+            ])
         #expect(StorageText.share(0) == "0%")
         #expect(StorageText.share(0.0004) == "<1%")
         #expect(StorageText.share(0.0099) == "<1%")
@@ -167,14 +170,15 @@ import Testing
         #expect(StorageText.share(1) == "100%")
         let usage = StorageUsage(
             totalBytes: 18_900_000, chatsBytes: 14_000_000, attachmentsBytes: 1_500_000,
-            artifactsBytes: 8_000, otherBytes: 3_392_000)
+            artifactsBytes: 8_000, logsBytes: 3_000_000, otherBytes: 392_000)
         let lines = StorageText.ledger(usage)
         #expect(lines.map(\.part) == StorageText.Part.allCases)
-        #expect(lines.map(\.size) == ["14 MB", "2 MB", "8 KB", "3 MB"])
-        #expect(lines.map(\.share) == ["74%", "8%", "<1%", "18%"])
+        #expect(
+            lines.map(\.size) == ["14 MB", "2 MB", "8 KB", "0 bytes", "0 bytes", "3 MB", "392 KB"])
+        #expect(lines.map(\.share) == ["74%", "8%", "<1%", "0%", "0%", "16%", "2%"])
         let empty = StorageUsage(
             totalBytes: 0, chatsBytes: 0, attachmentsBytes: 0, artifactsBytes: 0, otherBytes: 0)
-        #expect(StorageText.ledger(empty).map(\.share) == ["0%", "0%", "0%", "0%"])
+        #expect(StorageText.ledger(empty).map(\.share) == Array(repeating: "0%", count: 7))
     }
 
     @Test func ledgerSegmentsKeepTinyPartsVisibleAndFillTheWidth() {

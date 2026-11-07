@@ -31,10 +31,13 @@ describe("storage", () => {
       "Chats820 MB59%",
       "Attachments540 MB39%",
       "Artifacts40 MB3%",
+      "Engines0 bytes0%",
+      "Backups0 bytes0%",
+      "Logs0 bytes0%",
       "Other0 bytes0%",
     ]);
     const bar = screen.getByRole("img", {
-      name: "Chats 820 MB, Attachments 540 MB, Artifacts 40 MB, Other 0 bytes",
+      name: "Chats 820 MB, Attachments 540 MB, Artifacts 40 MB, Engines 0 bytes, Backups 0 bytes, Logs 0 bytes, Other 0 bytes",
     });
     // A part with nothing in it has no segment.
     expect([...bar.children].map((i) => i.className)).toEqual(["s-run", "s-wait", "s-rev"]);
@@ -62,6 +65,9 @@ describe("storage", () => {
         chats_bytes: 994_000_000,
         attachments_bytes: 1_000_000,
         artifacts_bytes: 0,
+        engines_bytes: 0,
+        backups_bytes: 0,
+        logs_bytes: 0,
         other_bytes: 5_000_000,
       }),
     );
@@ -72,6 +78,9 @@ describe("storage", () => {
       "Chats994 MB99%",
       "Attachments1 MB<1%",
       "Artifacts0 bytes0%",
+      "Engines0 bytes0%",
+      "Backups0 bytes0%",
+      "Logs0 bytes0%",
       "Other5 MB<1%",
     ]);
     const segments = [...screen.getByRole("img").children] as HTMLElement[];
@@ -88,7 +97,7 @@ describe("storage", () => {
     await openStorage(api);
 
     await screen.findByText("0 bytes", { selector: ".ltot" });
-    expect(legend().map((line) => line.slice(-2))).toEqual(["0%", "0%", "0%", "0%"]);
+    expect(legend().map((line) => line.slice(-2))).toEqual(Array(7).fill("0%"));
     expect(screen.getByRole("img").children).toHaveLength(0);
   });
 
