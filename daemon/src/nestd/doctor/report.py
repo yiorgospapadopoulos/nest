@@ -46,8 +46,6 @@ _PATTERNS = (
     (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*"), _REMOVED),
     # A command line's `--token value`.
     (re.compile(rf"(?i)(--{_LABEL}[= ])\S+"), rf"\1{_REMOVED}"),
-        rf"\1{_REMOVED}",
-    ),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"), _REMOVED),
     (re.compile(r"\b[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net\b"), _REMOVED),
     # Home folders of anyone, as paths also name the user.
@@ -60,7 +58,9 @@ _LABELLED = (
     re.compile(
         rf"(?i)(?<!\w)({_LABEL}[\\\"']*\s*[:=]\s*)"
         r"(?:\\?\"[^\"\n]*\"|'[^'\n]*'|[\\\"']*[^\s\"'&,;}\\]+)"
-    )
+    ),
+    rf"\1{_REMOVED}",
+)
 
 
 class Report(BaseModel):
