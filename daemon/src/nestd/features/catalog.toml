@@ -676,7 +676,7 @@ block = "B130"
 id = "one-click-updates"
 group = "around"
 name = "One-click updates that undo themselves"
-text = "A new Nest is downloaded and tested in the background, then one click installs it and keeps your chats and permissions. If it doesn't start, Nest goes back by itself and says so."
+text = "A new Nest is downloaded and tested in the background, then one click installs it and keeps your chats and permissions. If it doesn't start, Nest goes back by itself within seconds and says so."
 where = "Update strip"
 added = 2026-11-07
 block = "B130"
@@ -685,7 +685,16 @@ block = "B130"
 id = "check-nest"
 group = "around"
 name = "Says what's wrong in plain words"
-text = "Check Nest and `nest doctor` name what's broken and how to fix it, even with Nest stopped. A bug report leaves out your secrets and goes nowhere unless you share it."
+text = "Check Nest and `nest doctor` name what's broken and how to fix it, even with Nest stopped. A bug report leaves out your secrets, and Report on GitHub opens an issue with it filled in for you to send."
 where = "Settings > General"
+added = 2026-11-07
+block = "B130"
+
+[[features]]
+id = "uninstall"
+group = "around"
+name = "Uninstall that keeps your chats"
+text = "Uninstall Nest removes the app and its background service and keeps your chats, settings and secrets unless you choose to delete them. Installing again brings everything back."
+where = "Settings > General > Uninstall Nest"
 added = 2026-11-07
 block = "B130"
