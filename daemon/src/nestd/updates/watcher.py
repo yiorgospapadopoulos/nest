@@ -25,12 +25,15 @@ from nestd.platform import current_platform
 from nestd.runtime import default_runtime
 from nestd.service.base import ServiceManager
 from nestd.service.manager import service_manager
-from nestd.updates.app import point_current, read_state, save_state
+from nestd.updates.app import point_current, read_state, save_state, starts_of
 from nestd.updates.boot import TRIAL_SECONDS
 
 logger = logging.getLogger(__name__)
 
 POLL_SECONDS = 1.0
+# A new version that has started this often and still does not answer keeps crashing:
+# going back then beats waiting out the time limit, which is for one that hangs.
+CRASH_STARTS = 3
 _HEALTH_LIMIT = 2.0
 
 
@@ -63,14 +66,27 @@ class Trial:
 def watch(trial: Trial) -> bool:
     """Whether the new version came up; when it did not, everything is put back."""
     deadline = trial.now() + trial.seconds
+    daemon_dir = trial.paths.daemon_dir
     while trial.now() < deadline:
         if trial.version_on(trial.port) == trial.new:
             logger.info("Nest %s answered; the update is confirmed", trial.new)
+            _done(daemon_dir)
             return True
+        if starts_of(daemon_dir, trial.new) >= CRASH_STARTS:
+            logger.error("Nest %s started %d times without answering", trial.new, CRASH_STARTS)
+            break
         trial.pause(POLL_SECONDS)
-    logger.error("Nest %s did not answer in time; going back to %s", trial.new, trial.old)
+    else:
+        logger.error("Nest %s did not answer in time", trial.new)
+    logger.error("going back to %s", trial.old)
     roll_back(trial)
     return False
+
+
+def _done(daemon_dir: Path) -> None:
+    state = read_state(daemon_dir)
+    if state.updating is not None:
+        save_state(daemon_dir, state.model_copy(update={"updating": None}))
 
 
 def roll_back(trial: Trial) -> None:
@@ -89,6 +105,7 @@ def roll_back(trial: Trial) -> None:
         "previous_schema": None,
         "refused": [*state.refused, trial.new],
         "notice": notice,
+        "updating": None,
     }
     save_state(daemon_dir, state.model_copy(update=update))
     trial.service.install()

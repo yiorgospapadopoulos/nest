@@ -19,7 +19,9 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -81,14 +83,48 @@ class AppFile(BaseModel):
     path: str
 
 
+class Updating(BaseModel):
+    """A relaunch under way, for the apps to show while the daemon is down: they read this
+    file themselves then. The watcher clears it once the new version answers or is undone.
+    """
+
+    from_version: str
+    to_version: str
+    started_at: str
+
+
 class AppState(BaseModel):
     ready: AppUpdate | None = None
+    updating: Updating | None = None
     # What Undo returns to, and the database version it can run on.
     previous: str | None = None
     previous_schema: int | None = None
     # Versions that failed to start, not offered again.
     refused: list[str] = []
     notice: str | None = None
+
+
+def apple_tools_installed() -> bool:
+    try:
+        done = subprocess.run(
+            ["/usr/bin/xcode-select", "-p"], capture_output=True, check=False, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode == 0
+
+
+def without_apple_stubs(
+    env: Mapping[str, str], installed: Callable[[], bool] = apple_tools_installed
+) -> dict[str, str]:
+    """On a Mac without Apple's developer tools, `install_name_tool` in /usr/bin is a stand-in
+    that opens Apple's install window, and uv runs it after fetching Python for a rename it
+    does without. So uv gets only its own folder on the PATH there (see `install.sh`).
+    """
+    uv = shutil.which("uv", path=env.get("PATH"))
+    if sys.platform != "darwin" or uv is None or installed():
+        return dict(env)
+    return {**env, "PATH": str(Path(uv).parent)}
 
 
 def platform_key(name: PlatformName, machine: str | None = None) -> str:
@@ -105,6 +141,30 @@ def read_state(daemon_dir: Path) -> AppState:
 
 def save_state(daemon_dir: Path, state: AppState) -> None:
     write_atomically(daemon_dir / STATE_NAME, state.model_dump_json())
+
+
+STARTS_NAME = "starts"
+
+
+def note_start(daemon_dir: Path, version: str) -> None:
+    """One line for each time this version's daemon starts, so the watcher can tell a
+    crashing one from a slow one. Best effort: a start never fails over it.
+    """
+    folder = daemon_dir / version
+    if not folder.is_dir():
+        return
+    try:
+        with (folder / STARTS_NAME).open("a", encoding="utf-8") as file:
+            file.write("start\n")
+    except OSError:
+        logger.warning("could not note this start of %s", version)
+
+
+def starts_of(daemon_dir: Path, version: str) -> int:
+    try:
+        return len((daemon_dir / version / STARTS_NAME).read_text(encoding="utf-8").splitlines())
+    except OSError:
+        return 0
 
 
 def point_current(daemon_dir: Path, version: str) -> None:
@@ -256,7 +316,16 @@ class AppUpdater:
         await asyncio.to_thread(back_up_database, database, backup)
         schema = await asyncio.to_thread(database_version, database)
         await asyncio.to_thread(self._watcher, self._daemon_dir, port, self._running, new, backup)
-        update = {"ready": None, "previous": self._running, "previous_schema": schema}
+        updating = Updating(
+            from_version=self._running, to_version=new, started_at=datetime.now(UTC).isoformat()
+        )
+        (self._daemon_dir / new / STARTS_NAME).unlink(missing_ok=True)
+        update = {
+            "ready": None,
+            "previous": self._running,
+            "previous_schema": schema,
+            "updating": updating,
+        }
         await asyncio.to_thread(save_state, self._daemon_dir, state.model_copy(update=update))
         await asyncio.to_thread(point_current, self._daemon_dir, new)
 
@@ -340,10 +409,10 @@ class AppUpdater:
         wheel = release.file("wheel", "any")
         requirements = release.file("requirements", "any")
         app = release.file("app", self._platform)
-        env = {
-            **await self._env(),
-            "UV_PYTHON_INSTALL_DIR": str(self._paths.bin_dir / "python"),
-        }
+        env = await asyncio.to_thread(
+            without_apple_stubs,
+            {**await self._env(), "UV_PYTHON_INSTALL_DIR": str(self._paths.bin_dir / "python")},
+        )
         await asyncio.to_thread(self._daemon_dir.mkdir, parents=True, exist_ok=True)
         python = str(partial / "bin" / "python")
         cwd = self._daemon_dir

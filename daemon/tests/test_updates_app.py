@@ -5,7 +5,9 @@ update leaving the user on nothing, and a checkout (the user's own Nest) being u
 import hashlib
 import json
 import sqlite3
+import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -22,9 +24,11 @@ from nestd.updates.app import (
     AppUpdater,
     back_up_database,
     database_version,
+    note_start,
     point_current,
     read_state,
     save_state,
+    without_apple_stubs,
 )
 from nestd.updates.build import PrepareError, released_wheel
 from nestd.updates.selfcheck_report import SelfcheckReport
@@ -204,6 +208,10 @@ async def test_relaunch_backs_up_starts_the_watcher_then_moves_current(rig: Rig)
     assert _value(rig.paths.data_dir / "backups-update" / "nest.db.before-2.0.0") == "before"
     assert read_state(rig.daemon).ready is None
     assert read_state(rig.daemon).previous == "1.0.0"
+    # The apps read this while the daemon is down, to say an update is under way.
+    updating = read_state(rig.daemon).updating
+    assert updating is not None
+    assert (updating.from_version, updating.to_version) == ("1.0.0", "2.0.0")
 
 
 def _trial(rig: Rig, service: Service, answers: list[str | None]) -> Trial:
@@ -241,6 +249,7 @@ async def test_a_new_version_that_answers_is_left_alone(rig: Rig) -> None:
 
     assert service.calls == []
     assert (rig.daemon / CURRENT).resolve().name == "2.0.0"
+    assert read_state(rig.daemon).updating is None
 
 
 async def test_a_new_version_that_never_answers_puts_everything_back(rig: Rig) -> None:
@@ -263,6 +272,23 @@ async def test_a_new_version_that_never_answers_puts_everything_back(rig: Rig) -
     state = read_state(rig.daemon)
     assert state.notice == "Nest 2.0.0 did not start, so Nest went back to 1.0.0."
     assert state.refused == ["2.0.0"]
+
+
+async def test_a_new_version_that_keeps_crashing_is_undone_without_waiting(rig: Rig) -> None:
+    """Regression: a crashing update left the user 2 minutes with nothing to read."""
+    updater = rig.updater()
+    await updater.check_and_prepare(_nothing)
+    await updater.relaunch(8765)
+    for _ in range(3):
+        note_start(rig.daemon, "2.0.0")
+    service = Service()
+    trial = _trial(rig, service, [])
+
+    assert not watch(replace(trial, seconds=1000.0))
+
+    assert service.calls == ["stop", "install"]
+    assert (rig.daemon / CURRENT).resolve().name == "1.0.0"
+    assert read_state(rig.daemon).updating is None
 
 
 async def test_a_release_that_failed_is_not_offered_again(rig: Rig) -> None:
@@ -334,3 +360,17 @@ def test_a_released_base_keeps_its_wheel_a_checkout_has_none(tmp_path: Path) -> 
     wheel.touch()
 
     assert released_wheel(str(base / "bin" / "python")) == wheel
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Apple's stand-in tools are on macOS only")
+def test_uv_never_meets_apples_stand_in_tools_on_a_mac_without_them(tmp_path: Path) -> None:
+    """Regression: installing Python opened Apple's developer tools window on a clean Mac."""
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    uv = folder / "uv"
+    uv.write_text("#!/bin/sh\n", encoding="utf-8")
+    uv.chmod(0o755)
+    env = {"PATH": f"{folder}:/usr/bin:/bin", "HOME": "/home/me"}
+
+    assert without_apple_stubs(env, installed=lambda: False)["PATH"] == str(folder)
+    assert without_apple_stubs(env, installed=lambda: True) == env

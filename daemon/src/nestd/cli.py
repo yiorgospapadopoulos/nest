@@ -11,6 +11,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+from nestd import __version__
 from nestd.accounts.profiles import drop_leaked_env
 from nestd.api.app import create_app
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
@@ -35,7 +36,7 @@ from nestd.gates.changes import changed_paths, merge_base, repository_root
 from nestd.gates.errors import GatesError
 from nestd.gates.rules import ALL_PARTS, Selection, select
 from nestd.logging_setup import configure_logging
-from nestd.paths import AppPaths
+from nestd.paths import AppPaths, is_packaged
 from nestd.perf.gate_times import GateRun, GateTimes, stage_times
 from nestd.providers.acp_engines import ACP_ENGINES
 from nestd.providers.shell_env import LoginShellEnv, login_shell
@@ -44,6 +45,7 @@ from nestd.service.base import ServiceError, ServiceManager
 from nestd.service.launchd import LEGACY_LABEL
 from nestd.service.manager import service_manager
 from nestd.storage.errors import DatabaseError
+from nestd.updates.app import note_start
 from nestd.updates.boot import SWITCHED_ENV, Boot, TrialWatch, switch_environment
 from nestd.updates.selfcheck import run_selfcheck_here
 from nestd.updates.service import answers_health
@@ -179,6 +181,8 @@ def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
         ["serve", *([] if args.port is None else ["--port", str(args.port)])],
     )
     os.environ.pop(SWITCHED_ENV, None)
+    if is_packaged():
+        note_start(paths.daemon_dir, __version__)
     # Engine processes inherit the daemon's environment (B98).
     drop_leaked_env(os.environ)
     # The server reads its token at startup; a missing or locked secret store stops here
