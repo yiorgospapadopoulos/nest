@@ -145,3 +145,4 @@ def test_the_report_file_holds_the_checks_and_a_clean_log(tmp_path: Path) -> Non
     assert "/api/pixies" not in text
     assert "[ok] Dictation: Allowed" in text
     assert report.issue_url.startswith("https://github.com/")
+    assert not report.attach_file

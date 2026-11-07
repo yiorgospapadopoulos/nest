@@ -70,6 +70,8 @@ class Report(BaseModel):
     # A new GitHub issue with the report filled in, for the user to read and submit; when
     # the report is too long for an address, one that asks them to attach the file.
     issue_url: str
+    # Whether the issue asks for the file, which the apps then show in its folder.
+    attach_file: bool
 
 
 def issue_url(text: str, file_name: str) -> str:
@@ -150,4 +152,5 @@ def write_report(machine: Machine, when: datetime, app_checks: Sequence[Check] =
     path = folder / f"nest-report-{when.strftime('%Y%m%d-%H%M%S')}.txt"
     path.write_text(text, encoding="utf-8")
     path.chmod(0o600)
-    return Report(path=str(path), text=text, issue_url=issue_url(text, path.name))
+    url = issue_url(text, path.name)
+    return Report(path=str(path), text=text, issue_url=url, attach_file=path.name in url)
