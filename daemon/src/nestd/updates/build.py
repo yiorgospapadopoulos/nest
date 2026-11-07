@@ -146,20 +146,23 @@ class EnvironmentBuilder:
         env = await self._env()
         await asyncio.to_thread(self._root.mkdir, parents=True, exist_ok=True)
         freeze = await self._uv(("pip", "freeze", "--python", plan.base_python), self._root, env)
-        if not _from_source(freeze):
-            msg = "Nest is not an editable install"
+        wheel = released_wheel(plan.base_python)
+        if wheel is None and not _from_source(freeze):
+            msg = "Nest is neither an editable install nor a released one"
             raise UpdaterUnavailableError(msg)
         environment = new_environment_id()
         partial = self._root / f"{environment}{PARTIAL_SUFFIX}"
         try:
-            await self._fill(partial, freeze, plan, env)
+            await self._fill(partial, freeze, wheel, plan, env)
             await asyncio.to_thread(partial.rename, self._root / environment)
         except BaseException:
             shutil.rmtree(partial, ignore_errors=True)
             raise
         return environment
 
-    async def _fill(self, partial: Path, freeze: str, plan: Plan, env: Mapping[str, str]) -> None:
+    async def _fill(
+        self, partial: Path, freeze: str, wheel: Path | None, plan: Plan, env: Mapping[str, str]
+    ) -> None:
         python = python_of(partial)
         requirements = partial / REQUIREMENTS_NAME
         # Relocatable, since this folder is renamed once it passes.
@@ -167,12 +170,19 @@ class EnvironmentBuilder:
             ("venv", "--relocatable", "--python", plan.base_python, str(partial)), self._root, env
         )
         try:
-            await asyncio.to_thread(requirements.write_text, freeze, encoding="utf-8")
+            frozen = freeze if wheel is None else _without_nestd(freeze)
+            await asyncio.to_thread(requirements.write_text, frozen, encoding="utf-8")
             await self._uv(
                 ("pip", "install", "--python", str(python), "--no-deps", "-r", str(requirements)),
                 self._root,
                 env,
             )
+            if wheel is not None:
+                await self._uv(
+                    ("pip", "install", "--python", str(python), "--no-deps", str(wheel)),
+                    self._root,
+                    env,
+                )
             await self._uv(
                 ("pip", "install", "--python", str(python), "--only-binary", ":all:", *_pins(plan)),
                 self._root,
@@ -192,8 +202,11 @@ class EnvironmentBuilder:
             raise PrepareError(str(error) or type(error).__name__) from error
 
     async def _fetch_npm_engines(self, plan: Plan, env: Mapping[str, str]) -> None:
+        """Only engines the user installed: the rest need npm, which a machine may not have."""
         for engine in npm_engines():
             folder = self._engines_dir / engine.id
+            if not folder.is_dir():
+                continue
             wanted = replace(engine, version=plan.packages.get(engine.id, engine.version))
             if installed_program(wanted, folder / (wanted.version or "")) is None:
                 await fetch_version(wanted, folder, self._npm, env)
@@ -203,6 +216,19 @@ def _from_source(freeze: str) -> bool:
     lines = freeze.splitlines()
     return any(line.startswith("-e ") for line in lines) and not any(
         _PINNED_NESTD.match(line) for line in lines
+    )
+
+
+def released_wheel(base_python: str) -> Path | None:
+    """The wheel a released base keeps in its folder; None for a checkout's base."""
+    wheels = sorted(Path(base_python).parent.parent.glob("nestd-*.whl"))
+    return wheels[-1] if wheels else None
+
+
+def _without_nestd(freeze: str) -> str:
+    """Otherwise uv would look for `nestd` on PyPI, where it is someone else's or nothing."""
+    return "".join(
+        line for line in freeze.splitlines(keepends=True) if not _PINNED_NESTD.match(line)
     )
 
 

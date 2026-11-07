@@ -26,6 +26,8 @@ import { PixieDetailsPanel } from "../pixies/PixieDetailsPanel.tsx";
 import { ShellSheets } from "../pixies/ShellSheets.tsx";
 import { placeOf } from "../settings/catalog.ts";
 import { SettingsPanel } from "../settings/SettingsPanel.tsx";
+import { SetupGuide } from "../setup/SetupGuide.tsx";
+import type { StepId } from "../setup/steps.ts";
 import { closeTopOverlay } from "../ui/overlays.ts";
 import type { Bridge } from "../bridge.ts";
 import { Board } from "./Board.tsx";
@@ -43,7 +45,9 @@ import { StatusBar } from "./StatusBar.tsx";
 import { TabStrip } from "./TabStrip.tsx";
 import { terminals } from "./terminals.ts";
 import { browserClosed, browsers } from "./toolSessions.ts";
+import { useAppSwap } from "./useAppSwap.ts";
 import { useWindowWatch } from "./useWindowWatch.ts";
+import { WindowFrame } from "./WindowFrame.tsx";
 import { Workspace } from "./Workspace.tsx";
 import { routeLinkClick } from "../links.ts";
 
@@ -55,6 +59,8 @@ export function DesktopShell() {
   const storage = deviceStorage();
   const [saved, setDesk] = useState<Desk>(() => loadDesk(storage));
   const [settings, setSettings] = useState<Shell["settings"]>(null);
+  const [guide, setGuide] = useState<Shell["guide"]>(null);
+  const [guideStep, setGuideStep] = useState<StepId>("engine");
   const [palette, setPalette] = useState(false);
   // What the palette opens with typed in its search, as for /resume with a search.
   const [paletteSearch, setPaletteSearch] = useState("");
@@ -73,6 +79,28 @@ export function DesktopShell() {
   useEffect(() => {
     saveDesk(storage, desk);
   }, [storage, desk]);
+
+  // Until the daemon says whether this is a first run, the window cannot tell whether the
+  // guide shows: it stays blank, so the projects never flash before the guide (B130). One
+  // that does not answer counts as no first run.
+  const [setupAsked, setSetupAsked] = useState(false);
+  useEffect(() => {
+    let live = true;
+    api
+      .setup()
+      .then(
+        (setup) => {
+          if (live && setup.first_run) setGuide("first");
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        if (live) setSetupAsked(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [api]);
 
   // A project added here or elsewhere: the whole order is saved, so a restart keeps it.
   const knownRepos = useRef<string[] | null>(null);
@@ -308,6 +336,23 @@ export function DesktopShell() {
       closeSettings: () => {
         setSettings(null);
       },
+      guide,
+      openGuide: (step) => {
+        setPalette(false);
+        setGuideStep(step);
+        setGuide("again");
+      },
+      closeGuide: () => {
+        setGuide(null);
+      },
+      openGeneralChat: (model) => {
+        setTabs((tabs) => openProject(tabs, GENERAL, repoNames));
+        const pane = draftPane();
+        updateIn(GENERAL, (s) => {
+          if (model !== null) s.draftModels.set(pane, model);
+          s.openChat(pane, size.current);
+        });
+      },
       palette,
       setPalette: (open) => {
         setPaletteSearch("");
@@ -331,6 +376,7 @@ export function DesktopShell() {
     api,
     actions,
     settings,
+    guide,
     palette,
     paletteSearch,
     sheet,
@@ -342,6 +388,25 @@ export function DesktopShell() {
   usePlatformEvents(shell);
   useWindowWatch(shell);
   useGonePlaces();
+  useAppSwap();
+
+  if (!setupAsked) {
+    return (
+      <WindowFrame>
+        <main className="center" aria-busy="true" aria-label="Loading" />
+      </WindowFrame>
+    );
+  }
+
+  if (guide !== null) {
+    return (
+      <ShellContext value={shell}>
+        <WindowFrame>
+          <SetupGuide firstRun={guide === "first"} start={guideStep} />
+        </WindowFrame>
+      </ShellContext>
+    );
+  }
 
   const pixies = project === null;
   const noPixies = pixies && Object.keys(state.pixies).length === 0;
@@ -410,10 +475,10 @@ function usePlatformEvents(shell: Shell) {
   useEffect(() => {
     const offs = [
       bridge.onTray("new-chat", () => {
-        latest.current.newChat();
+        if (latest.current.guide === null) latest.current.newChat();
       }),
       bridge.onTray("open-settings", () => {
-        latest.current.openSettings();
+        if (latest.current.guide === null) latest.current.openSettings();
       }),
       bridge.onBrowserClosed((label) => {
         browserClosed(browsers, label);
@@ -447,6 +512,15 @@ function useShortcuts(shell: Shell) {
   }, []);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // The guide is the whole window: no shortcut acts behind it, and only one reopened
+      // from Settings can be left this way.
+      const { guide } = latest.current;
+      if (guide !== null) {
+        if (event.key === "Escape" && guide === "again" && !event.defaultPrevented) {
+          latest.current.closeGuide();
+        }
+        return;
+      }
       // Escape closes the topmost overlay wherever the focus is, as on the Mac. A sheet
       // over it handles its own Escape first and stops it.
       if (event.key === "Escape" && !event.defaultPrevented) {

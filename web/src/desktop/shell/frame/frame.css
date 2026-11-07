@@ -1748,6 +1748,11 @@ html.desk .ewl {
 .fr-update li + li {
   margin-top: 3px;
 }
+.fr-unotes {
+  margin: 2px 0 4px;
+  color: var(--t2);
+  white-space: pre-line;
+}
 .fr-urow {
   display: flex;
   flex-wrap: wrap;

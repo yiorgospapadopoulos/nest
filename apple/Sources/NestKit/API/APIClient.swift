@@ -1096,6 +1096,19 @@ public struct APIClient: NestAPI {
         try await perform("POST", ["setup", "done"])
     }
 
+    public func setupChecks() async throws -> [SetupCheck] {
+        let answer: SetupChecks = try await get("setup", "checks")
+        return answer.checks
+    }
+
+    public func setupReport(answers: [SetupCheck]) async throws -> SetupReport {
+        try await call("POST", ["setup", "report"], body: SetupReportAsk(checks: answers))
+    }
+
+    public func shareTailscale() async throws -> SetupCheck {
+        try await call("POST", ["setup", "tailscale", "share"])
+    }
+
     // MARK: Plumbing
 
     private func get<T: Decodable>(_ path: String...) async throws -> T {

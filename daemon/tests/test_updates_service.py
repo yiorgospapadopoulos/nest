@@ -1,6 +1,7 @@
 """Checking, preparing, relaunching and cleaning up. Network, uv and the check are fakes."""
 
 import asyncio
+import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -12,11 +13,13 @@ from pydantic import JsonValue
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.events.models import Event
+from nestd.paths import AppPaths
 from nestd.providers.acp_engines import GEMINI, OPENCODE, in_environment
 from nestd.providers.shell_env import no_shell_env
 from nestd.storage.db import Database
 from nestd.updates.boot import TrialWatch
 from nestd.updates.build import PrepareError, UpdaterUnavailableError, run_selfcheck
+from nestd.updates.engines import npm_engines
 from nestd.updates.manifest import read_manifest
 from nestd.updates.selfcheck import scratch_env
 from nestd.updates.service import UpdateService, UpdateSetup
@@ -54,6 +57,8 @@ class Rig:
     def __init__(self, tmp_path: Path, bus: RecordingBus) -> None:
         self.root = tmp_path / "environments"
         self.engines = tmp_path / "engines"
+        for engine in npm_engines():
+            (self.engines / engine.id).mkdir(parents=True)
         self.files = StateFile(self.root)
         self.bus = bus
         self.uv = FakeUv()
@@ -74,8 +79,8 @@ class Rig:
             return self.answers.pop(0) if self.answers else True
 
         return UpdateService(
-            root=self.root,
-            engines_dir=self.engines,
+            paths=AppPaths(config_dir=self.root.parent / "config", data_dir=self.root.parent),
+            platform="macos",
             bus=self.bus,
             shell_env=no_shell_env,
             busy_chats=lambda: 0,
@@ -268,6 +273,37 @@ async def test_a_failed_replacement_keeps_the_prepared_update(rig: Rig) -> None:
 
     assert rig.files.load().ready == ready
     assert (await service.status()).state == "ready"
+
+
+async def test_a_machine_with_no_npm_still_gets_its_other_engines(rig: Rig) -> None:
+    """Regression: every missing npm engine was fetched, so one failure stopped them all."""
+    shutil.rmtree(rig.engines)
+    rig.latest = registry({**NEW_SDK, "opencode-ai": "1.1.0"})
+
+    service = await rig.check()
+
+    status = await service.status()
+    assert status.state == "ready"
+    assert [engine.id for engine in status.engines] == ["claude"]
+
+
+async def test_a_released_nest_rebuilds_from_its_own_wheel(rig: Rig, tmp_path: Path) -> None:
+    """Regression: `nestd` in the frozen list sent uv to PyPI for it."""
+    base = tmp_path / "1.0.0"
+    (base / "bin").mkdir(parents=True)
+    wheel = base / "nestd-1.0.0-py3-none-any.whl"
+    wheel.touch()
+    rig.state(base_python=str(base / "bin" / "python"))
+    rig.uv.freeze = "aiohttp==3.14.4\nnestd @ file:///old/nestd-1.0.0-py3-none-any.whl\n"
+    rig.latest = registry(NEW_SDK)
+
+    await rig.check()
+
+    assert str(wheel) in [call[-1] for call in rig.uv.calls]
+    ready = rig.files.load().ready
+    assert ready is not None
+    frozen = (rig.root / ready / "nest-requirements.txt").read_text(encoding="utf-8")
+    assert frozen == "aiohttp==3.14.4\n"
 
 
 async def test_without_uv_or_an_editable_nest_there_are_no_updates(rig: Rig) -> None:

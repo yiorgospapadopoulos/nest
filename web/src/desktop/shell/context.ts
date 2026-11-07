@@ -1,9 +1,10 @@
 import { createContext, use } from "react";
 import type { RepoApp } from "../../api/client.ts";
 import type { CreatePixieBody, RepoConfig } from "../../api/types.ts";
-import type { ProjectState, ProjectView } from "../layout/project.ts";
+import type { DraftModel, ProjectState, ProjectView } from "../layout/project.ts";
 import type { DropSide } from "../layout/workspace.ts";
 import type { SettingsPlace, SettingsTarget } from "../settings/catalog.ts";
+import type { StepId } from "../setup/steps.ts";
 import type { Desk } from "./desk.ts";
 
 /** The window's controller, as the Mac's Shell: what every part of the window acts through. */
@@ -71,6 +72,14 @@ export interface Shell {
   // Opens Settings on a page or a project's page; General when neither is given.
   openSettings: (target?: SettingsTarget) => void;
   closeSettings: () => void;
+  // The setup guide over the whole window: "first" on a new install, "again" when a page
+  // sends the user to one of its steps, such as Pair a device to Tailscale's.
+  guide: "first" | "again" | null;
+  // Settings stays open behind it, so leaving the guide goes back there.
+  openGuide: (step: StepId) => void;
+  closeGuide: () => void;
+  // A new chat in General, on `model` when given.
+  openGeneralChat: (model: DraftModel | null) => void;
   palette: boolean;
   setPalette: (open: boolean) => void;
   // The search the palette opens with (searchPalette), else empty.

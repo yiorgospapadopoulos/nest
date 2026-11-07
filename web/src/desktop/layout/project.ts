@@ -13,6 +13,12 @@ export function viewChoices(pixies: boolean): ProjectView[] {
 
 export type RightCard = "needsYou" | "goals";
 
+/** The model a new chat opens on. */
+export interface DraftModel {
+  provider: string;
+  model: string;
+}
+
 export class ProjectState {
   layout = new WorkspaceLayout();
   leftCollapsed = false;
@@ -26,6 +32,8 @@ export class ProjectState {
   tools = new Map<string, ToolPane>();
   // A draft pane opened on a place of its own, by pane id.
   draftPlaces = new Map<string, NewChatChoice>();
+  // The model a draft opened on, for that one chat.
+  draftModels = new Map<string, DraftModel>();
 
   copy(): ProjectState {
     const next = new ProjectState();
@@ -37,6 +45,7 @@ export class ProjectState {
     next.selectedChat = this.selectedChat;
     next.tools = new Map(this.tools);
     next.draftPlaces = new Map(this.draftPlaces);
+    next.draftModels = new Map(this.draftModels);
     return next;
   }
 
@@ -149,6 +158,9 @@ export class ProjectState {
     }
     for (const id of [...this.draftPlaces.keys()]) {
       if (!this.layout.contains(id)) this.draftPlaces.delete(id);
+    }
+    for (const id of [...this.draftModels.keys()]) {
+      if (!this.layout.contains(id)) this.draftModels.delete(id);
     }
   }
 }

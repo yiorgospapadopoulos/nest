@@ -66,10 +66,14 @@ public enum DaemonService {
         home.appending(path: "Library/LaunchAgents/\(label).plist").path
     }
 
-    /// The Terminal command that installs the service, run in the Nest repository.
-    public static func installCommand(repoPath: String?) -> String {
-        let daemon = repoPath.map { quoted($0 + "/daemon") } ?? "<Nest repository>/daemon"
-        return "cd \(daemon) && uv run nestd service install"
+    /// The Terminal command that puts the service back: a developer build's, run in its
+    /// checkout, or the one line for a release, which has no checkout, from the address the
+    /// install came from.
+    public static func installCommand(
+        repoPath: String?, releaseURL: String = ReleasedInstall.defaultReleaseURL
+    ) -> String {
+        guard let repoPath else { return ReleasedInstall.installLine(releaseURL: releaseURL) }
+        return "cd \(quoted(repoPath + "/daemon")) && uv run nestd service install"
     }
 
     /// Single-quoted for the shell, so paths with spaces work when pasted.
@@ -98,26 +102,27 @@ public final class ServiceStarter {
     let runner: any CommandRunner
     let domain: String
     let plistPath: String
-    let installCommand: String
+    public let installCommand: String
     let fileExists: @Sendable (String) -> Bool
 
     public init(
         runner: any CommandRunner, uid: UInt32, home: URL, repoPath: String?,
+        releaseURL: String = ReleasedInstall.defaultReleaseURL,
         fileExists: @escaping @Sendable (String) -> Bool
     ) {
         self.runner = runner
         domain = "gui/\(uid)"
         plistPath = DaemonService.plistPath(home: home)
-        installCommand = DaemonService.installCommand(repoPath: repoPath)
+        installCommand = DaemonService.installCommand(repoPath: repoPath, releaseURL: releaseURL)
         self.fileExists = fileExists
     }
 
     /// For this user's service, run with `Process`.
-    public static func local(repoPath: String?) -> ServiceStarter {
+    public static func local(repoPath: String?, releaseURL: String) -> ServiceStarter {
         ServiceStarter(
             runner: ProcessRunner(), uid: getuid(),
             home: FileManager.default.homeDirectoryForCurrentUser, repoPath: repoPath,
-            fileExists: { FileManager.default.fileExists(atPath: $0) })
+            releaseURL: releaseURL, fileExists: { FileManager.default.fileExists(atPath: $0) })
     }
 
     var kickstart: [String] { ["kickstart", "-k", "\(domain)/\(DaemonService.label)"] }

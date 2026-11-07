@@ -1876,11 +1876,25 @@ export interface EngineUpdate {
   new: string;
 }
 
+export interface AppUpdate {
+  version: string;
+  notes: string;
+}
+
+export interface AppFile {
+  version: string;
+  path: string;
+}
+
 /** `GET /api/updates` and the `updates.changed` event. */
 export interface EngineUpdates {
   state: "none" | "checking" | "preparing" | "ready";
   // Only filled while `state` is ready.
   engines: EngineUpdate[];
+  // A new Nest, ready to relaunch into; only the Mac and Linux apps offer it (B130).
+  app: AppUpdate | null;
+  // The app of the daemon now running: an app of another version swaps to it.
+  app_file: AppFile | null;
   // Chats a relaunch would interrupt, pixie and habit runs included.
   busy_chats: number;
   can_undo: boolean;
@@ -2048,3 +2062,45 @@ export type NoticeKind =
   // A pixie a chat called shows a short line, or that it waits for the user (B133).
   | "pixie_update"
   | "pixie_waiting";
+
+/** `GET /api/setup`: whether the guide shows (B130). */
+export interface SetupState {
+  first_run: boolean;
+  local_only: boolean;
+}
+
+export type SetupCheckState = "ok" | "missing" | "warning" | "not_applicable";
+
+/** What sorts a check out: a command to paste, or a page to open. */
+export interface CheckFix {
+  kind: "command" | "link";
+  value: string;
+}
+
+/** One check's answer, from `GET /api/setup/checks`. */
+export interface SetupCheck {
+  id: string;
+  title: string;
+  state: SetupCheckState;
+  // What is wrong and what to do; empty when there is nothing to say.
+  message: string;
+  // The short answer beside a title, such as a version or "Starts at login".
+  detail: string | null;
+  fix: CheckFix | null;
+  importance: "required" | "recommended" | "optional";
+  // How far a check with several steps has got, such as Tailscale's "install", "connect",
+  // "share", "pair" and "done"; null for the others.
+  stage: string | null;
+  // Where it goes in Check Nest, lowest first: what is missing and matters most on top.
+  rank: number;
+}
+
+/** `POST /api/setup/report`: the file written and its text. Nothing is sent anywhere. */
+export interface SetupReport {
+  path: string;
+  text: string;
+  // A new GitHub issue with the report filled in, for the user to read and submit.
+  issue_url: string;
+  // The report was too long for the address: the issue asks for the file instead.
+  attach_file: boolean;
+}

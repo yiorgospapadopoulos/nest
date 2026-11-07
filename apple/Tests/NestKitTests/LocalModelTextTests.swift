@@ -205,22 +205,6 @@ import Testing
         )
     }
 
-    /// The first-run welcome's three ways in.
-    @Test func theWelcomeOffersThreeWays() {
-        #expect(LocalModelText.welcomeTitle == "Welcome to Nest")
-        #expect(
-            LocalModelText.firstRunChoices.map(\.id) == [.claude, .codex, .local])
-        #expect(
-            LocalModelText.firstRunChoices.map(\.title) == [
-                "Sign in to Claude", "Sign in to Codex", "Use local models only",
-            ])
-        #expect(
-            LocalModelText.firstRunChoices.map(\.detail) == [
-                "Your Claude plan, through Claude Code", "Your ChatGPT plan, through Codex",
-                "Free and offline. Opens Find on this Mac",
-            ])
-    }
-
     @Test func aChatHeaderNamesTheModelAndEngine() {
         #expect(LocalModelText.header(Self.model("q"), engine: "claude") == "q · Claude Code")
     }

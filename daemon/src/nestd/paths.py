@@ -20,6 +20,17 @@ CODEX_HOME_ENV = "CODEX_HOME"
 DB_NAME = "nest.db"
 # The PWA build in this checkout: <repo>/web/dist, next to <repo>/daemon/src/nestd.
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
+# The same build inside a released wheel, which only `make release` puts there.
+PACKAGED_WEB_DIST = Path(__file__).resolve().parent / "web_dist"
+
+
+def is_packaged(packaged: Path = PACKAGED_WEB_DIST) -> bool:
+    """Whether this daemon came from a release, not from a checkout."""
+    return packaged.is_dir()
+
+
+def default_web_dist(packaged: Path = PACKAGED_WEB_DIST) -> Path:
+    return packaged if is_packaged(packaged) else DEFAULT_WEB_DIST
 
 
 def env_value(env: Mapping[str, str], name: str) -> str | None:
@@ -34,7 +45,7 @@ class AppPaths:
     config_dir: Path
     data_dir: Path
     # The built iPhone web app the daemon serves at `/`.
-    web_dist: Path = field(default=DEFAULT_WEB_DIST)
+    web_dist: Path = field(default_factory=default_web_dist)
     # Claude Code's data, read only (D028): chats to import and which ones are open.
     # None reads no Claude Code chats, so tests never see the real ones.
     claude_dir: Path | None = None
@@ -54,7 +65,7 @@ class AppPaths:
         system = platform or current_platform()
         config_dir = env_value(env, CONFIG_DIR_ENV) or system.config_dir(home, env)
         data_dir = env_value(env, DATA_DIR_ENV) or system.data_dir(home, env)
-        web_dist = env_value(env, WEB_DIST_ENV) or DEFAULT_WEB_DIST
+        web_dist = env_value(env, WEB_DIST_ENV) or default_web_dist()
         claude_config = env.get(CLAUDE_CONFIG_DIR_ENV)
         claude_dir = claude_config or home / ".claude"
         # Claude Code keeps `.claude.json` in its config folder when one is set, else in home.
@@ -134,6 +145,21 @@ class AppPaths:
     def engines_dir(self) -> Path:
         """The ACP engines Nest installs, one pinned version each (B107); made on install."""
         return self.data_dir / "engines"
+
+    @property
+    def daemon_dir(self) -> Path:
+        """A released daemon's versions, one venv each, and `current`, the one that runs."""
+        return self.data_dir / "daemon"
+
+    @property
+    def bin_dir(self) -> Path:
+        """The `uv` the install script fetched when the machine had none, and its Python."""
+        return self.data_dir / "bin"
+
+    @property
+    def reports_dir(self) -> Path:
+        """Bug reports, which stay here until the user shares one."""
+        return self.data_dir / "reports"
 
     @property
     def environments_dir(self) -> Path:

@@ -84,7 +84,7 @@ function ProjectConfiguration({ repo }: { repo: RepoConfig }) {
             {openPath !== null && (
               <Button
                 onClick={() => {
-                  openPath(skills);
+                  openPath(skills, false, true);
                 }}
               >
                 Open folder

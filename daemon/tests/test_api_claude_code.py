@@ -135,6 +135,17 @@ async def test_sign_in_runs_in_the_background_one_at_a_time(api: Api) -> None:
     assert api.claude.args_of(where(api).bundled) == [login, STATUS]
 
 
+async def test_a_sign_in_reads_the_engines_models_at_once(api: Api) -> None:
+    """Regression: a new install showed only the short model names for up to 30 minutes."""
+    api.claude.script("auth", "login", "--claudeai", reply="Login successful.\n")
+    api.claude.script(*STATUS, reply=json.dumps(SIGNED_IN))
+    before = len(api.engine.clients)
+
+    assert (await api.http.post("/api/accounts/claude/login")).status_code == 202
+
+    await until(lambda: len(api.engine.clients) > before)
+
+
 async def test_a_failed_sign_in_is_announced_with_its_error(api: Api) -> None:
     api.claude.script(
         "auth", "login", "--claudeai", reply=CommandError(["claude"], 1, "Login cancelled\n")

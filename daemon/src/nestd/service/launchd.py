@@ -1,9 +1,11 @@
 """Install, remove and inspect the daemon's launchd user agent (macOS)."""
 
 import plistlib
-from collections.abc import Sequence
-from dataclasses import dataclass
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 
 from nestd.paths import CONFIG_DIR_ENV, DATA_DIR_ENV, AppPaths
 from nestd.service.base import CommandRunner, ServiceError, ServiceStatus
@@ -12,9 +14,17 @@ LABEL = "com.nest.daemon"
 # The service before the rename to Nest (B43), removed when the new one is installed.
 LEGACY_LABEL = "com.harness.daemon"
 LAUNCHCTL = "/bin/launchctl"
+# `bootout` returns before the old daemon has stopped, and `bootstrap` fails until it has.
+BOOTSTRAP_ATTEMPTS = 20
+BOOTSTRAP_PAUSE_SECONDS = 0.5
 
 
-def render_plist(program_args: Sequence[str], paths: AppPaths, path_env: str) -> str:
+def render_plist(
+    program_args: Sequence[str],
+    paths: AppPaths,
+    path_env: str,
+    extra_env: Mapping[str, str] = MappingProxyType({}),
+) -> str:
     log_file = str(paths.logs_dir / "daemon.log")
     plist = {
         "Label": LABEL,
@@ -27,6 +37,7 @@ def render_plist(program_args: Sequence[str], paths: AppPaths, path_env: str) ->
             "PATH": path_env,
             CONFIG_DIR_ENV: str(paths.config_dir),
             DATA_DIR_ENV: str(paths.data_dir),
+            **extra_env,
         },
     }
     return plistlib.dumps(plist).decode()
@@ -40,6 +51,8 @@ class LaunchdService:
     runner: CommandRunner
     program_args: Sequence[str]
     path_env: str
+    pause: Callable[[float], None] = time.sleep
+    extra_env: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
     def plist_path(self) -> Path:
@@ -63,12 +76,22 @@ class LaunchdService:
         self.launch_agents_dir.mkdir(parents=True, exist_ok=True)
         # Unload any previous version first; failure just means it was not loaded.
         self.runner([LAUNCHCTL, "bootout", self._target])
-        plist = render_plist(self.program_args, self.paths, self.path_env)
+        plist = render_plist(self.program_args, self.paths, self.path_env, self.extra_env)
         self.plist_path.write_text(plist, encoding="utf-8")
-        result = self.runner([LAUNCHCTL, "bootstrap", self._domain, str(self.plist_path)])
-        if result.returncode != 0:
-            msg = f"launchctl bootstrap failed: {result.stderr.strip()}"
-            raise ServiceError(msg)
+        self._bootstrap()
+
+    def _bootstrap(self) -> None:
+        command = [LAUNCHCTL, "bootstrap", self._domain, str(self.plist_path)]
+        result = self.runner(command)
+        for _ in range(BOOTSTRAP_ATTEMPTS - 1):
+            if result.returncode == 0:
+                return
+            self.pause(BOOTSTRAP_PAUSE_SECONDS)
+            result = self.runner(command)
+        if result.returncode == 0:
+            return
+        msg = f"launchctl bootstrap failed: {result.stderr.strip()}"
+        raise ServiceError(msg)
 
     def remove_legacy(self) -> bool:
         """Stop the service from before the rename and remove its plist; whether one was
@@ -80,8 +103,11 @@ class LaunchdService:
         legacy.unlink()
         return True
 
-    def uninstall(self) -> None:
+    def stop(self) -> None:
         self.runner([LAUNCHCTL, "bootout", self._target])
+
+    def uninstall(self) -> None:
+        self.stop()
         self.plist_path.unlink(missing_ok=True)
 
     def status(self) -> ServiceStatus:

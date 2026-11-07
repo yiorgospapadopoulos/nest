@@ -29,11 +29,24 @@ final class AppController {
     @ObservationIgnored private var starting = false
     @ObservationIgnored private var notifier: Notifier?
     @ObservationIgnored private var visibility: VisibilityMonitor?
+    /// Once a launch, whichever window model asks.
+    @ObservationIgnored private lazy var swapper = AppSwapper.local(
+        dataFolder: daemons.local.dataFolder)
 
     init() {
-        service = .local(repoPath: Self.repositoryPath)
-        daemons = DaemonList(
-            local: DaemonLocation(environment: ProcessInfo.processInfo.environment))
+        let environment = ProcessInfo.processInfo.environment
+        let local = DaemonLocation(environment: environment)
+        daemons = DaemonList(local: local)
+        service = .local(
+            repoPath: AppBuild.checkout,
+            releaseURL: ReleasedInstall(dataFolder: local.dataFolder, environment: environment)
+                .releaseURL)
+    }
+
+    /// This Mac's install, read from its data folder while the daemon is down.
+    var install: ReleasedInstall {
+        ReleasedInstall(
+            dataFolder: daemons.local.dataFolder, environment: ProcessInfo.processInfo.environment)
     }
 
     /// A controller around a prepared shell, for snapshots.
@@ -46,17 +59,6 @@ final class AppController {
                 local: DaemonLocation(environment: [:]),
                 defaults: UserDefaults(suiteName: "local.nest.snapshots") ?? .standard)
         phase = .ready
-    }
-
-    /// The Nest checkout this app was built from, for the service install command;
-    /// nil once it has moved.
-    static var repositoryPath: String? {
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0..<5 {
-            url.deleteLastPathComponent()
-        }
-        let daemon = url.appending(path: "daemon/pyproject.toml").path
-        return FileManager.default.fileExists(atPath: daemon) ? url.path : nil
     }
 
     func start() {
@@ -80,6 +82,8 @@ final class AppController {
     private func open() async {
         do {
             install(try await model(for: daemons.selection))
+            // An update under way shows at once, before the first try can show the banner.
+            _ = shell?.noteUpdate(install.updating())
             phase = .ready
             connect()
         } catch {
@@ -94,9 +98,10 @@ final class AppController {
         switch choice {
         case .local:
             let model = try await Self.localModel(daemons.local)
-            model.updates.reopen = { [daemon = daemons.local.baseURL] in
-                Self.reopen(daemon: daemon)
+            model.updates.reopen = { [weak self, daemon = daemons.local.baseURL] newApp in
+                self?.reopen(daemon: daemon, newApp: newApp)
             }
+            model.updates.followApp = { [weak self] file in self?.follow(file) }
             return model
         case .remote(let daemon):
             let model = try await AppModel.remote(daemon, tokens: daemons.tokens(for: daemon))
@@ -107,14 +112,30 @@ final class AppController {
         }
     }
 
-    /// Quits so the app reopens once `daemon` restarted. A reopen that cannot start leaves
-    /// the app running, which then reconnects.
-    private static func reopen(daemon: URL) {
+    /// Quits so the app reopens once `daemon` restarted: with a new app, the swap's helper
+    /// opens that one once the daemon answers on its version, or this one again when the
+    /// daemon takes longer (`AppRelaunch.afterUpdate`). A reopen that cannot start leaves the
+    /// app running, which then reconnects.
+    private func reopen(daemon: URL, newApp: String?) {
+        if let newApp, swapper.afterUpdate(to: newApp, daemon: daemon) {
+            NSApp.terminate(nil)
+            return
+        }
         let arguments = AppRelaunch.afterDaemonRestart(
             appPath: Bundle.main.bundleURL.path, pid: getpid(), daemon: daemon,
             environment: ProcessInfo.processInfo.environment)
         guard (try? DetachedSpawner().spawn(AppRelaunch.shell, arguments)) != nil else { return }
         NSApp.terminate(nil)
+    }
+
+    /// Swaps to the app that belongs to This Mac's daemon, quitting for it.
+    private func follow(_ file: AppFile) {
+        switch swapper.follow(file) {
+        case .none: break
+        case .swapping: NSApp.terminate(nil)
+        case .failed(let version):
+            shell?.show("Nest could not update its app to \(version)", kind: .failed)
+        }
     }
 
     /// The model for This Mac's daemon: the default one, or the test daemon the
@@ -141,6 +162,7 @@ final class AppController {
             shell.keepSettings(of: old)
         }
         self.shell = shell
+        shell.island = { [weak self] in self?.island?.trusted == true }
         notifier = Notifier(shell: shell)
         notifier?.start()
         visibility = VisibilityMonitor(reporter: model.visibility)
@@ -212,9 +234,45 @@ final class AppController {
     /// Starts or restarts the daemon's service, then connects again once it is up.
     func startService() {
         Task {
-            guard await service.start() else { return }
-            // launchd returns before the daemon listens; give it a moment.
-            try? await Task.sleep(for: .seconds(1.5))
+            await runService()
+            connect()
+        }
+    }
+
+    private func runService() async {
+        // A test daemon is not the service: launchd would restart the real one.
+        guard daemons.local.baseURL == APIClient.defaultBaseURL, await service.start() else {
+            return
+        }
+        // launchd returns before the daemon listens; give it a moment.
+        try? await Task.sleep(for: .seconds(1.5))
+    }
+
+    /// The window's connection changed. This Mac's daemon down at launch gets its service
+    /// started once by the app itself before the window asks the user for anything (B130).
+    func noteConnection(_ connection: ConnectionState) {
+        guard let shell else { return }
+        let update = connection.isUnreachable ? install.updating() : nil
+        if shell.noteConnection(connection, update: update) {
+            startServiceOnce()
+        }
+    }
+
+    /// While an update has the daemon down: its note read again, and the daemon tried again,
+    /// so the window moves on as soon as it is back.
+    func followUpdate() {
+        guard let shell else { return }
+        if shell.noteUpdate(install.updating()) {
+            startServiceOnce()
+        } else {
+            connect()
+        }
+    }
+
+    private func startServiceOnce() {
+        Task {
+            await runService()
+            shell?.serviceStartFinished()
             connect()
         }
     }

@@ -597,7 +597,7 @@ private struct ProjectConfigurationTab: View {
                     Button("New skill") { shell.configurationForm = .skill(repo: repo.name) }
                         .buttonStyle(.nest())
                     Button("Open folder") {
-                        LocalOpen.folder(repo.path + "/.claude/skills")
+                        shell.openFolder(making: repo.path + "/.claude/skills")
                     }
                     .buttonStyle(.nest())
                     .localOnly(shell, DaemonText.appsOff)

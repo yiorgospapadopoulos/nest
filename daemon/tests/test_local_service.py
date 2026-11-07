@@ -291,16 +291,13 @@ async def test_the_engine_and_the_first_run_choices_are_kept(env: Env) -> None:
     assert env.bus.ephemeral == [CHANGED, CHANGED]
 
 
-async def test_there_is_no_first_run_once_done_or_signed_in_or_with_a_model(env: Env) -> None:
+async def test_the_first_run_ends_only_when_finished(env: Env) -> None:
     env.signed_in = True
-    assert not (await env.local.setup()).first_run
-    env.signed_in = False
+    assert (await env.local.setup()).first_run
     env.network.add(mlx())
     await env.local.add("127.0.0.1:8080", None, ["mlx-community/Qwen3-32B-4bit"])
-    assert not (await env.local.setup()).first_run
-    assert await env.local.in_use()
-    await env.local.remove((await env.local.listing()).models[0].id)
     assert (await env.local.setup()).first_run
+    assert await env.local.in_use()
     assert await env.local.finish_setup() == SetupState(first_run=False, local_only=False)
 
 

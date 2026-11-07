@@ -1059,7 +1059,12 @@
             sample.setLocalModels(false)
             sample.setFirstRun(true)
             await local.load()
-            try await pair(controller, "b106-first-run", folder)
+            controller.shell?.startGuideIfFirstRun()
+            await controller.shell?.model.setup.refresh()
+            try await pair(controller, "b130-guide-engine", folder)
+            controller.shell?.guide?.open(.github)
+            try await pair(controller, "b130-guide-github", folder)
+            controller.shell?.closeGuide()
 
             sample.setFirstRun(false)
             sample.runOnLocal([:])

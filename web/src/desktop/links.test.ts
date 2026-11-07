@@ -1,7 +1,7 @@
 // Every link in the window opens in the system's browser, and only a web or mail link opens.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { safeLink } from "./bridge.ts";
-import { routeLinkClick } from "./links.ts";
+import { isGitHubIssue, routeLinkClick } from "./links.ts";
 
 function click(html: string, button = 0) {
   document.body.innerHTML = html;
@@ -70,5 +70,14 @@ describe("links in the desktop window", () => {
     expect(safeLink("mailto:a@b.c")).toBe("mailto:a@b.c");
     expect(safeLink("javascript:alert(1)")).toBeNull();
     expect(safeLink("not a url")).toBeNull();
+  });
+});
+
+describe("the bug report's issue", () => {
+  it("opens only on GitHub over https", () => {
+    expect(isGitHubIssue("https://github.com/o/r/issues/new?title=a")).toBe(true);
+    expect(isGitHubIssue("https://evil.example/issues/new")).toBe(false);
+    expect(isGitHubIssue("http://github.com/o/r/issues/new")).toBe(false);
+    expect(isGitHubIssue("file:///etc/passwd")).toBe(false);
   });
 });

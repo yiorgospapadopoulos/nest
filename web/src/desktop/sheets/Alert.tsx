@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button, type ButtonKind } from "../ui/controls.tsx";
 import { useOverlay, useRestoreFocus } from "../ui/floating.ts";
@@ -19,11 +19,14 @@ export function Alert({
   message,
   actions,
   onClose,
+  children,
 }: {
   title: string;
   message: string;
   actions: AlertAction[];
   onClose: () => void;
+  // A choice that goes with the question, above the buttons.
+  children?: ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
   useRestoreFocus();
@@ -53,6 +56,7 @@ export function Alert({
       >
         <h2>{title}</h2>
         {message !== "" && <p>{message}</p>}
+        {children}
         <div className="dks-alertb">
           <Button kind="soft" onClick={onClose}>
             Cancel

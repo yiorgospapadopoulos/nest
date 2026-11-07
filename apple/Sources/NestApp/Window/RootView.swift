@@ -16,7 +16,8 @@ struct RootView: View {
                     ShellView().environment(shell).id(ObjectIdentifier(shell))
                 }
             case .loading:
-                StartupView(title: "Starting", message: nil, retry: nil)
+                // Only the background until the guide or the projects can show (B130).
+                StartupView(title: nil, message: nil, retry: nil)
             case .failed(let message):
                 StartupView(
                     title: "Nest could not start", message: message, retry: controller.start)
@@ -40,6 +41,15 @@ struct ShellView: View {
     @State private var fullScreen = false
     @State private var windowSize = CGSize.zero
 
+    /// The guide or the projects, never the projects for a moment before the guide.
+    private var content: WindowContent {
+        let firstRun = shell.model.local.firstRun
+        return WindowContent(
+            daemonDown: shell.daemonDown.isDown, guideOpen: shell.guide != nil,
+            // A snapshot shows what it set up, read or not.
+            firstRun: snapshot ? firstRun ?? false : firstRun)
+    }
+
     var body: some View {
         let settings = shell.settings
         // Offscreen there is no desktop to show through: the window draws opaque.
@@ -47,17 +57,30 @@ struct ShellView: View {
             reduceTransparency: reduceTransparency || snapshot, fullScreen: fullScreen)
         ZStack(alignment: .top) {
             WindowBackground(backdrop: backdrop, image: shell.chatBackground?.image)
-            VStack(spacing: 0) {
-                // No line under the tabs: the project bar it divided off is gone (B73).
-                TabStrip(fullScreen: fullScreen)
-                    // A line in the chat background's colours where the top bar ends.
-                    .overlay(alignment: .bottom) {
-                        PhotoLineView(image: shell.chatBackground?.image)
-                    }
-                ProjectBody()
+            switch content {
+            case .daemonDown:
+                DaemonDownView()
+            case .guide:
+                if let guide = shell.guide {
+                    SetupGuideView(flow: guide)
+                }
+            case .blank:
+                EmptyView()
+            case .projects:
+                VStack(spacing: 0) {
+                    // No line under the tabs: the project bar it divided off is gone (B73).
+                    TabStrip(fullScreen: fullScreen)
+                        // A line in the chat background's colours where the top bar ends.
+                        .overlay(alignment: .bottom) {
+                            PhotoLineView(image: shell.chatBackground?.image)
+                        }
+                    ProjectBody()
+                }
             }
             VStack(spacing: 8) {
-                ConnectionBanner()
+                if !shell.daemonDown.isDown {
+                    ConnectionBanner()
+                }
                 UsageWarningBanner()
                 if let toast = shell.toast {
                     ToastView(toast: toast)
@@ -104,11 +127,13 @@ struct ShellView: View {
         .onDisappear { shell.stopWatchingDrags() }
         // A project removed from the daemon drops its state, ending its tool panes.
         .onChange(of: Set(shell.app.projects.keys)) { shell.syncTools() }
-        .onChange(of: shell.app.connection) { _, connection in
+        .onChange(of: shell.app.connection, initial: true) { _, connection in
+            controller.noteConnection(connection)
             if connection == .connected {
                 controller.service.reset()
             }
         }
+        .onChange(of: shell.model.local.isFirstRun, initial: true) { shell.startGuideIfFirstRun() }
         // What needs the user, and the pixies' unread reports that need action (B42).
         .onChange(
             of: [shell.sessions.attention(), shell.reports.unreadActions()], initial: true
@@ -137,10 +162,7 @@ private struct ProjectBody: View {
 
     var body: some View {
         Group {
-            if shell.model.local.isFirstRun {
-                // Nothing signed in or added yet: the welcome (B106).
-                FirstRunView()
-            } else if shell.pixiesOpen {
+            if shell.pixiesOpen {
                 VStack(spacing: 0) {
                     PixiesView()
                     StatusBar()
@@ -431,7 +453,8 @@ struct ToastView: View {
 }
 
 private struct StartupView: View {
-    let title: String
+    /// Nil draws the background only.
+    let title: String?
     let message: String?
     let retry: (() -> Void)?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -440,24 +463,23 @@ private struct StartupView: View {
     var body: some View {
         ZStack {
             WindowBackground(backdrop: .of(reduceTransparency: reduceTransparency || offscreen))
-            VStack(spacing: 10) {
-                if retry == nil {
-                    Fireflies()
+            if let title {
+                VStack(spacing: 10) {
+                    Text(title).font(.ui(TypeSize.headline, .semibold))
+                    if let message {
+                        Text(message)
+                            .font(.ui(TypeSize.ui))
+                            .foregroundStyle(Palette.t2)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 360)
+                    }
+                    if let retry {
+                        Button("Try again", action: retry).buttonStyle(.nest(.primary))
+                    }
                 }
-                Text(title).font(.ui(TypeSize.headline, .semibold))
-                if let message {
-                    Text(message)
-                        .font(.ui(TypeSize.ui))
-                        .foregroundStyle(Palette.t2)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 360)
-                }
-                if let retry {
-                    Button("Try again", action: retry).buttonStyle(.nest(.primary))
-                }
+                .padding(28)
+                .sheetSurface()
             }
-            .padding(28)
-            .sheetSurface()
         }
     }
 }

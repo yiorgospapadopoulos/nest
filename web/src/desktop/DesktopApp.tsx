@@ -8,15 +8,24 @@ import { deviceStorage } from "../store/legacyKeys.ts";
 import { StoreProvider } from "../store/StoreProvider.tsx";
 import { connectionLost } from "../store/updates.ts";
 import { DesktopToast } from "./ui/Toast.tsx";
-import type { Bridge, DaemonConnection } from "./bridge.ts";
-import { ApiContext, BridgeContext } from "./context.ts";
+import type { Bridge, DaemonConnection, InstallState } from "./bridge.ts";
+import { ApiContext, BridgeContext, useBridge } from "./context.ts";
 import { TranscriptPage } from "./chat/TranscriptPage.tsx";
 import type { TranscriptTarget } from "./chat/transcriptTarget.ts";
+import {
+  DEFAULT_RELEASE_URL,
+  daemonDown,
+  heldView,
+  holdUpdate,
+  installLine,
+  type UpdateHold,
+} from "./layout/connection.ts";
 import { Pill } from "./Pill.tsx";
 import { ConnectionBanner, Connecting } from "./shell/ConnectionBanner.tsx";
+import { DaemonDown, UpdatingNest } from "./shell/DaemonDown.tsx";
 import { DesktopShell } from "./shell/DesktopShell.tsx";
 import { useReconnect } from "./shell/useReconnect.ts";
-import { WindowButtons } from "./shell/WindowButtons.tsx";
+import { WindowFrame } from "./shell/WindowFrame.tsx";
 
 type Refresh = () => Promise<"changed" | "same">;
 
@@ -49,7 +58,7 @@ async function answers(api: Api): Promise<boolean> {
 }
 
 /**
- * The window from launch: until the daemon answers, its frame with the connection banner,
+ * The window from launch: until the daemon answers, its frame and what to do about it,
  * trying again with the Mac's backoff (the token comes from the running daemon, so there
  * is none before); then the app, built again whenever the daemon gives a new token.
  */
@@ -119,21 +128,108 @@ export function DesktopRoot({
   );
 }
 
-/** Before the daemon first answers: the frame and the banner; a small window stays empty. */
+// systemctl returns before the daemon listens; it gets a moment, as Try again's start.
+const SETTLE_MS = 1500;
+// How often the update's screen looks again, so it moves on as soon as the daemon is back.
+const UPDATE_TICK_MS = 1000;
+
+const wait = (ms: number) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+/**
+ * Before the daemon first answers: the frame and Connecting, then what to do about it (B130,
+ * screens Z). While an update has the daemon down, its progress instead, never the repair
+ * line: `update.json` is read before the first try, so it shows at once (fix 30a), and the
+ * screen stays a while after it clears, until the daemon answers (fix 30b). Otherwise the
+ * app first starts the service once by itself, and only if the daemon is still down shows
+ * the line, or what stops it when the Tauri side can tell. A small window stays empty.
+ */
 function Launch({ pill, found }: { pill: boolean; found: () => Promise<boolean> }) {
-  const reconnect = useReconnect(true, found);
+  const bridge = useBridge();
+  const [problem, setProblem] = useState<string | null>(null);
+  const [install, setInstall] = useState<InstallState | null>(null);
+  const [hold, setHold] = useState<UpdateHold | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [started, setStarted] = useState(false);
+  const startedOnce = useRef(false);
+  const readOnce = useRef(false);
+  const lastInstall = useRef<InstallState | null>(null);
+  const held = useRef<UpdateHold | null>(null);
+  // Whether the Updating screen shows after this read of `update.json`.
+  const readInstall = useCallback(async () => {
+    // A read that failed tells nothing: the last answer stands. Taken for "no update", it
+    // would have the update's screen flicker out and start the service mid-update.
+    const state = await bridge.installState().catch(() => lastInstall.current);
+    lastInstall.current = state;
+    const at = Date.now();
+    held.current = holdUpdate(held.current, state?.updating ?? null, at);
+    setInstall(state);
+    setHold(held.current);
+    setNow(at);
+    return held.current !== null;
+  }, [bridge]);
+  const tried = useCallback(async () => {
+    if (!readOnce.current) {
+      readOnce.current = true;
+      await readInstall();
+    }
+    if (await found().catch(() => false)) return true;
+    const [why, updating] = await Promise.all([
+      bridge.daemonProblem().catch(() => null),
+      readInstall(),
+    ]);
+    setProblem(why);
+    // The watcher is at work during an update; starting the service would get in its way.
+    if (updating || startedOnce.current) return false;
+    startedOnce.current = true;
+    const running = await bridge.startService().then(
+      (answer) => answer === "started",
+      () => false,
+    );
+    if (running) await wait(SETTLE_MS);
+    setStarted(true);
+    return running && (await found().catch(() => false));
+  }, [bridge, found, readInstall]);
+  const reconnect = useReconnect(true, tried);
+  const update = heldView(hold, now);
+  const updating = update !== null;
+  const { retry } = reconnect;
+  useEffect(() => {
+    if (!updating) return;
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      retry();
+    }, UPDATE_TICK_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [updating, retry]);
+  // Kept once shown, as Try again starts the retries over.
+  const [down, setDown] = useState(false);
+  if (!down && started && update === null && daemonDown(reconnect.connection)) setDown(true);
   if (pill) return null;
   return (
-    <>
-      <div className="dk">
-        <Frame>
+    <div className="dk">
+      <WindowFrame>
+        {update !== null ? (
+          <UpdatingNest version={update.version} slow={update.slow} />
+        ) : down ? (
+          <DaemonDown
+            problem={problem}
+            line={installLine(install?.releaseUrl ?? DEFAULT_RELEASE_URL)}
+            starting={reconnect.service.kind === "starting"}
+            onTryAgain={() => {
+              reconnect.startService();
+              reconnect.retry();
+            }}
+          />
+        ) : (
           <Connecting />
-        </Frame>
-      </div>
-      <div className="dk-banners">
-        <ConnectionBanner reconnect={reconnect} />
-      </div>
-    </>
+        )}
+      </WindowFrame>
+    </div>
   );
 }
 
@@ -260,9 +356,9 @@ function Root({ refresh }: { refresh: Refresh }) {
       );
     case "offline":
       return (
-        <Frame>
+        <WindowFrame>
           <Connecting />
-        </Frame>
+        </WindowFrame>
       );
     case "ready":
       return <DesktopShell />;
@@ -275,19 +371,6 @@ function PillRoot() {
   return state.auth === "ready" ? <Pill /> : null;
 }
 
-/** The window while no shell shows: an empty strip to move it by, and its buttons. */
-function Frame({ children }: { children: ReactNode }) {
-  return (
-    <div className="dk-notice">
-      <div className="dk-tabs" data-tauri-drag-region>
-        <span className="grow" data-tauri-drag-region />
-        <WindowButtons />
-      </div>
-      {children}
-    </div>
-  );
-}
-
 function Notice({
   title,
   busy,
@@ -298,7 +381,7 @@ function Notice({
   children?: ReactNode;
 }) {
   return (
-    <Frame>
+    <WindowFrame>
       <main
         className="center"
         aria-busy={busy === true}
@@ -311,7 +394,7 @@ function Notice({
           </section>
         )}
       </main>
-    </Frame>
+    </WindowFrame>
   );
 }
 

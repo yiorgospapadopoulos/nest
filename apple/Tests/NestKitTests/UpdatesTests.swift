@@ -51,12 +51,38 @@ import Testing
         #expect(ready.engines[0].change == "Claude Code 2.1.317 → 2.1.318")
     }
 
+    @Test func aNewNestAloneIsAnUpdate() {
+        let app = AppUpdate(version: "1.2.0", notes: "Faster.")
+        let status = Fixture.decode(
+            EngineUpdates.self,
+            json: """
+                {"state": "ready", "engines": [], "busy_chats": 0, "can_undo": false,
+                 "notice": null, "app": {"version": "1.2.0", "notes": "Faster."},
+                 "app_file": {"version": "1.1.0", "path": "/d/1.1.0/app-file"}}
+                """)
+        #expect(status.appFile == AppFile(version: "1.1.0", path: "/d/1.1.0/app-file"))
+        model.live.route(
+            Fixture.event(EventType.updatesChanged, Fixture.json(status), id: nil, session: nil))
+        #expect(store.strip == .ready(app: app, engines: [], relaunching: false))
+    }
+
+    @Test func everyConnectFollowsTheDaemonsApp() async throws {
+        let file = AppFile(version: "1.1.0", path: "/d/1.1.0/app-file")
+        api.set { $0.updates = EngineUpdates(appFile: file) }
+        var followed: [AppFile] = []
+        store.followApp = { followed.append($0) }
+        let run = Task { await model.live.run() }
+        defer { run.cancel() }
+        try await connect()
+        #expect(followed == [file])
+    }
+
     @Test func theEventReplacesTheState() async {
         model.live.route(
             Fixture.event(EventType.updatesChanged, Fixture.json(Self.ready), id: nil, session: nil)
         )
         #expect(store.status == Self.ready)
-        #expect(store.strip == .ready(engines: [Self.claude], relaunching: false))
+        #expect(store.strip == .ready(app: nil, engines: [Self.claude], relaunching: false))
     }
 
     @Test func aCheckRunsOnceAndEveryConnectReadsTheState() async throws {
@@ -91,7 +117,7 @@ import Testing
         #expect(store.strip == .notice("Back on the old engines."))
 
         try await store.dismissNotice()
-        #expect(store.strip == .ready(engines: [Self.claude], relaunching: false))
+        #expect(store.strip == .ready(app: nil, engines: [Self.claude], relaunching: false))
     }
 
     @Test(arguments: [EngineUpdates.Phase.idle, .checking, .preparing])
@@ -167,7 +193,7 @@ import Testing
             Fixture.event(
                 EventType.updatesChanged, Fixture.json(EngineUpdates()), id: nil, session: nil))
         #expect(store.status?.state == .idle)
-        #expect(store.strip == .ready(engines: [], relaunching: true))
+        #expect(store.strip == .ready(app: nil, engines: [], relaunching: true))
 
         await store.connected()
         #expect(store.restarting == nil)
@@ -176,7 +202,7 @@ import Testing
 
     @Test func theAppReopensOnlyOnceTheDaemonAccepted() async throws {
         var reopened = 0
-        store.reopen = { reopened += 1 }
+        store.reopen = { _ in reopened += 1 }
         api.set { $0.updates = Self.ready }
         await store.load()
         api.fail("relaunchUpdate", with: APIError.conflict("No update is ready"))
@@ -187,10 +213,24 @@ import Testing
         api.set { $0.failures["relaunchUpdate"] = nil }
         try await store.run(.relaunch)
         #expect(reopened == 1)
-        #expect(store.strip == .ready(engines: [Self.claude], relaunching: true))
+        #expect(store.strip == .ready(app: nil, engines: [Self.claude], relaunching: true))
 
         try await store.run(.undo)
         #expect(reopened == 2)
+    }
+
+    /// Regression (B130): with a new app the reopen is told its version, so the swap's helper
+    /// opens it once instead of the old app loading again only to quit for the swap.
+    @Test func aRelaunchWithANewAppTellsTheReopenItsVersion() async throws {
+        var told: [String?] = []
+        store.reopen = { told.append($0) }
+        let app = AppUpdate(version: "1.2.0", notes: "")
+        api.set { $0.updates = EngineUpdates(state: .ready, canUndo: true, app: app) }
+        await store.load()
+
+        try await store.run(.relaunch)
+        try await store.run(.undo)
+        #expect(told == ["1.2.0", nil])
     }
 
     @Test func withoutAReopenTheAppStaysUntilTheDaemonIsBack() async throws {
@@ -202,7 +242,7 @@ import Testing
 
         await store.connected()
         #expect(store.restarting == nil)
-        #expect(store.strip == .ready(engines: [Self.claude], relaunching: false))
+        #expect(store.strip == .ready(app: nil, engines: [Self.claude], relaunching: false))
     }
 
     @Test func hidingLastsThroughReconnectsAndOnlyForThisStore() async throws {
@@ -211,7 +251,7 @@ import Testing
 
         store.hideStrip()
         #expect(store.strip == nil)
-        #expect(store.ready == ReadyUpdate(engines: [Self.claude], relaunching: false))
+        #expect(store.ready == ReadyUpdate(app: nil, engines: [Self.claude], relaunching: false))
 
         await store.connected()
         model.live.route(
@@ -222,7 +262,7 @@ import Testing
 
         let fresh = UpdatesStore(api: api)
         await fresh.load()
-        #expect(fresh.strip == .ready(engines: [Self.claude], relaunching: false))
+        #expect(fresh.strip == .ready(app: nil, engines: [Self.claude], relaunching: false))
     }
 
     @Test func aHiddenStripStillShowsANotice() async {
@@ -233,7 +273,7 @@ import Testing
 
         store.hideStrip()
         #expect(store.strip == .notice("Back on the old engines."))
-        #expect(store.ready == ReadyUpdate(engines: [Self.claude], relaunching: false))
+        #expect(store.ready == ReadyUpdate(app: nil, engines: [Self.claude], relaunching: false))
     }
 
     @Test func aRefusedRelaunchComesBackToTheStrip() async throws {

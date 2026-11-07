@@ -35,6 +35,7 @@ def make_service(paths: AppPaths, tmp_path: Path, runner: FakeRunner) -> Launchd
         runner=runner,
         program_args=["/venv/bin/python", "-m", "nestd", "serve"],
         path_env="/custom/bin:/usr/bin",
+        pause=lambda _: None,
     )
 
 
@@ -92,6 +93,24 @@ def test_install_reports_bootstrap_failure(paths: AppPaths, tmp_path: Path) -> N
 
     with pytest.raises(ServiceError, match="launchctl bootstrap failed: Input/output error"):
         service.install()
+
+
+def test_install_waits_for_the_old_daemon_to_stop(paths: AppPaths, tmp_path: Path) -> None:
+    """Regression: `bootout` returns first, so a repair over a running service failed."""
+
+    class StoppingRunner(FakeRunner):
+        def __call__(self, args: Sequence[str]) -> CommandResult:
+            result = super().__call__(args)
+            bootstraps = sum(call[1] == "bootstrap" for call in self.calls)
+            if args[1] == "bootstrap" and bootstraps < 3:
+                return CommandResult(5, "", "Bootstrap failed: 5: Input/output error")
+            return result
+
+    runner = StoppingRunner()
+
+    make_service(paths, tmp_path, runner).install()
+
+    assert sum(call[1] == "bootstrap" for call in runner.calls) == 3
 
 
 def test_uninstall_boots_out_and_removes_plist(paths: AppPaths, tmp_path: Path) -> None:

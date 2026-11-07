@@ -532,6 +532,8 @@ struct CardField: View {
     let placeholder: String
     @Binding var text: String
     var submit: (() -> Void)?
+    /// When the keyboard leaves the field.
+    var blur: (() -> Void)?
     /// Takes the keyboard as soon as it shows, as Other's field does.
     var focusOnAppear = false
     /// Hides what is typed, such as a key.
@@ -553,6 +555,7 @@ struct CardField: View {
         .font(.ui(TypeSize.ui))
         .focused($focused)
         .onAppear { if focusOnAppear { focused = true } }
+        .onChange(of: focused) { if !focused { blur?() } }
         .onSubmit { submit?() }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)

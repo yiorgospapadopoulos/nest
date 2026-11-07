@@ -139,4 +139,29 @@ describe("the retry loop", () => {
     loop.stop();
     expect(clock.waiting.size).toBe(0);
   });
+
+  // As the Mac's LiveSync (B130): a replaced attempt that ends late says nothing more, so it
+  // cannot mark a newer connection as lost.
+  it("reports nothing from a try that ends after it was stopped", async () => {
+    const clock = fakeTimers();
+    const seen: Connection[] = [];
+    let fail = (): void => undefined;
+    const loop = new RetryLoop(
+      () =>
+        new Promise<boolean>((_, reject) => {
+          fail = () => {
+            reject(new Error("refused"));
+          };
+        }),
+      (c) => seen.push(c),
+      clock.timers,
+    );
+    loop.start();
+    await settle();
+    loop.stop();
+    fail();
+    await settle();
+    expect(seen).toEqual([]);
+    expect(clock.waiting.size).toBe(0);
+  });
 });

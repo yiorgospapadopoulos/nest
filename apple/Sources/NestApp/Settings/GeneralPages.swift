@@ -21,6 +21,10 @@ struct GeneralPage: View {
             UpdateRow()
             UndoUpdateRow()
         }
+        // Each in a section of its own, so it is clear what is what (B130).
+        SetupSection()
+        HelpSection()
+        UninstallSection()
     }
 
     /// The bundle's version, or a build run from the checkout.
@@ -281,6 +285,60 @@ private struct RestartRow: View {
     }
 }
 
+/// Every check, what is done and what is missing; the guide itself shows only at first start.
+private struct SetupSection: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        SettingsSection(title: "Setup") {
+            SettingsRow(label: "Set up Nest") {
+                Button("Open") { shell.setupSheet = .checks }.buttonStyle(.nest(.soft))
+            }
+        }
+    }
+}
+
+/// A bug report, read in full before anything else.
+private struct HelpSection: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let store = shell.model.setup
+        SettingsSection(title: "Help") {
+            SettingsRow(label: "Report a bug") {
+                if store.reporting {
+                    Fireflies()
+                }
+                Button("Report") {
+                    shell.settingsChange("Could not make the report") {
+                        shell.setupSheet = .report(try await shell.makeReport())
+                    }
+                }
+                .buttonStyle(.nest(.soft))
+                .disabled(store.reporting)
+            }
+        }
+    }
+}
+
+/// Uninstall Nest, on a released install of This Mac only (B130); the confirmation is a
+/// sheet over Settings.
+private struct UninstallSection: View {
+    @Environment(AppController.self) private var controller
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        if AppBuild.checkout == nil, !shell.isRemote, controller.install.nestCommand != nil {
+            SettingsSection(title: "Uninstall") {
+                SettingsRow(label: "Uninstall Nest") {
+                    Button("Uninstall") { shell.setupSheet = .uninstall }
+                        .buttonStyle(.nest(.destructive))
+                }
+            }
+        }
+    }
+}
+
 /// The strip's update and button, here whether or not the strip was hidden (B121).
 private struct UpdateRow: View {
     @Environment(Shell.self) private var shell
@@ -289,6 +347,9 @@ private struct UpdateRow: View {
         if let ready = shell.updates.ready {
             SettingsRow(label: "Update available") {
                 VStack(alignment: .trailing, spacing: 2) {
+                    if let app = ready.app {
+                        SettingsValue(text: app.change)
+                    }
                     ForEach(ready.engines) { SettingsValue(text: $0.change) }
                 }
                 Button(ready.relaunching ? "Relaunching..." : "Relaunch to update") {

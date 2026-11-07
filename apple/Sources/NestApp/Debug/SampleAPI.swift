@@ -2070,6 +2070,55 @@
             lock.withLock { setupState.firstRun = false }
         }
 
+        func setupChecks() async throws -> [SetupCheck] {
+            [
+                SetupCheck(id: "engine", title: "Engine", state: .ok, detail: "Claude Code"),
+                SetupCheck(id: "git", title: "git", state: .ok, detail: "2.50.1"),
+                SetupCheck(
+                    id: "github", title: "GitHub", state: .missing,
+                    message: "gh is installed but not signed in. Pull requests need it.",
+                    fix: .init(kind: .command, value: "gh auth login")),
+                SetupCheck(
+                    id: "engine_installs", title: "Engine installs", state: .missing,
+                    message: "Codex is not installed.", importance: .required),
+                SetupCheck(
+                    id: "service", title: "Background service", state: .ok,
+                    detail: "Starts at login"),
+                SetupCheck(
+                    id: "tailscale", title: "Tailscale and iPhone", state: .missing,
+                    message: "Nest is shared. Pair your iPhone.",
+                    detail: "mac-mini.tail3f2a.ts.net", stage: "pair"),
+                SetupCheck(
+                    id: "notifications", title: "Notifications", state: .notApplicable,
+                    message: "Checked in the app."),
+                SetupCheck(
+                    id: "ntfy", title: "ntfy", state: .notApplicable, detail: "Optional",
+                    importance: .optional),
+                SetupCheck(
+                    id: "dictation", title: "Dictation", state: .notApplicable,
+                    message: "Checked in the app."),
+                SetupCheck(
+                    id: "port", title: "Port", state: .ok, detail: "127.0.0.1:8765 is Nest's"),
+                SetupCheck(
+                    id: "permissions", title: "Mac permissions", state: .notApplicable,
+                    message: "Checked in the app."),
+            ]
+        }
+
+        func shareTailscale() async throws -> SetupCheck {
+            SetupCheck(
+                id: "tailscale", title: "Tailscale and iPhone", state: .missing,
+                message: "Nest is shared. Pair your iPhone.", detail: "mac-mini.tail3f2a.ts.net",
+                stage: "pair")
+        }
+
+        func setupReport(answers: [SetupCheck]) async throws -> SetupReport {
+            SetupReport(
+                path: "/Users/example/Library/Application Support/nest/reports/report.txt",
+                text: "Nest 0.1.0\nmacOS 26.1\n\nEngine: ok (Claude Code)\ngit: ok (2.50.1)\n",
+                issueURL: "https://github.com/yiorgospapadopoulos/nest/issues/new")
+        }
+
         // MARK: Artifacts (B79)
 
         func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws

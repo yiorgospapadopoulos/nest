@@ -38,10 +38,9 @@ final class Dictation {
             return nil
         }
         cancel()
-        let info = Bundle.main.infoDictionary ?? [:]
-        guard info["NSSpeechRecognitionUsageDescription"] != nil,
-            info["NSMicrophoneUsageDescription"] != nil
-        else { return "Dictation works in the bundled app (make app)" }
+        guard DictationAccess.canAsk else {
+            return "Dictation works in the bundled app (make app)"
+        }
         let run = generation
         preparing = (chat, "Getting dictation ready")
         if let refusal = await DictationAccess.request().hint {
@@ -416,6 +415,32 @@ enum DictationAccess: Equatable {
         case .denied(let what): "Allow \(what) for Nest in System Settings > Privacy"
         case .restricted(let what): "\(what) is restricted on this Mac"
         }
+    }
+
+    /// The system's current answers, asking nothing.
+    nonisolated static var microphone: SystemPermission {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: .allowed
+        case .denied: .refused
+        case .restricted: .restricted
+        default: .notAsked
+        }
+    }
+
+    nonisolated static var speech: SystemPermission {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized: .allowed
+        case .denied: .refused
+        case .restricted: .restricted
+        default: .notAsked
+        }
+    }
+
+    /// Only the bundled app can ask: the system stops a process with no usage text.
+    nonisolated static var canAsk: Bool {
+        let info = Bundle.main.infoDictionary ?? [:]
+        return info["NSSpeechRecognitionUsageDescription"] != nil
+            && info["NSMicrophoneUsageDescription"] != nil
     }
 
     nonisolated static func request() async -> DictationAccess {
