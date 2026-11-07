@@ -157,6 +157,11 @@ class AppPaths:
         return self.data_dir / "bin"
 
     @property
+    def reports_dir(self) -> Path:
+        """Bug reports, which stay here until the user shares one."""
+        return self.data_dir / "reports"
+
+    @property
     def environments_dir(self) -> Path:
         """The prepared engine environments and which one runs (`nestd/updates`)."""
         return self.data_dir / "environments"

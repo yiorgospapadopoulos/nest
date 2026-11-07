@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from nestd.api.deps import Context, RequireDevice
 from nestd.doctor.checks import run_checks
 from nestd.doctor.models import SetupChecks
+from nestd.doctor.report import Report, write_report
 from nestd.local.models import SetupState
 
 router = APIRouter(prefix="/api/setup", dependencies=[RequireDevice])
@@ -31,3 +32,9 @@ async def setup_done(ctx: Context) -> SetupState:
 @router.get("/checks")
 async def setup_checks(ctx: Context) -> SetupChecks:
     return SetupChecks(checks=await asyncio.to_thread(run_checks, ctx.doctor_machine()))
+
+
+@router.post("/report")
+async def setup_report(ctx: Context) -> Report:
+    """Writes the file and returns its text to show; nothing is sent anywhere."""
+    return await asyncio.to_thread(write_report, ctx.doctor_machine(), ctx.clock.now())
