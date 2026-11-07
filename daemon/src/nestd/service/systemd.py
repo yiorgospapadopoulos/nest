@@ -1,8 +1,9 @@
 """Install, remove and inspect the daemon's systemd user service (Linux)."""
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 
 from nestd.paths import CONFIG_DIR_ENV, DATA_DIR_ENV, AppPaths
 from nestd.service.base import CommandResult, CommandRunner, ServiceError, ServiceStatus
@@ -25,12 +26,18 @@ def _quoted(value: str, *, command: bool = False) -> str:
     return f'"{escaped.replace("$", "$$") if command else escaped}"'
 
 
-def render_unit(program_args: Sequence[str], paths: AppPaths, path_env: str) -> str:
+def render_unit(
+    program_args: Sequence[str],
+    paths: AppPaths,
+    path_env: str,
+    extra_env: Mapping[str, str] = MappingProxyType({}),
+) -> str:
     log_file = _escape(str(paths.logs_dir / "daemon.log"))
     environment = {
         "PATH": path_env,
         CONFIG_DIR_ENV: str(paths.config_dir),
         DATA_DIR_ENV: str(paths.data_dir),
+        **extra_env,
     }
     lines = [
         "[Unit]",
@@ -65,6 +72,7 @@ class SystemdService:
     runner: CommandRunner
     program_args: Sequence[str]
     path_env: str
+    extra_env: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
     def unit_path(self) -> Path:
@@ -73,7 +81,7 @@ class SystemdService:
     def install(self) -> None:
         """Write the unit, then enable and (re)start it, so a reinstall replaces a running
         service."""
-        unit = render_unit(self.program_args, self.paths, self.path_env)
+        unit = render_unit(self.program_args, self.paths, self.path_env, self.extra_env)
         self.paths.ensure()
         self.unit_dir.mkdir(parents=True, exist_ok=True)
         self.unit_path.write_text(unit, encoding="utf-8")
