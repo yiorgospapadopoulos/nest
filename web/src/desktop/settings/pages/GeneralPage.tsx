@@ -10,7 +10,6 @@ import {
 import { Fireflies } from "../../../ui/Fireflies.tsx";
 import type { LinuxSettings } from "../../bridge.ts";
 import { useApi, useBridge } from "../../context.ts";
-import { useShell } from "../../shell/context.ts";
 import { useRelaunch } from "../../shell/useRelaunch.ts";
 import { Button, Toggle } from "../../ui/controls.tsx";
 import { Alert } from "../../sheets/Alert.tsx";
@@ -26,7 +25,10 @@ import {
   Value,
 } from "../rows.tsx";
 
-/** The Mac's General (GeneralPages.swift): the sidebar's switch, this computer's, then Nest. */
+/**
+ * The Mac's General (GeneralPages.swift): the sidebar's switch, this computer's, Nest, then
+ * Setup, Help and Uninstall, each in a section of its own (B130).
+ */
 export function GeneralPage() {
   const { state, actions } = useStore();
   return (
@@ -44,20 +46,44 @@ export function GeneralPage() {
         <RestartRow />
         <UpdateRow />
         <UndoUpdateRow />
-        <SetupRows />
-        <UninstallRow />
       </SettingsSection>
+      <SetupSection />
+      <HelpSection />
+      <UninstallSection />
     </>
   );
 }
 
-/** The setup guide again, every check, and a bug report to read first (B130). */
-function SetupRows() {
+/** Every check, what is done and what is missing; the guide itself shows only at first start. */
+function SetupSection() {
+  const [open, setOpen] = useState(false);
+  return (
+    <SettingsSection title="Setup">
+      <SettingsRow label="Set up Nest">
+        <Button
+          onClick={() => {
+            setOpen(true);
+          }}
+        >
+          Open
+        </Button>
+      </SettingsRow>
+      {open && (
+        <CheckNestSheet
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      )}
+    </SettingsSection>
+  );
+}
+
+/** A bug report, read in full before anything else. */
+function HelpSection() {
   const { actions } = useStore();
   const api = useApi();
   const bridge = useBridge();
-  const shell = useShell();
-  const [checking, setChecking] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [report, setReport] = useState<SetupReport | null>(null);
   const makeReport = () => {
@@ -72,32 +98,13 @@ function SetupRows() {
       });
   };
   return (
-    <>
-      <SettingsRow label="Set up Nest">
-        <Button onClick={shell.openGuide}>Open</Button>
-      </SettingsRow>
-      <SettingsRow label="Check Nest">
-        <Button
-          onClick={() => {
-            setChecking(true);
-          }}
-        >
-          Check
-        </Button>
-      </SettingsRow>
-      <SettingsRow label="Make a bug report">
+    <SettingsSection title="Help">
+      <SettingsRow label="Report a bug">
         {reporting && <Fireflies />}
         <Button disabled={reporting} onClick={makeReport}>
-          Make
+          Report
         </Button>
       </SettingsRow>
-      {checking && (
-        <CheckNestSheet
-          onClose={() => {
-            setChecking(false);
-          }}
-        />
-      )}
       {report !== null && (
         <BugReportSheet
           report={report}
@@ -106,7 +113,7 @@ function SetupRows() {
           }}
         />
       )}
-    </>
+    </SettingsSection>
   );
 }
 
@@ -115,7 +122,7 @@ function SetupRows() {
  * it outlives the app and the service, and the app quits. Chats, settings and secrets stay
  * unless the user chooses to delete them too.
  */
-function UninstallRow() {
+function UninstallSection() {
   const { actions } = useStore();
   const bridge = useBridge();
   const [released, setReleased] = useState(false);
@@ -140,9 +147,10 @@ function UninstallRow() {
     });
   };
   return (
-    <>
+    <SettingsSection title="Uninstall">
       <SettingsRow label="Uninstall Nest">
         <Button
+          kind="destructive"
           onClick={() => {
             setDeleteData(false);
             setAsking(true);
@@ -174,7 +182,7 @@ function UninstallRow() {
           </div>
         </Alert>
       )}
-    </>
+    </SettingsSection>
   );
 }
 

@@ -51,7 +51,7 @@ export function CheckNestSheet({ onClose }: { onClose: () => void }) {
   const list = useMemo(() => (checks === null ? null : ranked(checks)), [checks]);
   return (
     <SheetFrame
-      title="Check Nest"
+      title="Set up Nest"
       onClose={onClose}
       footer={
         <>

@@ -70,7 +70,7 @@ describe("Uninstall Nest", () => {
     await waitFor(() => {
       expect(installState).toHaveBeenCalled();
     });
-    expect(screen.getByText("Make a bug report")).toBeInTheDocument();
+    expect(screen.getByText("Report a bug")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
   });
 });
@@ -91,7 +91,7 @@ describe("a bug report", () => {
       api,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Make" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Report" }));
     fireEvent.click(await screen.findByRole("button", { name: "Report on GitHub" }));
 
     expect(api.setupReport).toHaveBeenCalledWith([
