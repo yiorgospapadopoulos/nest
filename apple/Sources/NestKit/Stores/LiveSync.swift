@@ -393,9 +393,12 @@ public final class AppModel {
 
     /// Stops the live sync and tells the daemon the app is no longer on screen, as when the
     /// window switches to another daemon.
+    /// A cancelled run says nothing more about the connection (`LiveSync.run`), so closing
+    /// says it is over itself.
     public func close() {
         liveTask?.cancel()
         liveTask = nil
+        app.connection = .disconnected
         visibility.update(visible: false)
     }
 
