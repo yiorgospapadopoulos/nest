@@ -19,9 +19,16 @@
  *   app_version                                 -> this app's version
  *   swap_app { path }                           swaps to the app file at path and restarts;
  *                                                  nothing in a dev build, once per launch
+ *   install_state                               -> { updating, release_url, released } from
+ *                                                  the data folder, as the daemon may be down
+ *   relaunch_app { version }                    -> false in a dev build; else the helper that
+ *                                                  opens the new app once starts, and Nest quits
+ *   uninstall_nest { delete_data }              starts `nest uninstall` detached, then quits
+ *   notification_server                         -> the desktop's notification service, or null
  *   pick_folder                                 -> the chosen folder's path, or null
  *   open_external { url }                       http, https or mailto, in the system's app
- *   open_path { path, reveal? }                 in the home folder: a folder, or reveal an item
+ *   open_path { path, reveal?, create? }        in the home folder: a folder (made first with
+ *                                                  create), or reveal an item
  *   open_text_file { path, root }               a regular file inside root, in the text editor
  *   save_file { suggested_name, data_base64 | text } -> the saved path, or null
  *   notify { title, body, chat?, sound? }       a click emits "nest://open" { chat } to main
@@ -47,6 +54,23 @@ export interface LinuxSettings {
   // Runs Nest through XWayland on Wayland, so the pill stays on top; from the next start.
   keepPillOnTop: boolean;
   startAtLogin: boolean;
+}
+
+/** A relaunch under way, from `<data>/daemon/update.json` (B130). */
+export interface Updating {
+  from_version: string;
+  to_version: string;
+  // ISO 8601, as the daemon writes it.
+  started_at: string;
+}
+
+/** What the app reads of its install itself, as the daemon may be down. */
+export interface InstallState {
+  updating: Updating | null;
+  // Where the install came from, without a trailing slash.
+  releaseUrl: string;
+  // A released install, which `nest uninstall` removes; not a developer's checkout.
+  released: boolean;
 }
 
 export interface Pty {
@@ -94,6 +118,15 @@ export interface Bridge {
   appVersion(): Promise<string | null>;
   // Swaps this app for the file at `path` and restarts it; returns only when it stays.
   swapApp(path: string): Promise<void>;
+  // Null where there is no install to read, as in the browser.
+  installState(): Promise<InstallState | null>;
+  // After the daemon was asked to relaunch into `version`: true when a helper opens that
+  // app once the daemon is back and this app quits; false when this app stays.
+  relaunchApp(version: string): Promise<boolean>;
+  // Starts `nest uninstall` (with --delete-data when asked) on its own, then quits.
+  uninstall(deleteData: boolean): Promise<void>;
+  // The desktop's notification service by name; null when none answers.
+  notificationServer(): Promise<string | null>;
   // The browser window's label, for back, forward and reload on it. With `label`, that
   // window shows the page and comes forward while it is still open.
   openBrowserWindow(url: string, title?: string, label?: string): Promise<string | null>;
@@ -114,7 +147,8 @@ export interface Bridge {
   // A web or mail link in the system's browser or mail app (http, https and mailto only).
   openExternal(url: string): Promise<void>;
   // A folder in the file manager, or with `reveal` an item shown in its folder; home only.
-  openPath(path: string, reveal?: boolean): Promise<void>;
+  // With `create`, a folder not there yet is made first.
+  openPath(path: string, reveal?: boolean, create?: boolean): Promise<void>;
   // A regular file inside `root`, in the system's default text editor, never run. `path` is
   // untrusted, from a message: the Tauri side checks it and rejects anything else.
   openTextFile(path: string, root: string): Promise<void>;
@@ -268,6 +302,23 @@ export function tauriBridge(tauri: TauriGlobal): Bridge {
     async swapApp(path) {
       await invoke("swap_app", { path });
     },
+    async installState() {
+      const found = (await invoke("install_state")) as {
+        updating: Updating | null;
+        release_url: string;
+        released: boolean;
+      };
+      return { updating: found.updating, releaseUrl: found.release_url, released: found.released };
+    },
+    async relaunchApp(version) {
+      return (await invoke("relaunch_app", { version })) === true;
+    },
+    async uninstall(deleteData) {
+      await invoke("uninstall_nest", { delete_data: deleteData });
+    },
+    async notificationServer() {
+      return (await invoke("notification_server")) as string | null;
+    },
     async openBrowserWindow(url, title, label) {
       return (await invoke("open_browser_window", {
         url,
@@ -326,8 +377,12 @@ export function tauriBridge(tauri: TauriGlobal): Bridge {
     async openExternal(url) {
       await invoke("open_external", { url });
     },
-    async openPath(path, reveal) {
-      await invoke("open_path", reveal === undefined ? { path } : { path, reveal });
+    async openPath(path, reveal, create) {
+      await invoke("open_path", {
+        path,
+        ...(reveal === undefined ? {} : { reveal }),
+        ...(create === undefined ? {} : { create }),
+      });
     },
     async openTextFile(path, root) {
       await invoke("open_text_file", { path, root });
@@ -489,6 +544,10 @@ export function browserBridge(
     daemonProblem: () => Promise.resolve(null),
     appVersion: () => Promise.resolve(null),
     swapApp: nothing,
+    installState: () => Promise.resolve(null),
+    relaunchApp: () => Promise.resolve(false),
+    uninstall: () => Promise.reject(new Error("Uninstall from the desktop app")),
+    notificationServer: () => Promise.resolve(null),
     openBrowserWindow: (url) => {
       open(url);
       return Promise.resolve(null);

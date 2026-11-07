@@ -155,9 +155,23 @@ export function fakeApi(): FakeApi {
       .fn<Api["useLocalOnly"]>()
       .mockResolvedValue({ first_run: false, local_only: true }),
     setupChecks: vi.fn<Api["setupChecks"]>().mockResolvedValue({ checks: [] }),
-    setupReport: vi
-      .fn<Api["setupReport"]>()
-      .mockResolvedValue({ path: "/home/me/.local/share/nest/reports/r.txt", text: "Nest report" }),
+    setupReport: vi.fn<Api["setupReport"]>().mockResolvedValue({
+      path: "/home/me/.local/share/nest/reports/r.txt",
+      text: "Nest report",
+      issue_url: "https://github.com/yiorgospapadopoulos/nest/issues/new?title=Nest",
+      attach_file: false,
+    }),
+    shareTailscale: vi.fn<Api["shareTailscale"]>().mockResolvedValue({
+      id: "tailscale",
+      title: "Tailscale and iPhone",
+      state: "missing",
+      message: "Nest is shared. Pair your iPhone.",
+      detail: "computer.tailnet.ts.net",
+      fix: null,
+      importance: "optional",
+      stage: "pair",
+      rank: 3,
+    }),
     health: vi.fn<Api["health"]>().mockResolvedValue({ status: "ok", version: "0.1.0" }),
     reportVisibility: vi.fn<Api["reportVisibility"]>().mockResolvedValue(null),
     vapidKey: vi.fn<Api["vapidKey"]>().mockResolvedValue({ public_key: "BAEC" }),

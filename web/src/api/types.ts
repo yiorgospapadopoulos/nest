@@ -2084,10 +2084,20 @@ export interface SetupCheck {
   // The short answer beside a title, such as a version or "Starts at login".
   detail: string | null;
   fix: CheckFix | null;
+  importance: "required" | "recommended" | "optional";
+  // How far a check with several steps has got, such as Tailscale's "install", "connect",
+  // "share", "pair" and "done"; null for the others.
+  stage: string | null;
+  // Where it goes in Check Nest, lowest first: what is missing and matters most on top.
+  rank: number;
 }
 
 /** `POST /api/setup/report`: the file written and its text. Nothing is sent anywhere. */
 export interface SetupReport {
   path: string;
   text: string;
+  // A new GitHub issue with the report filled in, for the user to read and submit.
+  issue_url: string;
+  // The report was too long for the address: the issue asks for the file instead.
+  attach_file: boolean;
 }

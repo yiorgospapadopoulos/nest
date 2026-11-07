@@ -266,7 +266,10 @@ export interface Api {
   finishSetup(): Promise<SetupState>;
   useLocalOnly(): Promise<SetupState>;
   setupChecks(): Promise<{ checks: SetupCheck[] }>;
-  setupReport(): Promise<SetupReport>;
+  // The app's own answers for the checks only it can make replace the daemon's.
+  setupReport(answers?: SetupCheck[]): Promise<SetupReport>;
+  // Runs `tailscale serve` for the user; the Tailscale check again.
+  shareTailscale(): Promise<SetupCheck>;
   health(): Promise<Health>;
   reportVisibility(visible: boolean): Promise<null>;
   vapidKey(): Promise<{ public_key: string }>;
@@ -860,8 +863,12 @@ export class HttpApi implements Api {
     return this.json<{ checks: SetupCheck[] }>("GET", "/api/setup/checks");
   }
 
-  setupReport() {
-    return this.json<SetupReport>("POST", "/api/setup/report");
+  setupReport(answers: SetupCheck[] = []) {
+    return this.json<SetupReport>("POST", "/api/setup/report", { checks: answers });
+  }
+
+  shareTailscale() {
+    return this.json<SetupCheck>("POST", "/api/setup/tailscale/share");
   }
 
   health() {
