@@ -81,13 +81,14 @@ public final class AppSwapper {
     }
 
     public func follow(_ file: AppFile) -> Outcome {
-        guard !asked else { return .none }
-        asked = true
         guard let ownVersion, !developerBuild, appPath.hasSuffix(".app") else { return .none }
         guard ownVersion != file.version else {
             preferences.set(nil, forKey: Self.triedKey)
             return .none
         }
+        // Only here: the daemon can move to another version while this app stays open.
+        guard !asked else { return .none }
+        asked = true
         guard isOurs(file.path) else { return .none }
         guard preferences.string(forKey: Self.triedKey) != file.version else {
             return .failed(file.version)

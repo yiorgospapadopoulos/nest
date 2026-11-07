@@ -33,6 +33,15 @@ import Testing
         #expect(spawner.spawned.isEmpty)
     }
 
+    @Test func aDaemonThatMovesWhileTheAppIsOpenIsStillFollowed() {
+        // Regression: the first connect, at the app's own version, used up the launch's one try.
+        let swapper = swapper(own: "1.2.0")
+        let moved = AppFile(version: "1.3.0", path: "/data/daemon/1.3.0/app-file")
+
+        #expect(swapper.follow(Self.file) == .none)
+        #expect(swapper.follow(moved) == .swapping)
+    }
+
     @Test func aFileOutsideThisInstallIsRefused() {
         let elsewhere = AppFile(version: "1.2.0", path: "/tmp/daemon/1.2.0/app-file")
         let renamed = AppFile(version: "1.2.0", path: "/data/daemon/1.2.0/evil")

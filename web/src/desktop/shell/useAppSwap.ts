@@ -13,11 +13,13 @@ export function useAppSwap() {
   const asked = useRef(false);
   const file = state.updates.status?.app_file ?? null;
   useEffect(() => {
-    if (file === null || asked.current) return;
-    asked.current = true;
+    if (file === null) return;
     void (async () => {
       const own = await bridge.appVersion();
-      if (own !== null && own !== file.version) await bridge.swapApp(file.path);
+      // Only a version that differs counts: the daemon can move while this app stays open.
+      if (own === null || own === file.version || asked.current) return;
+      asked.current = true;
+      await bridge.swapApp(file.path);
     })().catch(() => undefined);
   }, [bridge, file]);
 }
