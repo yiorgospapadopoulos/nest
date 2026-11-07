@@ -33,3 +33,13 @@ export function routeLinkClick(
   openLink(href, bridge);
   return true;
 }
+
+/** The bug report's new issue opens on GitHub only, whatever address came back with it. */
+export function isGitHubIssue(address: string): boolean {
+  try {
+    const url = new URL(address);
+    return url.protocol === "https:" && url.hostname === "github.com";
+  } catch {
+    return false;
+  }
+}

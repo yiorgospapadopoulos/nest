@@ -1,5 +1,6 @@
 import type { SetupReport } from "../../../api/types.ts";
 import { useBridge } from "../../context.ts";
+import { isGitHubIssue } from "../../links.ts";
 import { SheetFrame } from "../../sheets/SheetFrame.tsx";
 import { useCopy } from "../../setup/useCopy.ts";
 import { Button } from "../../ui/controls.tsx";
@@ -13,6 +14,7 @@ export function BugReportSheet({ report, onClose }: { report: SetupReport; onClo
   // The issue opens in the browser for the user to read and submit; too long a report is
   // attached by hand, so its file shows too.
   const reportOnGitHub = () => {
+    if (!isGitHubIssue(report.issue_url)) return;
     void bridge.openExternal(report.issue_url);
     if (report.attach_file) open?.(report.path, true);
   };

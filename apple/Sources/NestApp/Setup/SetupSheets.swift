@@ -158,7 +158,7 @@ private struct BugReportSheet: View {
             }
             Button("Report on GitHub") { reportOnGitHub() }
                 .buttonStyle(.nest(.primary, height: 30))
-                .disabled(URL(string: report.issueURL) == nil)
+                .disabled(SafeLink.githubIssue(report.issueURL) == nil)
         }
     }
 
@@ -169,7 +169,7 @@ private struct BugReportSheet: View {
     /// The issue opens in the browser for the user to read and submit; too long a report is
     /// attached by hand, so its file shows too.
     private func reportOnGitHub() {
-        guard let url = URL(string: report.issueURL) else { return }
+        guard let url = SafeLink.githubIssue(report.issueURL) else { return }
         NSWorkspace.shared.open(url)
         if report.attachFile, !shell.isRemote {
             showFile()

@@ -114,7 +114,7 @@ struct FixAction: View {
             CopyableCommand(command: fix.value)
         case .link:
             Button("Open") {
-                if let url = URL(string: fix.value) {
+                if let url = SafeLink.web(fix.value) {
                     NSWorkspace.shared.open(url)
                 }
             }

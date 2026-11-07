@@ -46,7 +46,8 @@ export function FixAction({ fix }: { fix: CheckFix }) {
     <div>
       <Button
         onClick={() => {
-          void bridge.openExternal(fix.value);
+          // Only a web page opens from a check, never a file or another app's link.
+          if (fix.value.startsWith("https://")) void bridge.openExternal(fix.value);
         }}
       >
         Open

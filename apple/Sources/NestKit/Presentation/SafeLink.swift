@@ -14,4 +14,17 @@ public enum SafeLink {
     public static func url(_ text: String) -> URL? {
         URL(string: text).flatMap { allows($0) ? $0 : nil }
     }
+
+    /// A page the daemon sends for the user to open, such as a check's fix (B130): https only.
+    public static func web(_ text: String) -> URL? {
+        guard let url = URL(string: text), url.scheme?.lowercased() == "https", url.host != nil
+        else { return nil }
+        return url
+    }
+
+    /// The bug report's new issue opens on GitHub only, whatever address came back with it.
+    public static func githubIssue(_ text: String) -> URL? {
+        guard let url = web(text), url.host?.lowercased() == "github.com" else { return nil }
+        return url
+    }
 }
