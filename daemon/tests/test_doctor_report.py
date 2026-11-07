@@ -46,6 +46,10 @@ HOME = Path("/Users/alice")
         ("Set-Cookie: sid=abc123; Path=/; HttpOnly", "abc123"),
         ("https://user:p@ss/word@example.com/x", "p@ss"),
         ("QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5Ky8=", "QUJDREVGR0hJ"),
+        ('obj.password = "hunter2"', "hunter2"),
+        ("settings.api_key: abc123", "abc123"),
+        ("blob aGVsbG8gd29y/bGQgZm9vYmFy/YmF6cXV4cXV1/eA9zZWNyZXQ stored", "aGVsbG8"),
+        ("2026-11-07 09:59:44,920 INFO nestd.config: token=abc123", "abc123"),
         ("cookie=sid-1234", "sid-1234"),
         ("from alice.smith+nest@example.co.uk at 10:00", "alice.smith"),
         ("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJl", "eyJhbGci"),
@@ -66,7 +70,8 @@ def test_nothing_private_survives(line: str, secret: str) -> None:
     [
         "2026-11-07 00:39:37,753 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8765",
         # Regression: the module name read as a label and took "serving" with it.
-        "INFO nestd.auth.token_socket: serving this Mac's device token on ~/nest/token.sock",
+        "2026-11-07 09:59:44,920 INFO nestd.auth.token_socket: serving this Mac's device token"
+        " on ~/nest/token.sock",
         # Regression: a long path read as a key.
         "Using bundled Claude Code CLI: ~/Library/Application Support/nest/daemon/0.1.2/lib/"
         "python3.12/site-packages/claude_agent_sdk/_bundled/claude",

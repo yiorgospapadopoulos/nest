@@ -47,10 +47,9 @@ _PATTERNS = (
     # A command line's `--token value`.
     (re.compile(rf"(?i)(--{_LABEL}[= ])\S+"), rf"\1{_REMOVED}"),
     # Anything labelled as a secret, in logs, JSON (escaped too) and URLs, quoted values whole.
-    # Not a dotted module name such as `nestd.auth.token_socket:`, which only starts a line.
     (
         re.compile(
-            rf"(?i)(?<![\w.])({_LABEL}[\\\"']*\s*[:=]\s*)"
+            rf"(?i)(?<!\w)({_LABEL}[\\\"']*\s*[:=]\s*)"
             r"(?:\\?\"[^\"\n]*\"|'[^'\n]*'|[\\\"']*[^\s\"'&,;}\\]+)"
         ),
         rf"\1{_REMOVED}",
@@ -85,9 +84,13 @@ def issue_url(text: str, file_name: str) -> str:
 
 
 # A long unbroken run is a key, a hash or base64 until shown otherwise. A path is shown
-# otherwise: several short parts between slashes.
+# otherwise: short parts between slashes, mostly plain lowercase words, never `+` or `=`.
 _LONG_RUN = re.compile(r"[A-Za-z0-9+/=_-]{32,}")
 _PATH_PART_LIMIT = 24
+_WORD = re.compile(r"[a-z][a-z0-9_-]*[a-z]")
+# A log line's own start: time, level and the logger's dotted name, such as
+# `nestd.auth.token_socket:`, which would otherwise read as a label for what follows.
+_LOG_PREFIX = re.compile(r"^(\S+ \S+ [A-Z]+ [\w.]+: )(.*)$")
 # The routine answers of the daemon's own server, which say nothing about a problem.
 _ROUTINE = re.compile(r'uvicorn\.access: .*" [123]\d\d$')
 # How far back to look for the lines that are kept.
@@ -98,16 +101,34 @@ _ISSUE_URL_LIMIT = 7000
 def _long_run(match: re.Match[str]) -> str:
     run = match.group(0)
     parts = [part for part in run.split("/") if part]
-    if len(parts) > 1 and all(len(part) < _PATH_PART_LIMIT for part in parts):
-        return run
-    return _REMOVED
+    words = [part for part in parts if _WORD.fullmatch(part) and len(part) >= 3]
+    path_like = (
+        len(parts) > 1
+        and "+" not in run
+        and "=" not in run
+        and all(len(part) < _PATH_PART_LIMIT for part in parts)
+        and len(words) * 2 >= len(parts)
+    )
+    return run if path_like else _REMOVED
+
+
+def _clean(text: str) -> str:
+    for pattern, replacement in _PATTERNS:
+        text = pattern.sub(replacement, text)
+    return _LONG_RUN.sub(_long_run, text)
+
+
+def _clean_line(line: str) -> str:
+    prefix = _LOG_PREFIX.match(line)
+    if prefix is None:
+        return _clean(line)
+    return prefix.group(1) + _clean(prefix.group(2))
 
 
 def redact(text: str, home: Path) -> str:
+    """Line by line, so a log line's own start is never read as a label."""
     cleaned = text.replace(str(home), "~")
-    for pattern, replacement in _PATTERNS:
-        cleaned = pattern.sub(replacement, cleaned)
-    return _LONG_RUN.sub(_long_run, cleaned)
+    return "\n".join(_clean_line(line) for line in cleaned.split("\n"))
 
 
 def _last_lines(path: Path, count: int) -> list[str]:
