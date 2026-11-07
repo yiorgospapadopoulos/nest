@@ -1,9 +1,9 @@
 import NestKit
 import SwiftUI
 
-/// ntfy's switch and fields, saved on the daemon as they change; a refused one goes back
-/// (B130). Settings > Notifications shows them; the guide's step has the switch in its own
-/// row, over the same fields.
+/// ntfy's switch in Settings > Notifications, with its fields under it while on, saved on the
+/// daemon as they change; a refused one goes back (B130). The daemon turns it on only with a
+/// topic, so turning it on with none makes a long random one, which the user can change.
 struct NtfyFields: View {
     @Environment(Shell.self) private var shell
 
@@ -14,10 +14,20 @@ struct NtfyFields: View {
             if let ntfy = store.rules?.ntfy {
                 VStack(alignment: .leading, spacing: 0) {
                     SettingsRow(label: "Send to ntfy") {
-                        Switch(isOn: ntfy.enabled) { shell.saveNtfy { $0.enabled.toggle() } }
-                            .accessibilityLabel("Send to ntfy")
+                        Switch(isOn: ntfy.enabled) {
+                            shell.saveNtfy {
+                                if $0.enabled {
+                                    $0.enabled = false
+                                } else {
+                                    $0.turnOn()
+                                }
+                            }
+                        }
+                        .accessibilityLabel("Send to ntfy")
                     }
-                    NtfyDetails(ntfy: ntfy)
+                    if ntfy.enabled {
+                        NtfyDetails(ntfy: ntfy)
+                    }
                 }
                 .overlay(alignment: .top) { Separator() }
             }
@@ -32,9 +42,6 @@ struct NtfyDetails: View {
         "Anyone who knows a public topic can read it. Use a long, random one."
 
     let ntfy: NtfySettings
-    /// Turned on while there was no topic yet, which the daemon refuses: the first topic
-    /// turns it on with it.
-    var enablesWithTopic = false
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -43,13 +50,7 @@ struct NtfyDetails: View {
                 shell.saveNtfy { $0.server = server.trimmingCharacters(in: .whitespaces) }
             }
             NtfyField(label: "Topic", value: ntfy.topic ?? "") { topic in
-                let enables = enablesWithTopic
-                shell.saveNtfy {
-                    $0.topic = Self.optional(topic)
-                    if enables, $0.topic != nil {
-                        $0.enabled = true
-                    }
-                }
+                shell.saveNtfy { $0.topic = Self.optional(topic) }
             }
             NtfyField(
                 label: "Link address", value: ntfy.clickBaseURL ?? "",

@@ -246,6 +246,23 @@ import Testing
         #expect(store.rules?.ntfy.enabled == false)
     }
 
+    /// The daemon refuses ntfy on without a topic, and a short or guessable one is readable
+    /// by anyone: turning it on makes a long random one, and keeps the user's own.
+    @Test func turningNtfyOnMakesALongRandomTopic() throws {
+        var ntfy = NtfySettings()
+        ntfy.turnOn()
+        let topic = try #require(ntfy.topic)
+        #expect(ntfy.enabled)
+        #expect(topic.count >= 24 && topic.count <= 64)
+        #expect(topic.wholeMatch(of: /[A-Za-z0-9]+/) != nil)
+        var again = NtfySettings()
+        again.turnOn()
+        #expect(again.topic != topic)
+        var own = NtfySettings(topic: "my-own-topic-1234")
+        own.turnOn()
+        #expect(own.topic == "my-own-topic-1234")
+    }
+
     private static let update = UpdateUnderWay(
         fromVersion: "0.1.1", toVersion: "0.1.2", startedAt: "2026-11-07T10:00:00+00:00")
 
@@ -303,24 +320,52 @@ import Testing
         var watch = DaemonDownWatch()
         let update = Self.update
         var starts = false
-        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false, update: update)
-        #expect(!starts)
-        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: update)
-        #expect(!starts)
-        #expect(watch.screen == .updating(update))
-        starts = watch.note(.reconnecting(attempt: 9, delay: 1), remote: false, update: update)
-        #expect(!starts)
-        #expect(watch.screen == .updating(update))
-        // The watcher cleared it but the daemon is not back: the service starts once, as at
-        // launch.
-        starts = watch.note(update: nil)
-        #expect(starts)
-        #expect(watch.screen == .none)
+        for attempt in [1, 2, 9] {
+            starts = watch.note(
+                .reconnecting(attempt: attempt, delay: 1), remote: false, update: update)
+            #expect(!starts)
+            #expect(watch.screen == .updating(update))
+        }
         starts = watch.note(.connected, remote: false, update: nil)
         #expect(!starts)
         starts = watch.note(update: update)
         #expect(!starts)
         #expect(!watch.isDown)
+    }
+
+    /// Regression (B130, fix 30a): opened during an update, the window showed its retry
+    /// banner until a second try failed. `update.json` is read before the first try.
+    @Test func anUpdateUnderWayShowsBeforeTheFirstTry() {
+        var watch = DaemonDownWatch()
+        let update = Self.update
+        var starts = watch.note(update: update)
+        #expect(!starts)
+        #expect(watch.screen == .updating(update))
+        starts = watch.note(.connecting, remote: false, update: nil)
+        #expect(!starts)
+        #expect(watch.screen == .updating(update))
+    }
+
+    /// Regression (B130, fix 30b): going back, the watcher clears `update.json` before the old
+    /// version answers, and the updating screen gave way to the window, its banner and the
+    /// app's own start of the service. It stays until the daemon answers, for a while.
+    @Test func theUpdatingScreenStaysUntilTheDaemonAnswers() {
+        var watch = DaemonDownWatch()
+        let update = Self.update
+        let ended = Date(timeIntervalSince1970: 1000)
+        _ = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: update)
+        var starts = watch.note(update: nil, at: ended)
+        #expect(!starts)
+        #expect(watch.screen == .updating(update))
+        starts = watch.note(
+            .reconnecting(attempt: 1, delay: 1), remote: false, update: nil,
+            at: ended.addingTimeInterval(29))
+        #expect(!starts)
+        #expect(watch.screen == .updating(update))
+        // Still not back: the service starts once, as at launch.
+        starts = watch.note(update: nil, at: ended.addingTimeInterval(30))
+        #expect(starts)
+        #expect(watch.screen == .none)
     }
 
     /// Regression (B130, fix 27): the updating screen tries the daemon every second, and each
@@ -391,7 +436,8 @@ import Testing
         let api = FakeAPI()
         api.set { $0.setup = SetupState(firstRun: true, localOnly: false) }
         let local = LocalModelsStore(api: api)
-        #expect(WindowContent(daemonDown: false, guideOpen: false, firstRun: local.firstRun) == .blank)
+        #expect(
+            WindowContent(daemonDown: false, guideOpen: false, firstRun: local.firstRun) == .blank)
         await local.load()
         // A first run whose guide is not up yet.
         let firstRun = local.firstRun

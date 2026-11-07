@@ -217,6 +217,22 @@ public struct NtfySettings: Sendable, Hashable {
         self.clickBaseURL = clickBaseURL
     }
 
+    /// Turned on in Settings: with no topic yet, a long random one is made, which the daemon
+    /// needs to turn it on (B130).
+    public mutating func turnOn() {
+        if topic?.isEmpty ?? true {
+            topic = Self.randomTopic()
+        }
+        enabled = true
+    }
+
+    /// 32 letters and digits, inside the daemon's rule (16 to 64 of `[A-Za-z0-9_-]`).
+    public static func randomTopic() -> String {
+        let characters = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        var generator = SystemRandomNumberGenerator()
+        return String((0..<32).map { _ in characters.randomElement(using: &generator)! })
+    }
+
     init(_ json: JSONValue?) {
         self.init(
             enabled: json?["enabled"]?.boolValue ?? false,

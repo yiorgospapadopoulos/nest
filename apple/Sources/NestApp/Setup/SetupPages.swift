@@ -270,14 +270,13 @@ private struct ShareButton: View {
 }
 
 /// One switch per way a notification reaches the user, each showing its real state (design
-/// C): this Mac's, the phone's push, and ntfy with its fields under it while on.
+/// C): this Mac's and the phone's push. ntfy is in Settings only.
 private struct NotificationsStepPage: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let permissions = shell.permissions
         let devices = shell.model.devices
-        let rules = shell.model.notificationRules
         SwitchGroup {
             PermissionRow(
                 title: "This Mac", answer: permissions.notifications,
@@ -292,50 +291,12 @@ private struct NotificationsStepPage: View {
                     .disabled(true)
                     .accessibilityLabel("iPhone notifications")
             }
-            if let ntfy = rules.rules?.ntfy {
-                NtfyRow(ntfy: ntfy)
-            }
         }
-        .task {
-            try? await rules.load()
-            try? await devices.loadPushStatus()
-        }
+        .task { try? await devices.loadPushStatus() }
         // A phone may have turned its push on meanwhile.
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
         ) { _ in Task { try? await devices.loadPushStatus() } }
-    }
-}
-
-/// ntfy's switch, with its fields under it while on. The daemon turns it on only with a
-/// topic, so one turned on without opens the fields first, and the topic turns it on.
-private struct NtfyRow: View {
-    let ntfy: NtfySettings
-    @Environment(Shell.self) private var shell
-    @State private var waitingForTopic = false
-
-    var body: some View {
-        let on = ntfy.enabled || waitingForTopic
-        SwitchRow(title: "ntfy", line: "Push notifications through the ntfy app", divided: true) {
-            Switch(isOn: on) {
-                if on {
-                    waitingForTopic = false
-                    if ntfy.enabled {
-                        shell.saveNtfy { $0.enabled = false }
-                    }
-                } else if ntfy.topic?.isEmpty == false {
-                    shell.saveNtfy { $0.enabled = true }
-                } else {
-                    waitingForTopic = true
-                }
-            }
-            .accessibilityLabel("Send to ntfy")
-        }
-        if on {
-            NtfyDetails(ntfy: ntfy, enablesWithTopic: waitingForTopic)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-        }
     }
 }
 

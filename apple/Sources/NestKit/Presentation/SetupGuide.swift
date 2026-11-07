@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The setup guide's steps on the Mac (B130), in order. The Linux app's list has the Secret
-/// Service in Dictation's place. ntfy is the optional part of Notifications.
+/// Service in Dictation's place. ntfy is in Settings only.
 public enum SetupStep: String, CaseIterable, Sendable, Identifiable {
     case engine, git, github, service, tailscale, notifications, dictation
     case firstChat = "first_chat"
