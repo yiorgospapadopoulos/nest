@@ -405,11 +405,11 @@ import Testing
     @Test func anAppAlreadyOpenIsNotSwappedUnderIt() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let binary = app.appending(path: "Contents/MacOS/Nest")
-        try FileManager.default.removeItem(at: binary)
-        try FileManager.default.copyItem(atPath: "/bin/sleep", toPath: binary.path)
+        // Under the app's path as its name, as the helper looks for it. Started from inside
+        // the stand-in bundle, macOS checks that bundle and shows "Nest is damaged".
         let running = Process()
-        running.executableURL = binary
-        running.arguments = ["30"]
+        running.executableURL = URL(filePath: "/bin/bash")
+        running.arguments = ["-c", #"exec -a "$0" /bin/sleep 30"#, binary.path]
         try running.run()
         defer { running.terminate() }
         let (server, port) = try serve()
@@ -420,7 +420,7 @@ import Testing
         #expect(finish(helper, within: 10))
         #expect(running.isRunning)
         #expect(openedPaths().isEmpty)
-        #expect(FileManager.default.contentsEqual(atPath: binary.path, andPath: "/bin/sleep"))
+        #expect(try version().contains("echo old"))
         #expect(try String(contentsOf: log, encoding: .utf8).contains("Nest is open already"))
     }
 }
