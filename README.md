@@ -71,6 +71,19 @@ Pixies are agents you set up once and keep. Each has a name, a pixel-art mascot 
   <img src="docs/images/pixie-details.png" alt="A pixie's details" width="320">
 </p>
 
+To start with, here are some pixies worth having. Each soul is ready to paste in [Recommended pixies](docs/recommended-pixies.md).
+
+| Pixie | Its one job |
+|---|---|
+| `@designer` | Makes 2 to 4 design options to choose from, as one artifact |
+| `@reviewer` | Reviews a change it did not build and says if it is safe to accept |
+| `@checker` | Tries to break what was just built before you rely on it |
+| `@tester` | Opens what was just built and tells you what to try |
+| `@closer` | Merges a finished worktree's job back and cleans up |
+| `@shipper` | Puts what is merged live, backing up first |
+| `@janitor` | Removes worktrees and branches it can prove are finished |
+| `@security-audit` | Runs a full security audit of a project when you ask, with Cloudflare's open security-audit skill |
+
 ### Artifacts
 
 When an agent makes a report, a plan, slides, a mockup or a chart, Nest keeps it as an artifact instead of a long message or a file left in your repo. Artifacts open in the app, keep every version, and can be interactive pages. The Artifacts view lists them by chat or for the whole project.
