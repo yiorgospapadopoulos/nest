@@ -1,5 +1,6 @@
 """`nest uninstall` removes Nest and, unless asked, nothing of the user's."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import pytest
 from nestd.doctor.machine import Machine
 from nestd.doctor.uninstall import NotAReleaseError, Uninstall
 from nestd.paths import AppPaths
-from nestd.platform import LINUX
+from nestd.platform import LINUX, MACOS
 from nestd.service.base import CommandResult, ServiceStatus
 
 
@@ -113,6 +114,38 @@ def test_delete_data_is_the_only_way_chats_go(machine: Machine) -> None:
 
     assert not machine.paths.data_dir.exists()
     assert not machine.paths.config_dir.exists()
+
+
+@pytest.mark.parametrize(
+    ("answers", "gone"),
+    [
+        # Each service empties: one item deleted, then "not found".
+        ([0, 44, 44], True),
+        # A locked Keychain is not "they all went".
+        ([51], False),
+        ([0, 44, 51], False),
+    ],
+)
+def test_secrets_only_count_as_deleted_when_the_keychain_says_so(
+    machine: Machine, answers: list[int], gone: bool
+) -> None:
+    left = iter(answers)
+    services: list[str] = []
+
+    def keychain(args: Sequence[str], _env: object, _limit: float = 1.0) -> CommandResult:
+        if args[0] == "security":
+            services.append(args[-1])
+            return CommandResult(next(left, 44), "", "")
+        return CommandResult(0, "", "")
+
+    said: list[str] = []
+    mac = replace(machine, platform=MACOS, run=keychain)
+
+    Uninstall(mac, said.append).run(delete_data=True)
+
+    assert any("Deleted your secrets" in line for line in said) is gone
+    if gone:
+        assert services == ["nest", "nest", "harness"]
 
 
 def test_a_checkout_is_refused_and_untouched(machine: Machine) -> None:

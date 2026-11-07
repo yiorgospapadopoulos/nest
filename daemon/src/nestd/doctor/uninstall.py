@@ -7,10 +7,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from nestd.auth.secrets import LEGACY_SERVICE_NAME, SERVICE_NAME
 from nestd.doctor.machine import Machine
 from nestd.platform.linux import xdg_dir
 
 _SECRET_LOOP_LIMIT = 100
+_KEYCHAIN_ITEM_NOT_FOUND = 44
 _TAILSCALE_NOTE = "If you shared Nest with Tailscale, stop that with: tailscale serve reset"
 
 
@@ -41,17 +43,30 @@ def _remove(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
+def _delete_keychain_items(machine: Machine, service: str) -> bool:
+    """Deletes until the Keychain says none is left. Any other answer, such as a locked
+    Keychain, is a failure, so nobody is told their secrets went when they did not.
+    """
+    for _ in range(_SECRET_LOOP_LIMIT):
+        code = machine.command("security", "delete-generic-password", "-s", service).returncode
+        if code == _KEYCHAIN_ITEM_NOT_FOUND:
+            return True
+        if code != 0:
+            return False
+    return False
+
+
 def _delete_secrets(machine: Machine) -> bool:
-    """Whether they all went."""
+    """Whether every secret went, under the old service name as well."""
+    services = (SERVICE_NAME, LEGACY_SERVICE_NAME)
     if machine.platform.name == "macos":
-        for _ in range(_SECRET_LOOP_LIMIT):
-            if machine.command("security", "delete-generic-password", "-s", "nest").returncode:
-                return True
-        return False
+        results = [_delete_keychain_items(machine, service) for service in services]
+        return all(results)
     program = machine.which("secret-tool")
-    return (
-        program is not None and machine.command(program, "clear", "service", "nest").returncode == 0
-    )
+    if program is None:
+        return False
+    codes = [machine.command(program, "clear", "service", name).returncode for name in services]
+    return not any(codes)
 
 
 def _quit_app(machine: Machine) -> None:
@@ -100,4 +115,7 @@ class Uninstall:
         if _delete_secrets(self.machine):
             self.out("Deleted your secrets from the system's store")
         else:
-            self.out("Could not delete your secrets. They're under `nest` in the system's store.")
+            self.out(
+                "Could not delete your secrets. They're under `nest` and `harness` "
+                "in the system's store."
+            )
