@@ -30,7 +30,7 @@ function rig() {
   const hook = renderHook(useAppSwap, { wrapper });
   return {
     swapped,
-    move(version: string) {
+    move: (version: string) => {
       value = store(version);
       hook.rerender();
     },

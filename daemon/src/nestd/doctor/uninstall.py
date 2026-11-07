@@ -102,9 +102,8 @@ class Uninstall:
             self.out(f"Kept your chats and data in {paths.data_dir}")
             self.out(f"Kept your settings in {paths.config_dir}")
             self.out("Kept your secrets in the system's store")
-            self.out(
-                "Installing again brings it all back. To delete it: nest uninstall --delete-data"
-            )
+            self.out("Installing again brings it all back.")
+            self.out("To delete it instead, install again and run: nest uninstall --delete-data")
         self.out(_TAILSCALE_NOTE)
 
     def _delete_data(self) -> None:
