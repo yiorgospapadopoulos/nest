@@ -142,9 +142,20 @@ final class FakeRunner: CommandRunner {
         #expect(
             DaemonService.installCommand(repoPath: "/a/it's")
                 == "cd '/a/it'\\''s/daemon' && uv run nestd service install")
+    }
+
+    @Test func aReleaseGetsTheOneLine() {
         #expect(
             DaemonService.installCommand(repoPath: nil)
-                == "cd <Nest repository>/daemon && uv run nestd service install")
+                == "curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/"
+                + "download/install.sh | sh")
+    }
+
+    @Test func aReleaseHasNoCheckoutAndADeveloperBuildKeepsItsOwn() {
+        let real = "/me/nest/daemon/pyproject.toml"
+        #expect(AppBuild.checkout(info: [:]) { _ in true } == nil)
+        #expect(AppBuild.checkout(info: ["NestCheckout": "/me/nest"]) { $0 == real } == "/me/nest")
+        #expect(AppBuild.checkout(info: ["NestCheckout": "/gone"]) { $0 == real } == nil)
     }
 }
 

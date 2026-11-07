@@ -66,10 +66,15 @@ public enum DaemonService {
         home.appending(path: "Library/LaunchAgents/\(label).plist").path
     }
 
-    /// The Terminal command that installs the service, run in the Nest repository.
+    /// What repairs an install and keeps the data (release/install.sh).
+    public static let installLine =
+        "curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/download/install.sh | sh"
+
+    /// The Terminal command that puts the service back: a developer build's, run in its
+    /// checkout, or the one line for a release, which has no checkout.
     public static func installCommand(repoPath: String?) -> String {
-        let daemon = repoPath.map { quoted($0 + "/daemon") } ?? "<Nest repository>/daemon"
-        return "cd \(daemon) && uv run nestd service install"
+        guard let repoPath else { return installLine }
+        return "cd \(quoted(repoPath + "/daemon")) && uv run nestd service install"
     }
 
     /// Single-quoted for the shell, so paths with spaces work when pasted.
@@ -98,7 +103,7 @@ public final class ServiceStarter {
     let runner: any CommandRunner
     let domain: String
     let plistPath: String
-    let installCommand: String
+    public let installCommand: String
     let fileExists: @Sendable (String) -> Bool
 
     public init(

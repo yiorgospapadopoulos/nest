@@ -16,6 +16,11 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin_path/NestApp" "$app/Contents/MacOS/Nest"
 cp support/Info.plist "$app/Contents/Info.plist"
+# A developer build names its checkout, for the line that repairs its service (B130). A
+# release names nothing: no path of this machine ships.
+if [ -z "${NEST_SIGNING_IDENTITY:-}" ]; then
+    plutil -insert NestCheckout -string "$(cd .. && pwd)" "$app/Contents/Info.plist"
+fi
 # The icon (B95): macOS draws the light or dark tile from the Assets.car compiled out of
 # support/AppIcon.icon (CFBundleIconName); the .icns from `make icon` stays the plain icon
 # file (CFBundleIconFile) and replaces the one actool writes. actool exits 0 even when it

@@ -20,6 +20,27 @@ extension ConnectionState {
     }
 }
 
+/// Whether the window shows that This Mac's daemon is down (B130, screen Z): after a second
+/// failed try at launch, so a daemon just starting shows no alarm, until it connects. A daemon
+/// lost later has the banner instead.
+public struct DaemonDownWatch: Sendable, Equatable {
+    public private(set) var isDown = false
+    private var connected = false
+
+    public init() {}
+
+    public mutating func note(_ connection: ConnectionState, remote: Bool) {
+        if connection == .connected {
+            connected = true
+            isDown = false
+        } else if !connected, !remote, case .reconnecting(let attempt, _) = connection,
+            attempt > 1
+        {
+            isDown = true
+        }
+    }
+}
+
 /// The words of the remote daemon feature (B105): the banner, the Devices rows and why
 /// the features that open things on this Mac are off while connected to a remote.
 public enum DaemonText {
