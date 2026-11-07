@@ -1,9 +1,12 @@
+mod after_update;
+mod app_swap;
 mod artifact;
 mod commands;
 mod daemon;
 mod diagnostics;
 mod env;
 mod external;
+mod install;
 mod notification;
 mod platform;
 mod pty;
@@ -15,6 +18,7 @@ mod window;
 mod window_state;
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use tauri::{Emitter, Manager, WindowEvent};
@@ -49,6 +53,14 @@ pub struct Prepared {
     settings: Settings,
     set_vars: Vec<String>,
     follow_display: bool,
+}
+
+/// When this process was started as the helper of a relaunch to update, it does that job
+/// with no window and gives its exit code.
+pub fn after_update_helper() -> Option<i32> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (first, rest) = args.split_first()?;
+    (first == after_update::HELPER_ARG).then(|| after_update::run(rest))
 }
 
 /// Reads the settings and sets the display variables GTK reads when it starts, so it
@@ -100,6 +112,8 @@ pub fn run(prepared: Prepared) {
         pill_size: Mutex::new(window::PILL_SIZE),
         maximized: Mutex::default(),
         follow_display: prepared.follow_display,
+        own_vars: prepared.set_vars.clone(),
+        swap_tried: AtomicBool::new(false),
     };
 
     tauri::Builder::default()
@@ -201,6 +215,13 @@ pub fn run(prepared: Prepared) {
             commands::open_browser_window,
             commands::pick_folder,
             commands::start_service,
+            commands::daemon_problem,
+            commands::app_version,
+            commands::swap_app,
+            commands::install_state,
+            commands::relaunch_app,
+            commands::uninstall_nest,
+            commands::notification_server,
             commands::browser_back,
             commands::browser_forward,
             commands::browser_reload,

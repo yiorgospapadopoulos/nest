@@ -18,7 +18,7 @@ desktop="$(dirname "$here")"
 repo="$(dirname "$desktop")"
 platform="${NEST_DOCKER_PLATFORM:-linux/arm64}"
 arch="${platform#linux/}"
-image="nest-desktop-build:$(shasum "$here/Dockerfile" | cut -c1-12)"
+image="nest-desktop-build:$arch-$(shasum "$here/Dockerfile" | cut -c1-12)"
 command="${1:-test}"
 
 if ! docker image inspect "$image" >/dev/null 2>&1; then

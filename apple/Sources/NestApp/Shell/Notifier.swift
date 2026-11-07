@@ -14,14 +14,31 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// Asks for permission once and starts listening for notices.
     func start() {
-        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
-        let center = UNUserNotificationCenter.current()
-        center.delegate = self
-        // The async form: a completion closure written here would be main actor isolated
-        // but called on a background queue, which traps.
-        Task { _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge]) }
+        guard Self.canNotify else { return }
+        UNUserNotificationCenter.current().delegate = self
+        Task { await Self.ask() }
         shell.model.live.onNotice = { [weak self] notice in self?.post(notice) }
         shell.model.live.onUsageWarning = { [weak self] warning in self?.post(warning) }
+    }
+
+    /// The notification center stops a process that is not a bundle.
+    static var canNotify: Bool { Bundle.main.bundleURL.pathExtension == "app" }
+
+    /// The async form: a completion closure written here would be main actor isolated but
+    /// called on a background queue, which traps.
+    static func ask() async {
+        let center = UNUserNotificationCenter.current()
+        _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+    }
+
+    /// The system's current answer, asking nothing.
+    static func answer() async -> SystemPermission {
+        guard canNotify else { return .notAsked }
+        switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+        case .authorized, .provisional: return .allowed
+        case .denied: return .refused
+        default: return .notAsked
+        }
     }
 
     /// A usage warning becomes a notification too when its setting is on (B81).

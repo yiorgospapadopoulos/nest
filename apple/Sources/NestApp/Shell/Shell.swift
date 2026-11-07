@@ -144,6 +144,18 @@ final class Shell {
     @ObservationIgnored private weak var focusBeforeSettings: NSResponder?
     var settingsPage = SettingsPage.general
     var settingsQuery = ""
+    /// The setup guide over the whole window, while it is open (B130).
+    private(set) var guide: SetupFlow?
+    /// The Settings page the guide was opened from, opened again when it is left.
+    @ObservationIgnored private var guideReturn: SettingsPage?
+    /// Settings > General's Set up Nest, bug report or Uninstall sheet.
+    var setupSheet: SetupSheet?
+    /// The system's answers the guide and Check Nest show.
+    let permissions = SystemPermissions()
+    /// Whether the island may use the free menu bar space.
+    @ObservationIgnored var island: () -> Bool = { false }
+    /// This Mac's daemon is down at launch, or for an update (B130, screen Z).
+    private(set) var daemonDown = DaemonDownWatch()
     var projectTab = ProjectSettingsTab.general
     /// Settings > Configuration's open folds, such as "claude:plugins" (B97).
     var configurationFolds: Set<String> = ["claude:plugins"]
@@ -874,6 +886,15 @@ final class Shell {
         // screen, and the pane never came up.
         pixiesOpen = false
         return draft
+    }
+
+    /// A new chat in General, on `model` when given (B130).
+    func openGeneralChat(_ model: FirstChatModel?) {
+        openProject(Repo.generalName)
+        let draft = newChat()
+        if let model {
+            choose(model.model, on: model.provider, in: draft)
+        }
     }
 
     /// A new chat's draft on a new worktree from the branch, for that one chat (B131). The
@@ -1637,23 +1658,7 @@ final class Shell {
     func setModel(_ info: ModelInfo, on provider: String? = nil, for chat: String) {
         if isDraft(chat) {
             let draft = draft(for: chat)
-            let engine = provider ?? draft.provider
-            let current = NewChatChoices(
-                provider: draft.provider, model: draft.model, effort: draft.effort,
-                permission: draft.permission)
-            let next = current.choosing(
-                info.value, on: engine,
-                catalog: providers.catalog(for: engine, claude: agents.catalog),
-                defaults: agents.current)
-            let switched = next.provider != draft.provider
-            draft.provider = next.provider
-            draft.model = next.model
-            draft.effort = next.effort
-            draft.permission = next.permission
-            if switched {
-                draft.blocked = nil
-                Task { await providers.load(refresh: true) }
-            }
+            choose(info.value, on: provider ?? draft.provider, in: draft)
         } else {
             let catalog = catalog(forChat: chat)
             let current = sessions.session(chat)?.effort
@@ -1662,6 +1667,25 @@ final class Shell {
                 try await self.sessions.setModel(
                     chat, info.value, effort: effort == current ? nil : effort)
             }
+        }
+    }
+
+    private func choose(_ model: String, on engine: String?, in draft: ComposerDraft) {
+        let current = NewChatChoices(
+            provider: draft.provider, model: draft.model, effort: draft.effort,
+            permission: draft.permission)
+        let next = current.choosing(
+            model, on: engine,
+            catalog: providers.catalog(for: engine, claude: agents.catalog),
+            defaults: agents.current)
+        let switched = next.provider != draft.provider
+        draft.provider = next.provider
+        draft.model = next.model
+        draft.effort = next.effort
+        draft.permission = next.permission
+        if switched {
+            draft.blocked = nil
+            Task { await providers.load(refresh: true) }
         }
     }
 
@@ -1810,6 +1834,7 @@ final class Shell {
     /// Shows Settings over the window, in the window's own space, on a page; a project's
     /// page opens on its General tab. The keyboard leaves whatever is underneath.
     func openSettings(_ page: SettingsPage = .general) {
+        guard guide == nil else { return }
         if page != settingsPage, case .project = page {
             projectTab = .general
         }
@@ -1837,7 +1862,99 @@ final class Shell {
     var settingsSheetOpen: Bool {
         let configuration = model.configuration
         return configuration.editor != nil || configuration.copy != nil
-            || configurationForm != nil || addLocal != nil
+            || configurationForm != nil || addLocal != nil || setupSheet != nil
+    }
+
+    // MARK: Setup (B130)
+
+    /// The guide on a first run; one already open, as after Use local models only, which
+    /// also ends the first run, stays.
+    func startGuideIfFirstRun() {
+        if model.local.isFirstRun, guide == nil {
+            guide = SetupFlow(firstRun: true)
+        }
+    }
+
+    /// A page's way to one of the guide's steps, such as Pair a device to Tailscale's. The
+    /// guide covers Settings, so leaving it opens Settings again where it was.
+    func openGuide(at step: SetupStep) {
+        guideReturn = settingsOpen ? settingsPage : nil
+        setupSheet = nil
+        closeSettings()
+        close()
+        guide = SetupFlow(firstRun: false, start: step)
+    }
+
+    func closeGuide() {
+        guide = nil
+        if let page = guideReturn {
+            guideReturn = nil
+            openSettings(page)
+        }
+    }
+
+    /// Finish, or a last step's way out. `then` runs behind the guide, before it closes: as
+    /// in `newChat`, a pane opened after the empty project's start screen showed never comes up.
+    func finishGuide(then: @escaping @MainActor () -> Void = {}) {
+        let local = model.local
+        settingsChange("Could not finish") {
+            try await local.finishSetup()
+            self.guideReturn = nil
+            then()
+            self.closeGuide()
+        }
+    }
+
+    /// True when the app should start the service itself now (`DaemonDownWatch`). `update`
+    /// is This Mac's update under way, read while the daemon is down.
+    func noteConnection(_ connection: ConnectionState, update: UpdateUnderWay?) -> Bool {
+        daemonDown.note(connection, remote: isRemote, update: update)
+    }
+
+    /// The update's note read again while the daemon is down; true as `noteConnection`.
+    func noteUpdate(_ update: UpdateUnderWay?) -> Bool {
+        daemonDown.note(update: isRemote ? nil : update)
+    }
+
+    func serviceStartFinished() {
+        daemonDown.startFinished()
+    }
+
+    /// The daemon's checks with this Mac's answers in place.
+    var setupChecks: [SetupCheck]? {
+        model.setup.checks.map { permissions.answers(accessibility: island()).filling($0) }
+    }
+
+    /// The guide's engine step is done, from the check or an engine under More engines.
+    var setupEngineReady: Bool {
+        SetupFlow.engineReady(
+            setupChecks?.first { $0.id == SetupStep.engine.id }, providers: providers.providers)
+    }
+
+    /// The bug report, with this Mac's own answers for the checks only it can make.
+    func makeReport() async throws -> SetupReport {
+        await permissions.refresh()
+        let answers = permissions.answers(accessibility: island()).reportChecks
+        return try await model.setup.makeReport(answers: answers)
+    }
+
+    /// Makes a folder that is not there yet, such as the Claude skills folder on a new Mac,
+    /// then opens it; only in the home folder.
+    func openFolder(making path: String) {
+        do {
+            try HomeFolder.make(path, home: FileManager.default.homeDirectoryForCurrentUser)
+            LocalOpen.folder(path)
+        } catch {
+            show(error, doing: "Could not open the folder")
+        }
+    }
+
+    /// What the first chat opens on.
+    var firstChatModel: FirstChatModel? {
+        FirstChatModel.choose(
+            accounts: model.accounts.accounts,
+            catalog: { self.providers.catalog(for: $0, claude: self.agents.catalog) },
+            local: model.local.infos, defaultProvider: agents.current.provider)
     }
 
     private func closeSettingsSheet() {
@@ -1848,6 +1965,8 @@ final class Shell {
             configuration.cancelCopy()
         } else if configurationForm != nil {
             configurationForm = nil
+        } else if setupSheet != nil {
+            setupSheet = nil
         } else {
             addLocal = nil
         }
@@ -1902,6 +2021,7 @@ final class Shell {
 
     /// Shows the overlay, or closes it when it is already showing.
     func toggle(_ overlay: Overlay) {
+        guard guide == nil else { return }
         if self.overlay == overlay {
             close()
         } else {

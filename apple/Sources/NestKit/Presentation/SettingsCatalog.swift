@@ -51,7 +51,10 @@ public enum SettingsPage: Sendable, Hashable {
     public var labels: [String] {
         switch self {
         case .general:
-            ["Sidebar", "Show automated chats", "Nest", "Version", "Restart Nest"]
+            [
+                "Sidebar", "Show automated chats", "Nest", "Version", "Restart Nest", "Setup",
+                "Set up Nest", "Help", "Report a bug", "Uninstall", "Uninstall Nest",
+            ]
         case .storage:
             [
                 "Space used", "Used by Nest", "Attachments", "Artifacts",
@@ -68,7 +71,7 @@ public enum SettingsPage: Sendable, Hashable {
         case .notifications:
             ["Notify me about", "Delivery", "Sound"]
                 + NotificationPreferences.kindToggles.map(\.title)
-                + ["iPhone push"]
+                + ["iPhone push", "ntfy", "Server", "Topic", "Link address"]
         case .agents:
             ["New chats", "Model", "Thinking", "Permissions", "Work in", "Stuck chats"]
                 + StuckThreshold.allCases.map(\.title)

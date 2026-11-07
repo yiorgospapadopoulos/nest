@@ -54,11 +54,7 @@ private struct EngineAccounts: View {
             HStack(spacing: 6) {
                 if !shell.isRemote {
                     Button {
-                        shell.settingsChange("Could not add a \(engine) account") {
-                            if let page = try await store.add(provider) {
-                                NSWorkspace.shared.open(page)
-                            }
-                        }
+                        shell.addAccount(provider)
                     } label: {
                         Label("Add \(engine) account", systemImage: Icon.plus)
                     }
@@ -274,7 +270,7 @@ private struct AccountControls: View {
                 tone: signedIn ? .review : .done,
                 label: AccountText.state(account, optional: optional), hollow: !signedIn)
             if !signedIn && !shell.isRemote {
-                Button("Sign in") { signIn() }
+                Button("Sign in") { shell.signIn(account.id) }
                     .buttonStyle(.nest(optional ? .soft : .primary))
             }
             RowActionsMenu(title: account.title) {
@@ -290,12 +286,23 @@ private struct AccountControls: View {
             .disabled(store.isBusy(account.id))
         }
     }
+}
 
-    private func signIn() {
-        let store = shell.model.accounts
-        let id = account.id
-        shell.settingsChange("Could not start signing in") {
-            if let page = try await store.signIn(id) {
+extension Shell {
+    /// Settings > Accounts' sign-in, the one path the setup guide uses too.
+    func addAccount(_ provider: String) {
+        let store = model.accounts
+        settingsChange("Could not add a \(AccountText.engine(provider)) account") {
+            if let page = try await store.add(provider) {
+                NSWorkspace.shared.open(page)
+            }
+        }
+    }
+
+    func signIn(_ account: String) {
+        let store = model.accounts
+        settingsChange("Could not start signing in") {
+            if let page = try await store.signIn(account) {
                 NSWorkspace.shared.open(page)
             }
         }
@@ -304,7 +311,7 @@ private struct AccountControls: View {
 
 /// While connected to a remote daemon (B105): sign in on its machine, with the command to
 /// run there and Copy.
-private struct RemoteSignIn: View {
+struct RemoteSignIn: View {
     let provider: String
     @Environment(Shell.self) private var shell
 
@@ -426,20 +433,29 @@ private struct AccountLimits: View {
 /// The engines past Claude and Codex (B107), one compact row each, as one section.
 private struct MoreEnginesSection: View {
     let setups: [EngineSetup]
-    @Environment(Shell.self) private var shell
 
     var body: some View {
         SettingsSection(title: "", bare: true) {
             AccountsHeader(title: "More engines") { AccountsSymbol(name: Icon.agent) }
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(setups, id: \.name) { setup in
-                    MoreEngineRow(setup: setup)
-                }
-            }
-            .overlay(alignment: .top) { Separator() }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("More engines")
+            MoreEngineRows(setups: setups)
         }
+    }
+}
+
+/// The rows themselves, as Settings > Accounts and the setup guide's Engine step show them.
+struct MoreEngineRows: View {
+    let setups: [EngineSetup]
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(setups, id: \.name) { setup in
+                MoreEngineRow(setup: setup)
+            }
+        }
+        .overlay(alignment: .top) { Separator() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("More engines")
         // A sign-in in Terminal sends no event, so the engines are asked again on the way back.
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)

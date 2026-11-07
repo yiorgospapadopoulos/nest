@@ -41,6 +41,21 @@ class UpdateState(BaseModel):
     base_fingerprint: str | None = None
 
 
+def write_atomically(path: Path, text: str) -> None:
+    """A reader sees the old file or the new one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
+        Path(temporary).replace(path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
 class StateFile:
     def __init__(self, root: Path) -> None:
         self.path = root / STATE_NAME
@@ -56,17 +71,7 @@ class StateFile:
             return UpdateState()
 
     def save(self, state: UpdateState) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(dir=self.path.parent, prefix=f".{self.path.name}.")
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                file.write(state.model_dump_json())
-                file.flush()
-                os.fsync(file.fileno())
-            Path(temporary).replace(self.path)
-        except BaseException:
-            Path(temporary).unlink(missing_ok=True)
-            raise
+        write_atomically(self.path, state.model_dump_json())
 
 
 def relaunched(state: UpdateState) -> UpdateState:

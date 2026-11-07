@@ -1,6 +1,8 @@
 // Reaching the daemon again, ported from NestKit's Backoff (EventStream.swift), DaemonText
 // and ServiceStarter: the banner's line and buttons, the service's start, and the retries.
 
+import type { Updating } from "../bridge.ts";
+
 /** The delay in seconds before retry `attempt` (1 for the first): 0.5, doubled, at most 30. */
 export function backoffDelay(attempt: number): number {
   return Math.min(30, 0.5 * 2 ** Math.max(0, attempt - 1));
@@ -39,6 +41,78 @@ export function installCommand(checkout: string | null): string {
       ? "<your Nest checkout>/daemon"
       : `'${`${checkout.replace(/\/+$/, "")}/daemon`.replaceAll("'", "'\\''")}'`;
   return `cd ${daemon} && uv run nestd service install`;
+}
+
+export const DEFAULT_RELEASE_URL =
+  "https://github.com/yiorgospapadopoulos/nest/releases/latest/download";
+
+/**
+ * What repairs an install and keeps the data (release/install.sh), from the address the
+ * install came from, as the daemon's install_line: a piped script cannot tell it otherwise.
+ */
+export function installLine(releaseUrl: string): string {
+  const url = releaseUrl.replace(/\/+$/, "");
+  return url === DEFAULT_RELEASE_URL
+    ? `curl -fsSL ${url}/install.sh | sh`
+    : `curl -fsSL ${url}/install.sh | NEST_RELEASE_URL=${url} sh`;
+}
+
+// An update's note older than this is left over, not an update under way.
+const UPDATE_FRESH_MS = 5 * 60_000;
+// After this an update says it is taking longer than usual; most take a few seconds.
+const UPDATE_SLOW_MS = 15_000;
+
+/** When it started, in ms; the daemon writes microseconds, which not every engine reads. */
+function startedAt(text: string): number {
+  return Date.parse(text.replace(/(\.\d{3})\d+/, "$1"));
+}
+
+/** Whether `update.json` says an update is under way: there, and not left over. */
+function underWay(updating: Updating, now: number): boolean {
+  const started = startedAt(updating.started_at);
+  return !Number.isNaN(started) && now - started < UPDATE_FRESH_MS;
+}
+
+// How long the Updating screen waits for the daemon once `update.json` no longer says so:
+// going back, the watcher clears it and only then starts the old version (B130, fix 30b).
+const AFTER_UPDATE_MS = 30_000;
+
+/** The update the Updating screen shows, and when `update.json` stopped saying so. */
+export interface UpdateHold {
+  updating: Updating;
+  ended: number | null;
+}
+
+/**
+ * What shows instead of the daemon-down screen while the daemon is down for an update
+ * (B130), after a read of `update.json`: the update under way, or for
+ * `AFTER_UPDATE_MS` the last one, so the screen stays until the daemon answers rather than
+ * giving way to the window and the app's own start of the service mid-rollback.
+ */
+export function holdUpdate(
+  hold: UpdateHold | null,
+  updating: Updating | null,
+  now: number,
+): UpdateHold | null {
+  if (updating !== null && underWay(updating, now)) return { updating, ended: null };
+  if (hold === null) return null;
+  const ended = hold.ended ?? now;
+  return now - ended < AFTER_UPDATE_MS ? { updating: hold.updating, ended } : null;
+}
+
+/** What the Updating screen shows: the version it goes to, and whether it is slow. */
+export function heldView(
+  hold: UpdateHold | null,
+  now: number,
+): { version: string; slow: boolean } | null {
+  if (hold === null) return null;
+  const started = startedAt(hold.updating.started_at);
+  return { version: hold.updating.to_version, slow: now - started >= UPDATE_SLOW_MS };
+}
+
+/** After a second failed try, so a daemon just starting shows no alarm. */
+export function daemonDown(connection: Connection): boolean {
+  return connection.kind === "reconnecting" && connection.attempt > 1;
 }
 
 export type BannerAction = "retry" | "startService";

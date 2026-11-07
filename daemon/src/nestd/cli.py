@@ -1,7 +1,7 @@
 """Command line entry point.
 
-`nestd serve | service install|uninstall|status | pair | design generate|check|icon |
-gates changed|record | engines install|selfcheck`.
+`nestd serve | service install|uninstall|status|check-secrets|wait | pair |
+design generate|check|icon | gates changed|record | engines install|selfcheck`.
 """
 
 import argparse
@@ -11,12 +11,14 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+from nestd import __version__
 from nestd.accounts.profiles import drop_leaked_env
 from nestd.api.app import create_app
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
 from nestd.auth.models import PairingCode
 from nestd.auth.secrets import SecretStoreUnavailableError
 from nestd.config.errors import ConfigError
+from nestd.config.loader import load_settings
 from nestd.context import AppContext
 from nestd.design.errors import DesignError
 from nestd.design.icon import generate_icons
@@ -34,7 +36,7 @@ from nestd.gates.changes import changed_paths, merge_base, repository_root
 from nestd.gates.errors import GatesError
 from nestd.gates.rules import ALL_PARTS, Selection, select
 from nestd.logging_setup import configure_logging
-from nestd.paths import AppPaths
+from nestd.paths import AppPaths, is_packaged
 from nestd.perf.gate_times import GateRun, GateTimes, stage_times
 from nestd.providers.acp_engines import ACP_ENGINES
 from nestd.providers.shell_env import LoginShellEnv, login_shell
@@ -43,12 +45,16 @@ from nestd.service.base import ServiceError, ServiceManager
 from nestd.service.launchd import LEGACY_LABEL
 from nestd.service.manager import service_manager
 from nestd.storage.errors import DatabaseError
+from nestd.updates.app import note_start
 from nestd.updates.boot import SWITCHED_ENV, Boot, TrialWatch, switch_environment
 from nestd.updates.selfcheck import run_selfcheck_here
+from nestd.updates.service import answers_health
 
 type Handler = Callable[[argparse.Namespace, AppPaths, Runtime], int]
 
 logger = logging.getLogger(__name__)
+
+SERVICE_WAIT_SECONDS = 90
 
 
 def main(argv: list[str] | None = None, runtime: Runtime | None = None) -> int:
@@ -86,6 +92,12 @@ def _parser() -> argparse.ArgumentParser:
         ("install", _service_install, "install and start the service"),
         ("uninstall", _service_uninstall, "stop and remove the service"),
         ("status", _service_status, "show whether the service is installed and loaded"),
+        (
+            "check-secrets",
+            _service_check_secrets,
+            "fail if the system's secret store cannot be read",
+        ),
+        ("wait", _service_wait, "wait until the daemon answers its health check"),
     ):
         actions.add_parser(name, help=help_text).set_defaults(handler=handler)
 
@@ -169,6 +181,8 @@ def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
         ["serve", *([] if args.port is None else ["--port", str(args.port)])],
     )
     os.environ.pop(SWITCHED_ENV, None)
+    if is_packaged():
+        note_start(paths.daemon_dir, __version__)
     # Engine processes inherit the daemon's environment (B98).
     drop_leaked_env(os.environ)
     # The server reads its token at startup; a missing or locked secret store stops here
@@ -230,6 +244,29 @@ def _service_status(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> 
     print(f"loaded: {'yes' if status.loaded else 'no'}", file=rt.out)
     print(status.detail.rstrip(), file=rt.out)
     return 0 if status.loaded else 1
+
+
+def _service_check_secrets(_args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> int:
+    """For the install script: `nestd serve` stops at start without the store, and the
+    guide is served by the daemon, so a missing one is reported before the service starts."""
+    rt.secrets.get(LOCAL_DEVICE_ACCOUNT)
+    return 0
+
+
+def _service_wait(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
+    port = load_settings(paths).server.port
+    if asyncio.run(_answers_within(port, SERVICE_WAIT_SECONDS)):
+        return 0
+    print(f"nestd: no answer on port {port} after {SERVICE_WAIT_SECONDS} seconds", file=rt.err)
+    return 1
+
+
+async def _answers_within(port: int, seconds: int) -> bool:
+    for _ in range(seconds):
+        if await answers_health(port):
+            return True
+        await asyncio.sleep(1)
+    return False
 
 
 def _pair(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:

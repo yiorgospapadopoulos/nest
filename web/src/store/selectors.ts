@@ -19,6 +19,7 @@ import type {
 import { isLocalModel, list, localModelValue, obj, str } from "../api/payloads.ts";
 import { isWeak, LOCAL_DETAIL, LOCAL_TITLE, localDetail, localOptions } from "./local.ts";
 import {
+  choosingModel,
   CLAUDE,
   type ModelCatalog,
   modelLabel,
@@ -749,6 +750,18 @@ export function newChatDefaults(state: State): NewChatChoices | null {
   const defaults = state.agentDefaults;
   if (defaults === null) return null;
   return newChatChoices(defaults, catalogFor(state, defaults.provider));
+}
+
+/** A new chat's choices, on `opened` when it opened on a model of its own. */
+export function openingChoices(
+  state: State,
+  opened: { provider: string; model: string } | null,
+): NewChatChoices | null {
+  const choices = newChatDefaults(state);
+  const defaults = state.agentDefaults;
+  if (opened === null || choices === null || defaults === null) return choices;
+  const { provider, model } = opened;
+  return choosingModel(choices, model, provider, catalogFor(state, provider), defaults);
 }
 
 /** One engine's line in the usage bar. */

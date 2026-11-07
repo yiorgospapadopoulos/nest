@@ -1,6 +1,6 @@
 # Quality gates for every part of Nest. `make check` is the single entry point.
 
-.PHONY: install-app check check-changed gates check-daemon check-web check-apple fmt test install tokens icon app run-app \
+.PHONY: version release install-app check check-changed gates check-daemon check-web check-apple fmt test install tokens icon app run-app \
 	lint-daemon test-daemon audit-daemon lint-web test-web audit-web lint-apple test-apple audit-apple coverage
 
 # Swift sources to format and lint; the generated tokens follow the generator's layout.
@@ -121,6 +121,15 @@ icon:
 	done
 	iconutil -c icns apple/build/AppIcon.iconset -o apple/support/AppIcon.icns
 	rm -rf apple/build/AppIcon.iconset
+
+# Writes the root VERSION file to every place that holds a version (B130).
+version:
+	cd daemon && uv run python ../release/set_version.py
+	cd daemon && uv lock --quiet
+
+# Everything of one release in release/out/<version>/; publishes nothing (B130).
+release:
+	release/build.sh
 
 # The Mac app bundle in apple/build/Nest.app, signed with "Nest Local Signing" when present, ad hoc otherwise (D042).
 app:

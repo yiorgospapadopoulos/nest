@@ -1,7 +1,7 @@
 //! What Nest hands to the rest of the system: links for the default browser or mail app,
 //! folders for the file manager, files the user saves.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use tauri::Url;
 
@@ -47,6 +47,27 @@ pub fn path_in_home(path: &str, home: &Path) -> Result<PathBuf, String> {
             "Only places in your home folder open from Nest: {path}"
         ))
     }
+}
+
+/// Makes the folder `path` when it is not there yet, such as the Claude skills folder on a
+/// new machine, only where its nearest existing parent is in the home folder.
+pub fn make_folder_in_home(path: &str, home: &Path) -> Result<(), String> {
+    let given = Path::new(path);
+    let plain = given
+        .components()
+        .all(|part| matches!(part, Component::RootDir | Component::Normal(_)));
+    if !given.is_absolute() || !plain {
+        return Err(format!("Not a full path: {path}"));
+    }
+    if given.is_dir() {
+        return Ok(());
+    }
+    let existing = given
+        .ancestors()
+        .find(|folder| folder.exists())
+        .ok_or_else(|| format!("Cannot open {path}"))?;
+    path_in_home(&existing.to_string_lossy(), home)?;
+    std::fs::create_dir_all(given).map_err(|error| format!("Cannot make {path}: {error}"))
 }
 
 /// The regular file `path` names inside the folder `root`, with `..` and links resolved, so
@@ -141,6 +162,32 @@ mod tests {
         assert!(path_in_home(&text(&home.join("link")), &home).is_err());
         assert!(path_in_home("project", &home).is_err());
         assert!(path_in_home(&text(&home.join("missing")), &home).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_missing_folder_is_made_only_inside_home() {
+        // Regression: Open folder did nothing for skills on a machine without the folder.
+        let root = TempDir::new("make-folder");
+        let home = root.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        std::os::unix::fs::symlink(root.path(), home.join("link")).unwrap();
+        let text = |path: &Path| path.to_str().unwrap().to_owned();
+        let skills = home.join(".claude/skills");
+
+        assert_eq!(make_folder_in_home(&text(&skills), &home), Ok(()));
+        assert!(skills.is_dir());
+        assert!(path_in_home(&text(&skills), &home).is_ok());
+
+        for refused in [
+            text(&root.path().join("outside")),
+            text(&home.join("link/outside")),
+            text(&home.join("a/../../outside")),
+            "relative/skills".to_owned(),
+        ] {
+            assert!(make_folder_in_home(&refused, &home).is_err(), "{refused}");
+        }
+        assert!(!root.path().join("outside").exists());
     }
 
     #[cfg(unix)]

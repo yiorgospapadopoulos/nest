@@ -34,6 +34,10 @@ pub fn notify(
     unimplemented!()
 }
 
+pub fn notification_server() -> Option<String> {
+    unimplemented!()
+}
+
 pub fn never_focus(_window: &tauri::WebviewWindow) {
     unimplemented!()
 }

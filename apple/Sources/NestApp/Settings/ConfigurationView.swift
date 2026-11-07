@@ -98,7 +98,7 @@ private struct SharedSection: View {
             Spacer(minLength: 8)
             Button("New skill") { shell.configurationForm = .skill(repo: nil) }
                 .buttonStyle(.nest())
-            Button("Open folder") { LocalOpen.folder(shared.skills.folder) }
+            Button("Open folder") { shell.openFolder(making: shared.skills.folder) }
                 .buttonStyle(.nest())
                 .localOnly(shell, DaemonText.appsOff)
         }

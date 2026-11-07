@@ -114,7 +114,8 @@ class Accounts:
     ) -> None:
         """`codex` is the engine's view of its active account; `close_idle_runs` closes
         the idle chat runs opened on any of the given accounts, and `claude_switched`
-        reads Claude's models and account again once another Claude account is active.
+        reads Claude's models and account again once another Claude account is active or
+        the active one has just signed in.
         `acp` are the ACP engines Nest runs, by name (B107).
         """
         self._store = store
@@ -459,6 +460,9 @@ class Accounts:
             await self._read_usage(account)
         if account_id == self._active.id(account.provider):
             await self._announce(account.provider, status, error)
+            # Before this, a new install showed only the short names for up to 30 minutes.
+            if account.provider == CLAUDE and status.signed_in is True and error is None:
+                self._background(self._claude_switched())
         await self._changed()
 
     async def _announce(self, provider: str, status: Status, error: str | None) -> None:

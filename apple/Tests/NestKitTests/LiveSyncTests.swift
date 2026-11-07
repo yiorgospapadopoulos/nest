@@ -42,6 +42,19 @@ import Testing
         #expect(model.app.connection == .disconnected)
     }
 
+    /// Regression (B130): the updating screen connects again every second, and a replaced
+    /// run ending after the new one connected left the window saying it was not connected.
+    @Test func aReplacedRunLeavesTheNewConnectionAlone() async {
+        let run = Task { await model.live.run() }
+        while model.app.connection != .connecting {
+            await Task.yield()
+        }
+        model.app.connection = .connected
+        run.cancel()
+        await run.value
+        #expect(model.app.connection == .connected)
+    }
+
     @Test func pixiesLoadOnConnectAndFollowEvents() async throws {
         api.set { $0.pixies = [Fixture.decode(Pixie.self, "pixie")] }
         await model.live.refresh()

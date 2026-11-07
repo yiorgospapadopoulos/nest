@@ -71,11 +71,15 @@ public final class LiveSync {
         self.updates = updates
     }
 
-    /// Runs until the task is cancelled or the daemon refuses the connection.
+    /// Runs until the task is cancelled or the daemon refuses the connection. A cancelled
+    /// run, replaced by a new connect, says nothing more about the connection: ending after
+    /// the new one connected, it marked the window as not connected (B130).
     public func run() async {
         app.connection = .connecting
+        let ended: ConnectionState
         do {
             for try await update in source.updates() {
+                guard !Task.isCancelled else { return }
                 switch update {
                 case .connected:
                     app.connection = .connected
@@ -88,13 +92,16 @@ public final class LiveSync {
                     route(event)
                 }
             }
-            app.connection = .disconnected
+            ended = .disconnected
         } catch EventStreamError.unauthorized {
-            app.connection = .unauthorized
+            ended = .unauthorized
         } catch EventStreamError.forbiddenOrigin {
-            app.connection = .forbiddenOrigin
+            ended = .forbiddenOrigin
         } catch {
-            app.connection = .disconnected
+            ended = .disconnected
+        }
+        if !Task.isCancelled {
+            app.connection = ended
         }
     }
 
@@ -225,6 +232,8 @@ public final class AppModel {
     public let pixieSettings: PixieSettingsStore
     public let limitSettings: LimitSettingsStore
     public let notificationRules: NotificationRulesStore
+    /// The setup checks and the bug report (B130).
+    public let setup: SetupChecksStore
     public let accounts: AccountsStore
     public let extensions: ExtensionsStore
     /// Settings > Configuration (B97).
@@ -299,6 +308,7 @@ public final class AppModel {
         pixieSettings = PixieSettingsStore(api: api)
         limitSettings = LimitSettingsStore(api: api)
         notificationRules = NotificationRulesStore(api: api)
+        setup = SetupChecksStore(api: api)
         accounts = AccountsStore(api: api)
         extensions = ExtensionsStore(api: api)
         configuration = ConfigurationStore(api: api)
@@ -383,9 +393,12 @@ public final class AppModel {
 
     /// Stops the live sync and tells the daemon the app is no longer on screen, as when the
     /// window switches to another daemon.
+    /// A cancelled run says nothing more about the connection (`LiveSync.run`), so closing
+    /// says it is over itself.
     public func close() {
         liveTask?.cancel()
         liveTask = nil
+        app.connection = .disconnected
         visibility.update(visible: false)
     }
 

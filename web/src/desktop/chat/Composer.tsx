@@ -53,10 +53,11 @@ import {
   chatModel,
   memberCall,
   modelSections,
-  newChatDefaults,
+  openingChoices,
   signInHint,
 } from "../../store/selectors.ts";
 import { draftKey, NO_DRAFT } from "../../store/state.ts";
+import type { DraftModel } from "../layout/project.ts";
 import { bashBlocks } from "../../transcript/build.ts";
 import { tokens } from "../../format.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
@@ -104,6 +105,7 @@ export type ComposerTarget =
       kind: "draft";
       repo: string;
       place: NewChatChoice | null;
+      model: DraftModel | null;
       onCreated: (session: Session) => void;
     }
   // A pixie's pane: messages go through the pixie, which starts its chat when it has none;
@@ -227,7 +229,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
   const closed = session?.state === "closed";
   const choices: Choices | null =
     session === undefined
-      ? (draftChoices ?? newChatDefaults(state))
+      ? (draftChoices ?? openingChoices(state, target.kind === "draft" ? target.model : null))
       : {
           provider: session.provider,
           model: chatModel(state, session),

@@ -15,6 +15,34 @@ Nest was called harness until B43 (D080). Its daemon and command line tool are `
 </p>
 -->
 
+## Install
+
+On a Mac with Apple silicon and macOS 26 or later, or on x86_64 or arm64 Linux with Ubuntu 22.04 or later, paste this in a terminal:
+
+```sh
+curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/download/install.sh | sh
+```
+
+It needs no developer tools and nothing else installed. It downloads Nest, checks every file against its sha256, starts the background service and opens the app, whose guide walks you through signing in to an engine, `git`, GitHub, your iPhone and a first chat. You can skip every step but one: Nest needs one engine, either your own Claude or ChatGPT plan or local models. Settings > General > Set up Nest opens the guide again.
+
+Nest goes in `/Applications` on a Mac and in your app menu on Linux, with no `sudo`. It changes no shell files: if `~/.local/bin` is not on your `PATH`, the script prints the line to add. Run the same line again at any time to repair an install; it keeps your chats. When the background service is down, Nest first starts it again itself, and only shows this line if that fails. It refuses to run over a Nest that runs from a checkout.
+
+On Linux Nest needs a systemd user session and the Secret Service, which Ubuntu has. Without them the script says what is missing and stops.
+
+Downloading the Mac app from the Releases page in a browser also works, but as the app has no paid Apple signing, macOS blocks it once: open System Settings > Privacy & Security > Open Anyway. The line above skips that.
+
+### Updates
+
+When a new Nest is out, the app downloads it in the background, checks it runs, and only then shows the strip. Relaunch to update installs it together with any engine updates, after a backup of the database in `backups-update/`, and permissions stay. While it updates, the app says so. If the new version does not start, Nest goes back to the old one and the old database by itself, within seconds when it keeps crashing and after 2 minutes when it hangs, and tells you. Undo update in Settings > General goes back one version, unless the update changed the database. Updates start from the Mac and Linux apps; the iPhone app follows the daemon.
+
+### Something's wrong
+
+`nest doctor` says in plain words what is wrong and how to fix it, and it works with the daemon down. Settings > General > Check Nest runs the same checks. `nest doctor --report`, or Make a bug report in the same place, writes a file to `reports/` in Nest's data folder with versions, check results and the end of the log, with tokens, keys, URL credentials, emails and home paths removed. Nest sends it nowhere itself: read it, then Report on GitHub opens a new issue with the report filled in for you to send (or asks you to attach the file, when it is too long).
+
+### Uninstall
+
+Settings > General > Uninstall Nest, or `nest uninstall` in a terminal, stops the service and removes the app, the `nest` command and Nest's programs. It keeps your chats, settings and secrets, says where they are, and installing again brings them back. Choose to delete them too in the app, or run `nest uninstall --delete-data`. It leaves `tailscale serve` alone and tells you how to stop it.
+
 ## Layout
 
 | Path | What |
@@ -26,6 +54,8 @@ Nest was called harness until B43 (D080). Its daemon and command line tool are `
 | `design/` | `tokens.toml`, the design tokens shared by both clients (`make tokens` regenerates the CSS and Swift outputs). Both clients use the `[colors.mac]` palette and lane colours; the Mac also its `mac_*` radii and spacing (Swift `DesignTokens.Colors.Mac`), the iPhone its `phone_*` type sizes, row height and card radius (CSS `--typography-size-phone-*`, `--spacing-phone-row`, `--radius-phone-card`). The iPhone no longer offers glass themes or wallpapers (D126); their token tables are still generated but unused. See D039 and D073. |
 
 ## Prerequisites
+
+For working on Nest itself. To just use it, see Install.
 
 - macOS with [uv](https://docs.astral.sh/uv/) and Python 3.12
 - Node.js with npm
@@ -56,6 +86,10 @@ The daemon tests in `make check`, `make check-daemon` and `make test` run in 4 p
 `make check-changed` asks `nestd gates changed` which parts the work touched since the merge base with `BASE` (default `main`), counting committed, staged, unstaged and untracked files, prints why, and runs only those gates in `make check`'s order (the lint stage of each part, then the tests, then the audits). A file in `daemon/`, `web/` or `apple/` runs that part; `design/` and the generator in `daemon/src/nestd/design/` run all three; the generated token and icon files run their part and the daemon, whose tests check them; `README.md`, `LICENSE` and `docs/` run nothing; anything else (the `Makefile`, `.github/`, a new top-level folder) runs everything, as does a failure to work the parts out. It is the gate for work in a worktree; the full `make check` runs before merging into `main` and after cross-cutting changes. See D125.
 
 CI: `.github/workflows/check.yml` is set to run `make check-daemon` and `make check-web` on GitHub Actions (`ubuntu-latest`) for every push and pull request. Off `main`, a first job runs `nestd gates changed` against `origin/main` (or the pull request's base) and each job runs only when its part changed, by the same rules; on `main` both always run. The Swift gates run only locally (`make check-apple`). See D066 and D071.
+
+## Releases
+
+`VERSION` holds the one version; `make version` writes it to every part, and a test fails if any differs. `make release` builds everything of a release into the gitignored `release/out/<version>/` on a Mac: the daemon wheel with the web app inside, its pinned requirements with hashes, the signed Mac app, the Linux AppImage and `.deb` for x86_64 and arm64 in Docker, `install.sh` and `latest.json`. It stops if `release/notes/<version>.md` or the `Nest Local Signing` certificate is missing, because macOS keeps permissions across updates only for one certificate. `NEST_RELEASE_PARTS` builds some of it. It publishes nothing. `install.sh` and the daemon read `NEST_RELEASE_URL`, so a test release can be served from a local address.
 
 ## Mac app
 

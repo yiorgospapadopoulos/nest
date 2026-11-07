@@ -66,7 +66,20 @@ const STUCK = ["Waiting on a prompt", "No new output", "Same call repeated", "On
 const USAGE_UNITS = ["Day", "Week", "Month", "Year"];
 
 const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = {
-  general: ["Sidebar", "Show automated chats", "Linux", "Nest", "Version", "Restart Nest"],
+  general: [
+    "Sidebar",
+    "Show automated chats",
+    "Linux",
+    "Nest",
+    "Version",
+    "Restart Nest",
+    "Setup",
+    "Set up Nest",
+    "Help",
+    "Report a bug",
+    "Uninstall",
+    "Uninstall Nest",
+  ],
   storage: [
     "Space used",
     "Used by Nest",
@@ -101,6 +114,10 @@ const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = 
     "Sound",
     ...NOTIFY_TOGGLES.map((t) => t.title),
     "iPhone push",
+    "ntfy",
+    "Server",
+    "Topic",
+    "Link address",
   ],
   agents: ["New chats", "Model", "Thinking", "Permissions", "Work in", "Stuck chats", ...STUCK],
   usage: [

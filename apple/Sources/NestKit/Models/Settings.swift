@@ -189,7 +189,66 @@ public struct NotificationRules: Codable, Sendable, Hashable {
         set { fields[Self.levelKey] = .string(newValue.rawValue) }
     }
 
+    /// The ntfy channel (B130).
+    public var ntfy: NtfySettings {
+        get { NtfySettings(fields[Self.ntfyKey]) }
+        set { fields[Self.ntfyKey] = newValue.json }
+    }
+
     private static let levelKey = "pixie_report_level"
+    private static let ntfyKey = "ntfy"
+}
+
+/// `[notifications.ntfy]`: anyone who knows a public topic can read it.
+public struct NtfySettings: Sendable, Hashable {
+    public var enabled: Bool
+    public var server: String
+    public var topic: String?
+    /// The address a tapped notification opens Nest at.
+    public var clickBaseURL: String?
+
+    public init(
+        enabled: Bool = false, server: String = "https://ntfy.sh", topic: String? = nil,
+        clickBaseURL: String? = nil
+    ) {
+        self.enabled = enabled
+        self.server = server
+        self.topic = topic
+        self.clickBaseURL = clickBaseURL
+    }
+
+    /// Turned on in Settings: with no topic yet, a long random one is made, which the daemon
+    /// needs to turn it on (B130).
+    public mutating func turnOn() {
+        if topic?.isEmpty ?? true {
+            topic = Self.randomTopic()
+        }
+        enabled = true
+    }
+
+    /// 32 letters and digits, inside the daemon's rule (16 to 64 of `[A-Za-z0-9_-]`).
+    public static func randomTopic() -> String {
+        let characters = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        var generator = SystemRandomNumberGenerator()
+        return String((0..<32).map { _ in characters.randomElement(using: &generator)! })
+    }
+
+    init(_ json: JSONValue?) {
+        self.init(
+            enabled: json?["enabled"]?.boolValue ?? false,
+            server: json?["server"]?.stringValue ?? "https://ntfy.sh",
+            topic: json?["topic"]?.stringValue,
+            clickBaseURL: json?["click_base_url"]?.stringValue)
+    }
+
+    var json: JSONValue {
+        .object([
+            "enabled": .bool(enabled),
+            "server": .string(server),
+            "topic": topic.map(JSONValue.string) ?? .null,
+            "click_base_url": clickBaseURL.map(JSONValue.string) ?? .null,
+        ])
+    }
 }
 
 public enum GitHubLoginState: String, UnknownSafeEnum {

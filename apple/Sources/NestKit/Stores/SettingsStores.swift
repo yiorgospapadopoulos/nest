@@ -133,7 +133,8 @@ public final class LimitSettingsStore {
     }
 }
 
-/// Settings > Notifications: the pixie report level the daemon keeps for the phone (B85).
+/// Settings > Notifications: the pixie report level the daemon keeps for the phone (B85) and
+/// the ntfy channel (B130).
 @MainActor @Observable
 public final class NotificationRulesStore {
     /// Nil until loaded.
@@ -152,12 +153,21 @@ public final class NotificationRulesStore {
     /// Shows the level at once and restores the old one if the daemon refuses it. The
     /// whole section is sent, so it is read first when it was not yet.
     public func setPixieReportLevel(_ level: ReportSeverity) async throws {
+        try await change { $0.pixieReportLevel = level }
+    }
+
+    /// The same for ntfy, whose fields save one at a time.
+    public func changeNtfy(_ apply: (inout NtfySettings) -> Void) async throws {
+        try await change { apply(&$0.ntfy) }
+    }
+
+    private func change(_ apply: (inout NotificationRules) -> Void) async throws {
         if rules == nil {
             try await load()
         }
         guard let previous = rules else { return }
         var changed = previous
-        changed.pixieReportLevel = level
+        apply(&changed)
         rules = changed
         do {
             rules = try await api.updateNotificationRules(changed)

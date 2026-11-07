@@ -30,8 +30,8 @@ from nestd.artifacts.storage import PageStorage
 from nestd.artifacts.store import ArtifactStore
 from nestd.artifacts.tools import artifact_tools
 from nestd.attachments.store import AttachmentStore
-from nestd.auth.devices import DeviceService
-from nestd.auth.secrets import SecretStore
+from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT, DeviceService
+from nestd.auth.secrets import KeyringSecretStore, SecretStore
 from nestd.auth.token_socket import TokenSocket
 from nestd.autopilot.keep_awake import KeepAwake
 from nestd.autopilot.usage import weekly_used
@@ -61,6 +61,7 @@ from nestd.configuration.service import Configuration, prepare_engine
 from nestd.configuration.watcher import ConfigurationWatcher
 from nestd.configuration.wiring import build_sources
 from nestd.connectors.registry import ConnectorRegistry
+from nestd.doctor.machine import Machine, this_machine
 from nestd.engine.acp import AcpEngineService, AcpSetup, build_acp_engines
 from nestd.engine.acp_install import InstallState
 from nestd.engine.codex import STORE_PREFIX, CodexEngine
@@ -261,10 +262,24 @@ class AppContext:
     updates: UpdateService
     # The port `nestd serve --port` gave, which wins over the settings' one.
     port_flag: int | None = None
+    # The machine the doctor's checks ask; None is this one.
+    checks_machine: Machine | None = None
 
     def serving_port(self) -> int:
         """The port the daemon serves on: local models' runs reach its proxy there."""
         return self.port_flag if self.port_flag is not None else self.settings.server.port
+
+    def doctor_machine(self) -> Machine:
+        if self.checks_machine is not None:
+            return self.checks_machine
+        store = KeyringSecretStore(self.platform.secret_store_help)
+
+        def read_secret() -> None:
+            store.get(LOCAL_DEVICE_ACCOUNT)
+
+        return this_machine(
+            self.paths, self.platform, Path.home(), os.environ, self.serving_port(), read_secret
+        )
 
     @classmethod
     async def build(
@@ -343,6 +358,7 @@ class AppContext:
             zone=zone,
             signed_in=logins.any,
             claude_signed_in=logins.claude,
+            has_chats=lambda: _has_chats(db),
         )
         await local.load()
         pixie_store = PixieStore(db, clock)
@@ -852,8 +868,8 @@ class AppContext:
             )
         )
         updates = UpdateService(
-            root=paths.environments_dir,
-            engines_dir=paths.engines_dir,
+            paths=paths,
+            platform=system.name,
             bus=bus,
             shell_env=shell_env,
             busy_chats=sessions.busy_count,
@@ -1038,6 +1054,10 @@ class AppContext:
         await self.modules.stop_all()
         await self.notifications.close()
         await self.db.close()
+
+
+async def _has_chats(db: Database) -> bool:
+    return await db.fetch_one("SELECT 1 FROM sessions LIMIT 1") is not None
 
 
 def _acp_small_model(service: AcpEngineService) -> Callable[[], Awaitable[str | None]]:

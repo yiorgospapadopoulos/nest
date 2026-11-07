@@ -218,6 +218,8 @@ async def _check_codex() -> str:
 
 
 async def _check_acp(engine: AcpEngine, engines_dir: Path, home: Path) -> str | None:
+    if not (engines_dir / engine.id).is_dir():
+        return None
     program = installed_program(engine, engines_dir / engine.id / (engine.version or ""))
     if program is None:
         msg = f"{engine.id} {engine.version} is not installed"

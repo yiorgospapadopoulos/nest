@@ -15,22 +15,55 @@ public struct EngineUpdates: Codable, Sendable, Hashable {
     public var canUndo: Bool
     /// A plain sentence for the user, until dismissed.
     public var notice: String?
+    /// A new Nest that Relaunch installs (B130).
+    public var app: AppUpdate?
+    /// The app that belongs to the running daemon; an app of another version swaps to it.
+    public var appFile: AppFile?
 
     public init(
         state: Phase = .idle, engines: [EngineUpdate] = [], busyChats: Int = 0,
-        canUndo: Bool = false, notice: String? = nil
+        canUndo: Bool = false, notice: String? = nil, app: AppUpdate? = nil,
+        appFile: AppFile? = nil
     ) {
         self.state = state
         self.engines = engines
         self.busyChats = busyChats
         self.canUndo = canUndo
         self.notice = notice
+        self.app = app
+        self.appFile = appFile
     }
 
     enum CodingKeys: String, CodingKey {
-        case state, engines, notice
+        case state, engines, notice, app
         case busyChats = "busy_chats"
         case canUndo = "can_undo"
+        case appFile = "app_file"
+    }
+}
+
+/// What Relaunch would install of Nest itself.
+public struct AppUpdate: Codable, Sendable, Hashable {
+    public var version: String
+    public var notes: String
+
+    public init(version: String, notes: String) {
+        self.version = version
+        self.notes = notes
+    }
+
+    /// Such as "Nest 1.2.0".
+    public var change: String { "Nest \(version)" }
+}
+
+/// A release's app on this machine: the zip the release made with `ditto`.
+public struct AppFile: Codable, Sendable, Hashable {
+    public var version: String
+    public var path: String
+
+    public init(version: String, path: String) {
+        self.version = version
+        self.path = path
     }
 }
 

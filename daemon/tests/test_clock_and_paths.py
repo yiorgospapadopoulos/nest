@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from nestd.clock import SystemClock
-from nestd.paths import AppPaths
+from nestd.paths import DEFAULT_WEB_DIST, AppPaths, default_web_dist, is_packaged
 from nestd.platform import LINUX, MACOS, UnsupportedPlatformError, current_platform
 
 
@@ -170,3 +170,15 @@ def test_codexs_home_follows_its_own_setting_and_is_unset_in_tests(tmp_path: Pat
     assert AppPaths.from_env({}, home=tmp_path).codex_home == tmp_path / ".codex"
     assert overridden.codex_home == tmp_path / "cx"
     assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).codex_home is None
+
+
+def test_a_released_daemon_serves_the_web_build_inside_its_package(tmp_path: Path) -> None:
+    packaged = tmp_path / "web_dist"
+
+    assert not is_packaged(packaged)
+    assert default_web_dist(packaged) == DEFAULT_WEB_DIST
+
+    packaged.mkdir()
+
+    assert is_packaged(packaged)
+    assert default_web_dist(packaged) == packaged

@@ -57,6 +57,18 @@ describe("the left bar's update strip", () => {
     expect(await screen.findByRole("button", { name: "Relaunching..." })).toBeDisabled();
   });
 
+  it("offers a new Nest with its notes, with no engine to update too", async () => {
+    const api = fakeApi();
+    api.checkUpdates.mockResolvedValue(
+      engineUpdates({ state: "ready", app: { version: "0.2.0", notes: "Better setup." } }),
+    );
+    const { user } = renderStrip(api);
+    await user.click(await screen.findByRole("button", { name: "What's updating" }));
+
+    expect(screen.getByText("Nest 0.2.0")).toBeInTheDocument();
+    expect(screen.getByText("Better setup.")).toBeInTheDocument();
+  });
+
   it("hides with the x, dot included, without telling the daemon", async () => {
     const api = fakeApi();
     api.checkUpdates.mockResolvedValue(READY);

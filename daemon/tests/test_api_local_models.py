@@ -174,6 +174,19 @@ async def test_the_first_run_until_the_user_chooses(api: Api) -> None:
     assert (await api.http.get("/api/local/models")).json()["local_only"]
 
 
+async def test_being_set_up_already_does_not_skip_the_guide(api: Api, mac: LocalMac) -> None:
+    """Anything already set up, such as a login to Claude Code, used to skip the first run."""
+    await add_coder(api, mac)
+
+    assert (await api.http.get("/api/setup")).json()["first_run"] is True
+
+
+async def test_an_install_with_chats_never_gets_the_guide(api: Api) -> None:
+    await create(api)
+
+    assert (await api.http.get("/api/setup")).json()["first_run"] is False
+
+
 async def test_the_first_run_ends_when_the_user_says(api: Api) -> None:
     done = await api.http.post("/api/setup/done")
 

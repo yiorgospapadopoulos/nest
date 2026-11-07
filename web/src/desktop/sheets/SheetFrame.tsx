@@ -86,7 +86,7 @@ export function SheetFrame({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        style={{ width, maxHeight }}
+        style={{ width, maxHeight: `min(${String(maxHeight)}px, calc(100vh - 100px))` }}
         onKeyDown={onKeyDown}
       >
         <header className="dkh-head">

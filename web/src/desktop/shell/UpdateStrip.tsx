@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useStore } from "../../store/context.ts";
 import {
+  appChange,
   engineChange,
   restartQuestion,
   updateStrip,
-  useUpdateRestart,
   type UpdateStrip as Strip,
 } from "../../store/updates.ts";
 import { Icon } from "../../ui/Icon.tsx";
@@ -12,11 +12,12 @@ import { useHeightVar } from "../../ui/useHeightVar.ts";
 import { Confirm } from "../sheets/Alert.tsx";
 import { Button } from "../ui/controls.tsx";
 import "./frame/frame.css";
+import { useRelaunch } from "./useRelaunch.ts";
 
 /** Pinned to the bottom of the left bar, over the list: an update ready, or a notice. */
 export function UpdateStrip() {
   const { state } = useStore();
-  const strip = updateStrip(state.updates);
+  const strip = updateStrip(state.updates, "app");
   if (strip === null) return null;
   return strip.kind === "notice" ? <Notice text={strip.text} /> : <Ready strip={strip} />;
 }
@@ -42,14 +43,20 @@ function Notice({ text }: { text: string }) {
 function Ready({ strip }: { strip: Extract<Strip, { kind: "ready" }> }) {
   const { actions } = useStore();
   const box = useHeightVar("--update-strip");
-  const relaunch = useUpdateRestart("relaunch");
+  const relaunch = useRelaunch();
   const [open, setOpen] = useState(false);
-  const { engines, relaunching } = strip;
+  const { app, engines, relaunching } = strip;
   const question = relaunch.asking === null ? null : restartQuestion("relaunch", relaunch.asking);
   return (
     <div ref={box} className="fr-update">
-      {open && engines.length > 0 && (
+      {open && (app !== null || engines.length > 0) && (
         <ul>
+          {app !== null && (
+            <li>
+              {appChange(app)}
+              {app.notes !== "" && <p className="fr-unotes">{app.notes}</p>}
+            </li>
+          )}
           {engines.map((engine) => (
             <li key={engine.id}>{engineChange(engine)}</li>
           ))}
@@ -98,7 +105,7 @@ function Ready({ strip }: { strip: Extract<Strip, { kind: "ready" }> }) {
 /** The squeezed bar's sign of the strip; a click on the rail opens the bar. */
 export function UpdateRailDot() {
   const { state } = useStore();
-  const strip = updateStrip(state.updates);
+  const strip = updateStrip(state.updates, "app");
   if (strip === null) return null;
   const title = strip.kind === "notice" ? strip.text : "Update available";
   return <span className="fr-udot" title={title} />;

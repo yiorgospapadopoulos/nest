@@ -11,6 +11,16 @@ import { AccountsHeader, AccountsSymbol } from "./parts.tsx";
 
 /** The engines past Claude and Codex (B107), one compact row each, as one section. */
 export function MoreEnginesSection({ setups }: { setups: EngineSetup[] }) {
+  return (
+    <SettingsSection bare>
+      <AccountsHeader title="More engines" mark={<AccountsSymbol name="agent" />} />
+      <MoreEngineRows setups={setups} />
+    </SettingsSection>
+  );
+}
+
+/** The rows themselves, as Settings > Accounts and the setup guide's Engine step show them. */
+export function MoreEngineRows({ setups }: { setups: EngineSetup[] }) {
   const { actions } = useStore();
   // A sign-in in a terminal sends no event, so the engines are asked again on the way back.
   useEffect(() => {
@@ -23,14 +33,11 @@ export function MoreEnginesSection({ setups }: { setups: EngineSetup[] }) {
     };
   }, [actions]);
   return (
-    <SettingsSection bare>
-      <AccountsHeader title="More engines" mark={<AccountsSymbol name="agent" />} />
-      <div className="dka-rows" role="group" aria-label="More engines">
-        {setups.map((setup) => (
-          <MoreEngineRow key={setup.name} setup={setup} />
-        ))}
-      </div>
-    </SettingsSection>
+    <div className="dka-rows" role="group" aria-label="More engines">
+      {setups.map((setup) => (
+        <MoreEngineRow key={setup.name} setup={setup} />
+      ))}
+    </div>
   );
 }
 

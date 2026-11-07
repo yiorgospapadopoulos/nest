@@ -13,10 +13,17 @@
 //! | open_browser_window | { url, title?, label? } (label: the pane's open window, which then shows url) | the window's label |
 //! | pick_folder | none | the chosen folder's path, or null when cancelled |
 //! | start_service | none | "started", or "not_installed" without a nest.service unit; main window only |
+//! | daemon_problem | none | what the daemon's log says stops it, in words for the user, or null; main window only |
+//! | app_version | none | this app's version; main window only |
+//! | swap_app | { path } (untrusted: a release's app file in the data folder) | null, with nothing done in a dev build or after the first call of a launch; else Nest restarts from it; main window only |
+//! | install_state | none | { updating: { from_version, to_version, started_at } or null, release_url, released }, read from the data folder while the daemon may be down; main window only |
+//! | relaunch_app | { version } (the ready update's, whose app file is in the data folder) | false in a dev build; else true, after starting the helper that opens the new app once the daemon answers, and Nest quits; main window only |
+//! | uninstall_nest | { delete_data } | null: starts the released install's `nest uninstall` in a session of its own and quits; main window only |
+//! | notification_server | none | the desktop's notification service by name, or null when none answers; main window only |
 //! | browser_back, browser_forward, browser_reload | { label } (a browser window's) | null; main window only |
 //! | local_servers | none | [{ port, process }] of this user's localhost listeners, by port; main window only |
 //! | open_external | { url } (http, https or mailto) | null; main window only |
-//! | open_path | { path, reveal? } (in the home folder; a folder unless reveal) | null; main window only |
+//! | open_path | { path, reveal?, create? } (in the home folder; a folder unless reveal; create makes a missing folder first) | null; main window only |
 //! | open_text_file | { path, root } (path untrusted: a regular file inside root, itself in the home folder) | null, in the default text editor, or shown in its folder without one; main window only |
 //! | save_file | { suggested_name, data_base64 or text } | the saved path, or null when cancelled; main window only |
 //! | stage_artifact | { html } | the address to give the artifact's frame as its src |
@@ -57,6 +64,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -69,7 +77,7 @@ use crate::artifact::Artifacts;
 use crate::pty::Ptys;
 use crate::settings::{self, Settings};
 use crate::window::{self, MAIN, PILL};
-use crate::{daemon, env, external, notification};
+use crate::{after_update, app_swap, daemon, env, external, install, notification};
 
 pub struct AppState {
     pub settings_path: PathBuf,
@@ -80,6 +88,10 @@ pub struct AppState {
     /// Whether GTK's scale follows the display's while Nest runs: Nest chose XWayland and
     /// the user set no scale of their own (window::follow_display_scale).
     pub follow_display: bool,
+    /// The variables Nest set for itself, which a new app must work out again.
+    pub own_vars: Vec<String>,
+    /// Whether this launch already tried to swap to a new app.
+    pub swap_tried: AtomicBool,
 }
 
 #[derive(Serialize)]
@@ -181,6 +193,99 @@ pub async fn start_service() -> Result<String, String> {
         .map(str::to_owned)
 }
 
+/// Why the daemon does not start, when its log says so; it is down, so nothing else can.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn daemon_problem() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| daemon::problem(&env::process))
+        .await
+        .map_err(message)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn app_version(app: AppHandle) -> Result<String, String> {
+    Ok(app.package_info().version.to_string())
+}
+
+/// Swaps this app for the release's file and restarts from it, once a launch, so an app that
+/// cannot swap does not try on every reload. A dev build has nothing to swap.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn swap_app(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    if state.swap_tried.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    let exe = std::env::current_exe().map_err(message)?;
+    let Some(install) = app_swap::locate(&env::process, &exe) else {
+        return Ok(());
+    };
+    let file = app_swap::app_file(&path, &daemon::data_dir(&env::process)?)?;
+    let own_vars = state.own_vars.clone();
+    tauri::async_runtime::spawn_blocking(move || app_swap::swap(&file, &install, &own_vars))
+        .await
+        .map_err(message)??;
+    app.exit(0);
+    Ok(())
+}
+
+/// An update under way, the install's address and whether it is a release, from the data
+/// folder: the daemon is down while it updates, so it cannot say.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn install_state() -> Result<install::InstallState, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        daemon::data_dir(&env::process).map(|data| install::state(&env::process, &data))
+    })
+    .await
+    .map_err(message)?
+}
+
+/// Relaunch to update with a new app: after the daemon was asked to relaunch, a helper
+/// waits for it and opens the new app once, or the old one if the update went back, and
+/// this app quits. A dev build has nothing to swap: false, and it stays.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn relaunch_app(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    version: String,
+) -> Result<bool, String> {
+    let exe = std::env::current_exe().map_err(message)?;
+    let Some(install) = app_swap::locate(&env::process, &exe) else {
+        return Ok(false);
+    };
+    let data = daemon::data_dir(&env::process)?;
+    let file = data.join("daemon").join(&version).join("app-file");
+    app_swap::app_file(&file.to_string_lossy(), &data)?;
+    // The helper swaps; this launch does not try as well.
+    state.swap_tried.store(true, Ordering::SeqCst);
+    after_update::start(&install, &version, &state.own_vars)?;
+    app.exit(0);
+    Ok(true)
+}
+
+/// Starts `nest uninstall`, with `--delete-data` when asked, so it outlives the app and the
+/// service, then quits.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn uninstall_nest(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    delete_data: bool,
+) -> Result<(), String> {
+    let data = daemon::data_dir(&env::process)?;
+    install::uninstall(&data, delete_data, &state.own_vars)?;
+    app.exit(0);
+    Ok(())
+}
+
+/// What answers Nest's notifications on this desktop, for the bug report's answer.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn notification_server() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(crate::platform::notification_server)
+        .await
+        .map_err(message)
+}
+
 /// This user's servers on localhost, for the browser's Local servers menu; never the
 /// daemon's own port.
 #[tauri::command(rename_all = "snake_case")]
@@ -230,10 +335,19 @@ pub async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 /// A folder in the file manager, or with `reveal` any item shown in its folder; only in
-/// the user's home folder.
+/// the user's home folder. With `create`, a folder not there yet is made first.
 #[tauri::command(rename_all = "snake_case")]
-pub async fn open_path(app: AppHandle, path: String, reveal: Option<bool>) -> Result<(), String> {
-    let path = external::path_in_home(&path, &env::home(&env::process)?)?;
+pub async fn open_path(
+    app: AppHandle,
+    path: String,
+    reveal: Option<bool>,
+    create: Option<bool>,
+) -> Result<(), String> {
+    let home = env::home(&env::process)?;
+    if create.unwrap_or(false) {
+        external::make_folder_in_home(&path, &home)?;
+    }
+    let path = external::path_in_home(&path, &home)?;
     if reveal.unwrap_or(false) {
         return app.opener().reveal_item_in_dir(&path).map_err(message);
     }
