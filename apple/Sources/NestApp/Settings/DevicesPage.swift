@@ -6,6 +6,8 @@ import SwiftUI
 struct DevicesPage: View {
     @Environment(Shell.self) private var shell
     @State private var revoking: Device?
+    /// Pair a device is asking whether Nest is shared on the tailnet yet.
+    @State private var askingTailscale = false
 
     var body: some View {
         let devices = shell.model.devices
@@ -32,15 +34,18 @@ struct DevicesPage: View {
                     .softFill(radius: 8)
                     .padding(.top, 12)
             } else {
-                Button {
-                    shell.settingsChange("Could not create a pairing code") {
-                        try await devices.createPairingCode()
+                HStack(spacing: 8) {
+                    Button {
+                        pair()
+                    } label: {
+                        Label("Pair a device", systemImage: Icon.plus)
                     }
-                } label: {
-                    Label("Pair a device", systemImage: Icon.plus)
+                    .buttonStyle(.nest(.primary))
+                    .disabled(askingTailscale || devices.isCreatingCode)
+                    if askingTailscale {
+                        Fireflies()
+                    }
                 }
-                .buttonStyle(.nest(.primary))
-                .disabled(devices.isCreatingCode)
                 .padding(.top, 12)
             }
         }
@@ -57,6 +62,23 @@ struct DevicesPage: View {
             Button("Cancel", role: .cancel) { revoking = nil }
         } message: {
             Text("It stops working at once and has to be paired again.")
+        }
+    }
+
+    /// A code is no use before the phone can reach Nest: until Nest is shared on Tailscale,
+    /// the guide's Tailscale step opens instead (B130).
+    private func pair() {
+        let devices = shell.model.devices
+        let setup = shell.model.setup
+        askingTailscale = true
+        shell.settingsChange("Could not create a pairing code") {
+            let needsSharing = await setup.pairingNeedsSharing()
+            askingTailscale = false
+            if needsSharing {
+                shell.openGuide(at: .tailscale)
+            } else {
+                try await devices.createPairingCode()
+            }
         }
     }
 

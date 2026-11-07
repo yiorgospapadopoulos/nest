@@ -20,9 +20,11 @@ struct GeneralPage: View {
             RestartRow()
             UpdateRow()
             UndoUpdateRow()
-            SetupRows()
-            UninstallRow()
         }
+        // Each in a section of its own, so it is clear what is what (B130).
+        SetupSection()
+        HelpSection()
+        UninstallSection()
     }
 
     /// The bundle's version, or a build run from the checkout.
@@ -280,44 +282,55 @@ private struct RestartRow: View {
     }
 }
 
-/// The setup guide again, every check, and a bug report to read first (B130).
-private struct SetupRows: View {
+/// Every check, what is done and what is missing; the guide itself shows only at first start.
+private struct SetupSection: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        SettingsSection(title: "Setup") {
+            SettingsRow(label: "Set up Nest") {
+                Button("Open") { shell.setupSheet = .checks }.buttonStyle(.nest(.soft))
+            }
+        }
+    }
+}
+
+/// A bug report, read in full before anything else.
+private struct HelpSection: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let store = shell.model.setup
-        SettingsRow(label: "Set up Nest") {
-            Button("Open") { shell.openGuide() }.buttonStyle(.nest(.soft))
-        }
-        SettingsRow(label: "Check Nest") {
-            Button("Check") { shell.setupSheet = .checks }.buttonStyle(.nest(.soft))
-        }
-        SettingsRow(label: "Make a bug report") {
-            if store.reporting {
-                Fireflies()
-            }
-            Button("Make") {
-                shell.settingsChange("Could not make the report") {
-                    shell.setupSheet = .report(try await shell.makeReport())
+        SettingsSection(title: "Help") {
+            SettingsRow(label: "Report a bug") {
+                if store.reporting {
+                    Fireflies()
                 }
+                Button("Report") {
+                    shell.settingsChange("Could not make the report") {
+                        shell.setupSheet = .report(try await shell.makeReport())
+                    }
+                }
+                .buttonStyle(.nest(.soft))
+                .disabled(store.reporting)
             }
-            .buttonStyle(.nest(.soft))
-            .disabled(store.reporting)
         }
     }
 }
 
 /// Uninstall Nest, on a released install of This Mac only (B130); the confirmation is a
 /// sheet over Settings.
-private struct UninstallRow: View {
+private struct UninstallSection: View {
     @Environment(AppController.self) private var controller
     @Environment(Shell.self) private var shell
 
     var body: some View {
         if AppBuild.checkout == nil, !shell.isRemote, controller.install.nestCommand != nil {
-            SettingsRow(label: "Uninstall Nest") {
-                Button("Uninstall") { shell.setupSheet = .uninstall }
-                    .buttonStyle(.nest(.soft))
+            SettingsSection(title: "Uninstall") {
+                SettingsRow(label: "Uninstall Nest") {
+                    Button("Uninstall") { shell.setupSheet = .uninstall }
+                        .buttonStyle(.nest(.destructive))
+                }
             }
         }
     }

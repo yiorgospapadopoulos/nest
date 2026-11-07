@@ -146,7 +146,9 @@ final class Shell {
     var settingsQuery = ""
     /// The setup guide over the whole window, while it is open (B130).
     private(set) var guide: SetupFlow?
-    /// Settings > General's Check Nest or bug report sheet.
+    /// The Settings page the guide was opened from, opened again when it is left.
+    @ObservationIgnored private var guideReturn: SettingsPage?
+    /// Settings > General's Set up Nest, bug report or Uninstall sheet.
     var setupSheet: SetupSheet?
     /// The system's answers the guide and Check Nest show.
     let permissions = SystemPermissions()
@@ -1873,16 +1875,22 @@ final class Shell {
         }
     }
 
-    /// Settings > General's Set up Nest.
-    func openGuide() {
+    /// A page's way to one of the guide's steps, such as Pair a device to Tailscale's. The
+    /// guide covers Settings, so leaving it opens Settings again where it was.
+    func openGuide(at step: SetupStep) {
+        guideReturn = settingsOpen ? settingsPage : nil
         setupSheet = nil
         closeSettings()
         close()
-        guide = SetupFlow(firstRun: false)
+        guide = SetupFlow(firstRun: false, start: step)
     }
 
     func closeGuide() {
         guide = nil
+        if let page = guideReturn {
+            guideReturn = nil
+            openSettings(page)
+        }
     }
 
     /// Finish, or a last step's way out. `then` runs behind the guide, before it closes: as
@@ -1891,6 +1899,7 @@ final class Shell {
         let local = model.local
         settingsChange("Could not finish") {
             try await local.finishSetup()
+            self.guideReturn = nil
             then()
             self.closeGuide()
         }
@@ -1915,6 +1924,12 @@ final class Shell {
     /// The daemon's checks with this Mac's answers in place.
     var setupChecks: [SetupCheck]? {
         model.setup.checks.map { permissions.answers(accessibility: island()).filling($0) }
+    }
+
+    /// The guide's engine step is done, from the check or an engine under More engines.
+    var setupEngineReady: Bool {
+        SetupFlow.engineReady(
+            setupChecks?.first { $0.id == SetupStep.engine.id }, providers: providers.providers)
     }
 
     /// The bug report, with this Mac's own answers for the checks only it can make.

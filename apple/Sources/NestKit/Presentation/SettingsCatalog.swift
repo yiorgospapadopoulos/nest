@@ -51,7 +51,10 @@ public enum SettingsPage: Sendable, Hashable {
     public var labels: [String] {
         switch self {
         case .general:
-            ["Sidebar", "Show automated chats", "Nest", "Version", "Restart Nest"]
+            [
+                "Sidebar", "Show automated chats", "Nest", "Version", "Restart Nest", "Setup",
+                "Set up Nest", "Help", "Report a bug", "Uninstall", "Uninstall Nest",
+            ]
         case .storage:
             [
                 "Space used", "Used by Nest", "Attachments", "Artifacts",
