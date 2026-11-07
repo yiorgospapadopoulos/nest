@@ -115,6 +115,18 @@ describe("engine updates", () => {
     });
   });
 
+  it("offers the phone no app update, alone or beside the engines", async () => {
+    const app = { version: "0.2.0", notes: "Better." };
+    const { push, user } = await renderApp();
+    push(changed(engineUpdates({ state: "ready", app })));
+    expect(strip()).not.toBeInTheDocument();
+
+    push(changed({ ...READY, app }));
+    await user.click(screen.getByRole("button", { name: "What's updating" }));
+    expect(screen.getByText("Claude Code 2.1.317 → 2.1.318")).toBeInTheDocument();
+    expect(screen.queryByText(/Nest 0\.2\.0/)).not.toBeInTheDocument();
+  });
+
   it("keeps a notice showing after the strip was hidden", async () => {
     const { push, user } = await renderApp();
     push(changed(READY));

@@ -14,7 +14,7 @@ import { Confirm } from "./pixies/Confirm.tsx";
 /** Just above the tab bar, over the tab's content: an update ready, or a notice. */
 export function UpdateStrip() {
   const { state } = useStore();
-  const strip = updateStrip(state.updates);
+  const strip = updateStrip(state.updates, "phone");
   if (strip === null) return null;
   return strip.kind === "notice" ? <Notice text={strip.text} /> : <Ready strip={strip} />;
 }
