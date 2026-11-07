@@ -15,4 +15,13 @@ ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable \
       --component clippy,rustfmt --no-modify-path
 
+# Tauri fetches this plugin only when it is missing. An AppImage's magic bytes stop it running
+# under emulation (amd64 on Apple silicon), and with no FUSE here each one unpacks itself.
+ENV APPIMAGE_EXTRACT_AND_RUN=1
+RUN arch="$(uname -m)"; plugin=/root/.cache/tauri/linuxdeploy-plugin-appimage.AppImage; \
+    mkdir -p "$(dirname "$plugin")"; \
+    curl -fsSL -o "$plugin" "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${arch}.AppImage"; \
+    printf '\0\0\0' | dd of="$plugin" bs=1 seek=8 count=3 conv=notrunc; \
+    chmod +x "$plugin"
+
 WORKDIR /work/desktop
