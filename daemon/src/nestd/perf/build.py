@@ -8,6 +8,7 @@ from functools import cache
 from pathlib import Path
 
 from nestd import __version__
+from nestd.paths import is_packaged
 from nestd.perf.store import Build
 
 PROCESS_STARTED = time.monotonic()
@@ -17,7 +18,8 @@ _SOURCE = Path(__file__).resolve().parents[3]
 
 @cache
 def current_build() -> Build:
-    return Build(version=__version__, git_commit=_commit(_SOURCE))
+    # A release has no commit, and on a clean Mac `git` would open Apple's install dialog.
+    return Build(version=__version__, git_commit=None if is_packaged() else _commit(_SOURCE))
 
 
 def _commit(folder: Path) -> str | None:
