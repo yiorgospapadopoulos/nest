@@ -24,9 +24,17 @@ import {
 } from "./steps.ts";
 import { useChecks } from "./useChecks.ts";
 
-const SUBTITLES: Partial<Record<StepId, string>> = {
-  engine: "Nest needs one. You can add the others later.",
-  first_chat: "It uses the cheapest model of your engine.",
+// What each one is, in a line (the user, 2026-11-07: its name and what it is, nothing on
+// how to use it).
+const SUBTITLES: Record<StepId, string> = {
+  engine: "The coding agent: Claude Code or Codex on your own plan, or a local model.",
+  git: "Version control for your code.",
+  github: "Hosts your repositories, pull requests and code reviews.",
+  service: "Nest's own server, running on this computer.",
+  tailscale: "A private network between your own devices.",
+  notifications: "Desktop notifications from Nest.",
+  secret_service: "The Linux keyring, where Nest keeps its keys.",
+  first_chat: "One message to check it all works.",
 };
 
 /**
@@ -127,7 +135,7 @@ export function SetupGuide({ firstRun }: { firstRun: boolean }) {
       </nav>
       <main className="su-pane" aria-label={step.title}>
         <h1>{step.title}</h1>
-        {subtitle !== undefined && <p className="su-sub">{subtitle}</p>}
+        <p className="su-sub">{subtitle}</p>
         <div className="su-body" key={step.id}>
           {page()}
         </div>

@@ -211,6 +211,8 @@ export function NotificationsPage({ onSent }: { onSent: () => void }) {
     <>
       <TestNotification onSent={onSent} />
       <p className="su-line">Turn on notifications in Account &gt; Notifications on your phone.</p>
+      <h2 className="su-part">ntfy</h2>
+      <p className="su-line">Push notifications through the ntfy app.</p>
       <NtfySection />
     </>
   );

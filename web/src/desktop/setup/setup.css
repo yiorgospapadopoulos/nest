@@ -98,6 +98,11 @@
   font-size: 13px;
   color: var(--t2);
 }
+.su-part {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
 .su-body {
   flex: 1;
   min-height: 0;

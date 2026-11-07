@@ -32,11 +32,18 @@ public enum SetupStep: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// What each one is, in a line: its name and what it is, nothing on how to use it (the
+    /// user, 2026-11-07).
     public var subtitle: String? {
         switch self {
-        case .engine: "Nest needs one. You can add the others later."
-        case .firstChat: "It uses the cheapest model of your engine."
-        default: nil
+        case .engine: "The coding agent: Claude Code or Codex on your own plan, or a local model."
+        case .git: "Version control for your code."
+        case .github: "Hosts your repositories, pull requests and code reviews."
+        case .service: "Nest's own server, running on this Mac."
+        case .tailscale: "A private network between your own devices."
+        case .notifications: "macOS notifications from Nest."
+        case .dictation: "macOS speech to text."
+        case .firstChat: "One message to check it all works."
         }
     }
 

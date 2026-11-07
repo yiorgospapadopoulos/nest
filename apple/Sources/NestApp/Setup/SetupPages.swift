@@ -209,6 +209,10 @@ private struct NotificationsStepPage: View {
                 .buttonStyle(.nest(.soft))
         }
         SetupLine(text: "Turn on notifications in Account > Notifications on your phone.")
+        Text("ntfy")
+            .font(.ui(TypeSize.ui, .semibold))
+            .padding(.top, 16)
+        SetupLine(text: "Push notifications through the ntfy app.")
         NtfySection()
     }
 }
