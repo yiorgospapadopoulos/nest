@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "The main window only, on the bundled UI: what reaches outside Nest (the system browser, the file manager, saving files) and the window's own state.",
   "windows": ["main"],
-  "permissions": ["allow-open-external", "allow-open-path", "allow-open-text-file", "allow-save-file", "allow-window-state", "allow-start-service", "allow-browser-back", "allow-browser-forward", "allow-browser-reload", "allow-local-servers"]
+  "permissions": ["allow-open-external", "allow-open-path", "allow-open-text-file", "allow-save-file", "allow-window-state", "allow-start-service", "allow-daemon-problem", "allow-app-version", "allow-swap-app", "allow-browser-back", "allow-browser-forward", "allow-browser-reload", "allow-local-servers"]
 }

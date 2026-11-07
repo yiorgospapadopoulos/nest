@@ -15,6 +15,10 @@
  *   browser_back / browser_forward / browser_reload { label }  on that browser window
  *   local_servers                               -> [{ port, process }] listening on localhost
  *   start_service                               -> "started" or "not_installed" (no user unit)
+ *   daemon_problem                              -> what the daemon's log says stops it, or null
+ *   app_version                                 -> this app's version
+ *   swap_app { path }                           swaps to the app file at path and restarts;
+ *                                                  nothing in a dev build, once per launch
  *   pick_folder                                 -> the chosen folder's path, or null
  *   open_external { url }                       http, https or mailto, in the system's app
  *   open_path { path, reveal? }                 in the home folder: a folder, or reveal an item
@@ -84,6 +88,12 @@ export interface Bridge {
   daemon(): Promise<DaemonConnection>;
   // Starts or restarts the daemon's user service; "not_installed" without its unit.
   startService(): Promise<"started" | "not_installed">;
+  // What stops the daemon from starting, in words for the user, when the app can tell.
+  daemonProblem(): Promise<string | null>;
+  // This app's own version; null where there is no app to update.
+  appVersion(): Promise<string | null>;
+  // Swaps this app for the file at `path` and restarts it; returns only when it stays.
+  swapApp(path: string): Promise<void>;
   // The browser window's label, for back, forward and reload on it. With `label`, that
   // window shows the page and comes forward while it is still open.
   openBrowserWindow(url: string, title?: string, label?: string): Promise<string | null>;
@@ -248,6 +258,15 @@ export function tauriBridge(tauri: TauriGlobal): Bridge {
     },
     async startService() {
       return (await invoke("start_service")) === "not_installed" ? "not_installed" : "started";
+    },
+    async daemonProblem() {
+      return (await invoke("daemon_problem")) as string | null;
+    },
+    async appVersion() {
+      return (await invoke("app_version")) as string;
+    },
+    async swapApp(path) {
+      await invoke("swap_app", { path });
     },
     async openBrowserWindow(url, title, label) {
       return (await invoke("open_browser_window", {
@@ -467,6 +486,9 @@ export function browserBridge(
     native: false,
     daemon: () => connection,
     startService: () => Promise.reject(new Error("Start the daemon with nestd serve")),
+    daemonProblem: () => Promise.resolve(null),
+    appVersion: () => Promise.resolve(null),
+    swapApp: nothing,
     openBrowserWindow: (url) => {
       open(url);
       return Promise.resolve(null);

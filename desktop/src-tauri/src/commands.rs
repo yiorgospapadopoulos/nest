@@ -13,6 +13,9 @@
 //! | open_browser_window | { url, title?, label? } (label: the pane's open window, which then shows url) | the window's label |
 //! | pick_folder | none | the chosen folder's path, or null when cancelled |
 //! | start_service | none | "started", or "not_installed" without a nest.service unit; main window only |
+//! | daemon_problem | none | what the daemon's log says stops it, in words for the user, or null; main window only |
+//! | app_version | none | this app's version; main window only |
+//! | swap_app | { path } (untrusted: a release's app file in the data folder) | null, with nothing done in a dev build or after the first call of a launch; else Nest restarts from it; main window only |
 //! | browser_back, browser_forward, browser_reload | { label } (a browser window's) | null; main window only |
 //! | local_servers | none | [{ port, process }] of this user's localhost listeners, by port; main window only |
 //! | open_external | { url } (http, https or mailto) | null; main window only |
@@ -57,6 +60,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -69,7 +73,7 @@ use crate::artifact::Artifacts;
 use crate::pty::Ptys;
 use crate::settings::{self, Settings};
 use crate::window::{self, MAIN, PILL};
-use crate::{daemon, env, external, notification};
+use crate::{app_swap, daemon, env, external, notification};
 
 pub struct AppState {
     pub settings_path: PathBuf,
@@ -80,6 +84,10 @@ pub struct AppState {
     /// Whether GTK's scale follows the display's while Nest runs: Nest chose XWayland and
     /// the user set no scale of their own (window::follow_display_scale).
     pub follow_display: bool,
+    /// The variables Nest set for itself, which a new app must work out again.
+    pub own_vars: Vec<String>,
+    /// Whether this launch already tried to swap to a new app.
+    pub swap_tried: AtomicBool,
 }
 
 #[derive(Serialize)]
@@ -179,6 +187,43 @@ pub async fn start_service() -> Result<String, String> {
         .await
         .map_err(message)?
         .map(str::to_owned)
+}
+
+/// Why the daemon does not start, when its log says so; it is down, so nothing else can.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn daemon_problem() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| daemon::problem(&env::process))
+        .await
+        .map_err(message)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn app_version(app: AppHandle) -> Result<String, String> {
+    Ok(app.package_info().version.to_string())
+}
+
+/// Swaps this app for the release's file and restarts from it, once a launch, so an app that
+/// cannot swap does not try on every reload. A dev build has nothing to swap.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn swap_app(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    if state.swap_tried.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    let exe = std::env::current_exe().map_err(message)?;
+    let Some(install) = app_swap::locate(&env::process, &exe) else {
+        return Ok(());
+    };
+    let file = app_swap::app_file(&path, &daemon::data_dir(&env::process)?)?;
+    let own_vars = state.own_vars.clone();
+    tauri::async_runtime::spawn_blocking(move || app_swap::swap(&file, &install, &own_vars))
+        .await
+        .map_err(message)??;
+    app.exit(0);
+    Ok(())
 }
 
 /// This user's servers on localhost, for the browser's Local servers menu; never the

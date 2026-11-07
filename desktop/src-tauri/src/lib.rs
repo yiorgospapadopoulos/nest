@@ -1,3 +1,4 @@
+mod app_swap;
 mod artifact;
 mod commands;
 mod daemon;
@@ -15,6 +16,7 @@ mod window;
 mod window_state;
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use tauri::{Emitter, Manager, WindowEvent};
@@ -100,6 +102,8 @@ pub fn run(prepared: Prepared) {
         pill_size: Mutex::new(window::PILL_SIZE),
         maximized: Mutex::default(),
         follow_display: prepared.follow_display,
+        own_vars: prepared.set_vars.clone(),
+        swap_tried: AtomicBool::new(false),
     };
 
     tauri::Builder::default()
@@ -201,6 +205,9 @@ pub fn run(prepared: Prepared) {
             commands::open_browser_window,
             commands::pick_folder,
             commands::start_service,
+            commands::daemon_problem,
+            commands::app_version,
+            commands::swap_app,
             commands::browser_back,
             commands::browser_forward,
             commands::browser_reload,
