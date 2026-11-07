@@ -244,11 +244,11 @@ block = "B20"
 id = "auto-archive"
 group = "chats"
 name = "Tidies itself"
-text = "Chats left idle for a day or more, up to 90, are archived for you, even ones started outside Nest."
+text = "Chats left idle for a day or more, up to 90, are archived for you, even ones started outside Nest. Write to an archived chat and it comes back."
 where = "Settings > Storage"
 added = 2026-10-17
 block = "B81"
-changed = 2026-10-27
+changed = 2026-11-07
 
 # Worktrees and git
 
