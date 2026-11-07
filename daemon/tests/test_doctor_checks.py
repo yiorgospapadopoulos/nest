@@ -129,22 +129,15 @@ def test_apples_git_stub_is_never_run(tmp_path: Path) -> None:
     assert not [line for line in commands.ran if line.startswith("git")]
 
 
-@pytest.mark.parametrize(
-    ("programs", "line"),
-    [(["brew"], "brew install gh"), ([], "Homebrew/install/HEAD/install.sh")],
-)
-def test_a_mac_gets_homebrews_line_for_gh(tmp_path: Path, programs: list[str], line: str) -> None:
-    class OnlyThese(Machine):
-        """Sees only the stand-ins, never this computer's own brew or gh."""
-
+def test_a_mac_gets_githubs_own_download_page_for_gh(tmp_path: Path) -> None:
+    class NoGh(Machine):
         def which(self, program: str) -> str | None:
-            return f"/opt/homebrew/bin/{program}" if program in programs else None
+            return None
 
-    check = check_github(OnlyThese(**vars(_machine(tmp_path, Commands()))))
+    check = check_github(NoGh(**vars(_machine(tmp_path, Commands()))))
 
     assert check.fix is not None
-    assert check.fix.kind == "command"
-    assert line in check.fix.value
+    assert (check.fix.kind, check.fix.value) == ("link", "https://cli.github.com")
 
 
 def test_a_real_git_answers_with_its_version(tmp_path: Path) -> None:

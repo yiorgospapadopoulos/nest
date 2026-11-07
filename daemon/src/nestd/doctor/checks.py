@@ -23,7 +23,7 @@ _LINUX_PACKAGE_LINES = (
     ("zypper", "sudo zypper install {}"),
 )
 _THE_APP_ANSWERS = "Checked in the app."
-_HOMEBREW_INSTALL = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+_GH_DOWNLOAD = "https://cli.github.com"
 _GH_LINUX = "https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
 
 
@@ -96,13 +96,11 @@ def check_github(machine: Machine) -> Check:
     title = "GitHub"
     program = machine.which("gh")
     if program is None:
-        no_homebrew = _is_mac(machine) and machine.which("brew") is None
-        then = " Install Homebrew with this line, then run brew install gh." if no_homebrew else ""
         return Check(
             id="github",
             title=title,
             state="missing",
-            message=f"Pull requests need GitHub's gh command.{then}",
+            message="Pull requests need GitHub's gh command.",
             fix=_gh_install(machine),
         )
     if machine.command(program, "auth", "status").returncode == 0:
@@ -117,11 +115,10 @@ def check_github(machine: Machine) -> Check:
 
 
 def _gh_install(machine: Machine) -> Fix:
-    """Homebrew's line on a Mac, which the user found the simplest (2026-11-07), or Homebrew's
-    own install first where it is missing. On Linux, the distribution's own package."""
+    """GitHub's own download page on a Mac, as the user chose (2026-11-07: "just show the
+    download button"). On Linux, the distribution's own package."""
     if _is_mac(machine):
-        line = "brew install gh" if machine.which("brew") else _HOMEBREW_INSTALL
-        return Fix(kind="command", value=line)
+        return Fix(kind="link", value=_GH_DOWNLOAD)
     if any(machine.which(manager) for manager, _ in _LINUX_PACKAGE_LINES):
         return Fix(kind="command", value=_package_line(machine, "gh"))
     return Fix(kind="link", value=_GH_LINUX)
