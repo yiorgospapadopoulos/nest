@@ -2270,6 +2270,15 @@ div.pxr:active {
   min-width: 3ch;
   color: var(--t3);
 }
+.s-eng {
+  --c: var(--lane-pink);
+}
+.s-bak {
+  --c: var(--lane-teal);
+}
+.s-log {
+  --c: var(--lane-violet);
+}
 .s-oth {
   --c: var(--fill2);
 }

@@ -7,16 +7,24 @@ public struct StorageUsage: Codable, Sendable, Hashable {
     public var chatsBytes: Int
     public var attachmentsBytes: Int
     public var artifactsBytes: Int
+    /// The engine environments the daemon runs in and the extra engines it installed (B134).
+    public var enginesBytes: Int
+    /// Copies of the database and of changed config files.
+    public var backupsBytes: Int
+    public var logsBytes: Int
     public var otherBytes: Int
 
     public init(
         totalBytes: Int, chatsBytes: Int, attachmentsBytes: Int, artifactsBytes: Int,
-        otherBytes: Int
+        enginesBytes: Int = 0, backupsBytes: Int = 0, logsBytes: Int = 0, otherBytes: Int
     ) {
         self.totalBytes = totalBytes
         self.chatsBytes = chatsBytes
         self.attachmentsBytes = attachmentsBytes
         self.artifactsBytes = artifactsBytes
+        self.enginesBytes = enginesBytes
+        self.backupsBytes = backupsBytes
+        self.logsBytes = logsBytes
         self.otherBytes = otherBytes
     }
 
@@ -25,6 +33,9 @@ public struct StorageUsage: Codable, Sendable, Hashable {
         case chatsBytes = "chats_bytes"
         case attachmentsBytes = "attachments_bytes"
         case artifactsBytes = "artifacts_bytes"
+        case enginesBytes = "engines_bytes"
+        case backupsBytes = "backups_bytes"
+        case logsBytes = "logs_bytes"
         case otherBytes = "other_bytes"
     }
 }

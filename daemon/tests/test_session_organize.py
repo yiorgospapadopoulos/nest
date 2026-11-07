@@ -8,7 +8,7 @@ from pydantic import JsonValue
 from nestd.approvals.models import ApprovalStatus
 from nestd.events import types
 from nestd.sessions.errors import SessionClosedError, SessionNotFoundError
-from nestd.sessions.models import SessionState, UpdateSession
+from nestd.sessions.models import Sender, SessionState, UpdateSession
 from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import ask, hang, reply
@@ -109,6 +109,21 @@ async def test_archiving_an_idle_session_closes_its_run_but_keeps_its_state(env:
     assert archived.state is SessionState.IDLE
     assert env.provider.runs[0].closed is True
     assert env.provider.runs[1].spec.resume_id == "sdk-1"
+    # Writing to an archived chat brings it back to the active list.
+    assert resumed.archived_at is None
+    assert [s.id for s in await env.manager.list_sessions()] == [created.id]
+
+
+async def test_a_pixie_message_leaves_an_archived_chat_archived(env: Env) -> None:
+    env.provider.script(reply("ok"), reply("again"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    await env.manager.update(created.id, update(archived=True))
+    await env.manager.send(created.id, "a report", [], sender=Sender(from_pixie="p1"))
+    await until(lambda: len(env.provider.runs) == 2 and bool(env.provider.runs[1].inputs))
+    resumed = await env.reach(created.id, SessionState.IDLE)
+
     assert resumed.archived_at is not None
 
 

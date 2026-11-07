@@ -775,6 +775,9 @@ export function storageUsage(overrides: Partial<StorageUsage> = {}): StorageUsag
     chats_bytes: 820_000_000,
     attachments_bytes: 540_000_000,
     artifacts_bytes: 40_000_000,
+    engines_bytes: 0,
+    backups_bytes: 0,
+    logs_bytes: 0,
     other_bytes: 0,
     ...overrides,
   };

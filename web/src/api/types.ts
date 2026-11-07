@@ -1222,6 +1222,9 @@ export interface StorageUsage {
   chats_bytes: number;
   attachments_bytes: number;
   artifacts_bytes: number;
+  engines_bytes: number;
+  backups_bytes: number;
+  logs_bytes: number;
   other_bytes: number;
 }
 

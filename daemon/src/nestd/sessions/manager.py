@@ -734,6 +734,9 @@ class SessionManager:
         await self._require_not_open_elsewhere(session)
         attachments = await self._attachments.for_session(attachment_ids, session_id)
         await require_features(self._local, session.model, attachments)
+        if session.archived_at is not None and sender.from_pixie is None and sender.origin is None:
+            # The user writing to an archived chat brings it back to the active list.
+            await self._save_changes(session_id, {"archived_at": None})
         live = self._live.setdefault(session_id, LiveSession(session_id))
         await live.settled.wait()
         # Read again: the session may have been closed or deleted while this waited.
@@ -909,7 +912,8 @@ class SessionManager:
     async def update(self, session_id: str, request: UpdateSession) -> Session:
         """Rename, pin or archive; persist new controls and apply them to the live run.
 
-        Archiving closes the agent run but keeps the worktree; a new message resumes it.
+        Archiving closes the agent run but keeps the worktree; the user's next message
+        resumes it and unarchives it.
         """
         session = await self._store.get(session_id)
         if session.autopilot is not None and request.permission_mode not in (None, BYPASS):

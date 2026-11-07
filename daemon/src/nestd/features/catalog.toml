@@ -244,11 +244,11 @@ block = "B20"
 id = "auto-archive"
 group = "chats"
 name = "Tidies itself"
-text = "Chats left idle for a day or more, up to 90, are archived for you, even ones started outside Nest."
+text = "Chats left idle for a day or more, up to 90, are archived for you, even ones started outside Nest. Write to an archived chat and it comes back."
 where = "Settings > Storage"
 added = 2026-10-17
 block = "B81"
-changed = 2026-10-27
+changed = 2026-11-07
 
 # Worktrees and git
 
@@ -698,3 +698,12 @@ text = "Uninstall Nest removes the app and its background service and keeps your
 where = "Settings > General > Uninstall Nest"
 added = 2026-11-07
 block = "B130"
+
+[[features]]
+id = "storage-breakdown"
+group = "chats"
+name = "See what takes the space"
+text = "Storage shows how much room the engines, backups and logs take, next to chats, attachments and artifacts, so little is left under Other."
+where = "Settings > Storage"
+added = 2026-11-07
+block = "B134"

@@ -14,13 +14,16 @@ public enum StorageText {
     }
 
     public enum Part: Sendable, Hashable, CaseIterable {
-        case chats, attachments, artifacts, other
+        case chats, attachments, artifacts, engines, backups, logs, other
 
         public var name: String {
             switch self {
             case .chats: "Chats"
             case .attachments: "Attachments"
             case .artifacts: "Artifacts"
+            case .engines: "Engines"
+            case .backups: "Backups"
+            case .logs: "Logs"
             case .other: "Other"
             }
         }
@@ -41,7 +44,7 @@ public enum StorageText {
         return "\(Int((share * 100).rounded()))%"
     }
 
-    /// The ledger's lines (B86): each part with its size and share, all four even at zero.
+    /// The ledger's lines (B86): each part with its size and share, all of them even at zero.
     public static func ledger(_ usage: StorageUsage) -> [(part: Part, size: String, share: String)]
     {
         let total = Double(usage.totalBytes)
@@ -69,7 +72,8 @@ public enum StorageText {
     private static func parts(_ usage: StorageUsage) -> [(part: Part, bytes: Int)] {
         [
             (.chats, usage.chatsBytes), (.attachments, usage.attachmentsBytes),
-            (.artifacts, usage.artifactsBytes), (.other, usage.otherBytes),
+            (.artifacts, usage.artifactsBytes), (.engines, usage.enginesBytes),
+            (.backups, usage.backupsBytes), (.logs, usage.logsBytes), (.other, usage.otherBytes),
         ]
     }
 
