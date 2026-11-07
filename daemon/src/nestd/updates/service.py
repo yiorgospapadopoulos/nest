@@ -294,10 +294,13 @@ class UpdateService:
         """
         if not self._app.packaged:
             return False
-        self._phase = "preparing"
-        await self._announce()
+
+        async def preparing() -> None:
+            self._phase = "preparing"
+            await self._announce()
+
         try:
-            return await self._app.check_and_prepare()
+            return await self._app.check_and_prepare(preparing)
         except PrepareError as error:
             logger.warning("could not prepare a Nest update: %s", error)
             return False

@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { StoreContext, type StoreValue } from "../../store/context.ts";
 import { browserBridge, type Bridge } from "../bridge.ts";
 import { BridgeContext } from "../context.ts";
@@ -12,12 +12,12 @@ function store(version: string): StoreValue {
 }
 
 function rig() {
-  const swapped = vi.fn<(path: string) => void>();
+  const swapped: string[] = [];
   const bridge: Bridge = {
     ...browserBridge({ search: "" }, null),
     appVersion: () => Promise.resolve("1.0.0"),
     swapApp: (path) => {
-      swapped(path);
+      swapped.push(path);
       return Promise.resolve();
     },
   };
@@ -45,7 +45,7 @@ describe("following the daemon's version", () => {
     move("2.0.0");
 
     await waitFor(() => {
-      expect(swapped).toHaveBeenCalledWith("/data/daemon/2.0.0/app-file");
+      expect(swapped).toEqual(["/data/daemon/2.0.0/app-file"]);
     });
   });
 
@@ -54,11 +54,11 @@ describe("following the daemon's version", () => {
 
     move("2.0.0");
     await waitFor(() => {
-      expect(swapped).toHaveBeenCalledTimes(1);
+      expect(swapped).toHaveLength(1);
     });
     move("3.0.0");
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(swapped).toHaveBeenCalledTimes(1);
+    expect(swapped).toHaveLength(1);
   });
 });

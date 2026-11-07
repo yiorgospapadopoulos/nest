@@ -31,6 +31,10 @@ from nestd.updates.selfcheck_report import SelfcheckReport
 from nestd.updates.watcher import Trial, watch
 
 
+async def _nothing() -> None:
+    return None
+
+
 def _database(path: Path, version: int, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
@@ -146,7 +150,7 @@ def rig(tmp_path: Path) -> Rig:
 async def test_a_checkout_never_looks_for_updates(rig: Rig) -> None:
     updater = rig.updater(packaged=False)
 
-    assert not await updater.check_and_prepare()
+    assert not await updater.check_and_prepare(_nothing)
     assert rig.uv_calls == []
     assert updater.app_file() is None
 
@@ -154,7 +158,7 @@ async def test_a_checkout_never_looks_for_updates(rig: Rig) -> None:
 async def test_a_newer_release_is_built_beside_the_running_one(rig: Rig) -> None:
     updater = rig.updater()
 
-    assert await updater.check_and_prepare()
+    assert await updater.check_and_prepare(_nothing)
 
     assert read_state(rig.daemon).ready == AppUpdate(version="2.0.0", notes="New things")
     assert (rig.daemon / "2.0.0" / APP_FILE).read_bytes() == b"app"
@@ -165,7 +169,7 @@ async def test_a_newer_release_is_built_beside_the_running_one(rig: Rig) -> None
 async def test_only_a_newer_stable_release_is_prepared(rig: Rig, version: str) -> None:
     rig.version = version
 
-    assert not await rig.updater().check_and_prepare()
+    assert not await rig.updater().check_and_prepare(_nothing)
     assert rig.uv_calls == []
 
 
@@ -173,7 +177,7 @@ async def test_a_bad_sha256_leaves_nothing_behind(rig: Rig) -> None:
     rig.bad = "Nest.zip"
 
     with pytest.raises(PrepareError, match="sha256"):
-        await rig.updater().check_and_prepare()
+        await rig.updater().check_and_prepare(_nothing)
 
     assert sorted(entry.name for entry in rig.daemon.iterdir()) == ["1.0.0", CURRENT]
     assert read_state(rig.daemon).ready is None
@@ -183,7 +187,7 @@ async def test_a_build_that_fails_its_check_is_never_offered(rig: Rig) -> None:
     rig.report_ok = False
 
     with pytest.raises(PrepareError):
-        await rig.updater().check_and_prepare()
+        await rig.updater().check_and_prepare(_nothing)
 
     assert not (rig.daemon / "2.0.0").exists()
     assert read_state(rig.daemon).ready is None
@@ -191,7 +195,7 @@ async def test_a_build_that_fails_its_check_is_never_offered(rig: Rig) -> None:
 
 async def test_relaunch_backs_up_starts_the_watcher_then_moves_current(rig: Rig) -> None:
     updater = rig.updater()
-    await updater.check_and_prepare()
+    await updater.check_and_prepare(_nothing)
 
     await updater.relaunch(8765)
 
@@ -229,7 +233,7 @@ def _trial(rig: Rig, service: Service, answers: list[str | None]) -> Trial:
 
 async def test_a_new_version_that_answers_is_left_alone(rig: Rig) -> None:
     updater = rig.updater()
-    await updater.check_and_prepare()
+    await updater.check_and_prepare(_nothing)
     await updater.relaunch(8765)
     service = Service()
 
@@ -241,7 +245,7 @@ async def test_a_new_version_that_answers_is_left_alone(rig: Rig) -> None:
 
 async def test_a_new_version_that_never_answers_puts_everything_back(rig: Rig) -> None:
     updater = rig.updater()
-    await updater.check_and_prepare()
+    await updater.check_and_prepare(_nothing)
     await updater.relaunch(8765)
     # The failed version migrated the database and left a write-ahead log.
     _database(rig.paths.db_path, 48, "migrated")
@@ -264,12 +268,12 @@ async def test_a_new_version_that_never_answers_puts_everything_back(rig: Rig) -
 async def test_a_release_that_failed_is_not_offered_again(rig: Rig) -> None:
     save_state(rig.daemon, AppState(refused=["2.0.0"]))
 
-    assert not await rig.updater().check_and_prepare()
+    assert not await rig.updater().check_and_prepare(_nothing)
 
 
 async def test_undo_needs_the_database_to_be_as_it_was(rig: Rig) -> None:
     updater = rig.updater()
-    await updater.check_and_prepare()
+    await updater.check_and_prepare(_nothing)
     await updater.relaunch(8765)
 
     assert updater.can_undo()
@@ -284,7 +288,7 @@ async def test_undo_needs_the_database_to_be_as_it_was(rig: Rig) -> None:
 
 async def test_undo_moves_current_back(rig: Rig) -> None:
     updater = rig.updater()
-    await updater.check_and_prepare()
+    await updater.check_and_prepare(_nothing)
     await updater.relaunch(8765)
 
     await updater.undo()

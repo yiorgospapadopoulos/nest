@@ -221,9 +221,10 @@ class AppUpdater:
         if state.notice is not None:
             save_state(self._daemon_dir, state.model_copy(update={"notice": None}))
 
-    async def check_and_prepare(self) -> bool:
+    async def check_and_prepare(self, preparing: Callable[[], Awaitable[None]]) -> bool:
         """Prepare a newer release if there is one; whether one is ready. Nothing changes
-        unless the whole of it downloads, installs and passes its check.
+        unless the whole of it downloads, installs and passes its check. `preparing` is
+        called once there is one to prepare.
         """
         if not self._packaged:
             return False
@@ -234,6 +235,7 @@ class AppUpdater:
             return False
         if state.ready is not None and state.ready.version == new:
             return True
+        await preparing()
         await self._prepare(release)
         state = await asyncio.to_thread(self.state)
         update = AppUpdate(version=new, notes=release.notes)
