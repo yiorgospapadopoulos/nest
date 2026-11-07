@@ -210,6 +210,27 @@ _SERVE_LIMIT = 20.0
 _TAILSCALE_LINK = re.compile(r"https://login\.tailscale\.com/\S+")
 
 
+_LOCAL_PROXY = re.compile(r"https?://(?:127\.0\.0\.1|localhost):(\d+)")
+
+
+def _root_port(serve_status: str) -> int | None:
+    """The local port the address's root (port 443, path /) is shared from, if any."""
+    status = json_object(serve_status)
+    web = status.get("Web") if status is not None else None
+    if not isinstance(web, dict):
+        return None
+    for address, site in web.items():
+        if not address.endswith(":443") or not isinstance(site, dict):
+            continue
+        handlers = site.get("Handlers")
+        root = handlers.get("/") if isinstance(handlers, dict) else None
+        proxy = root.get("Proxy") if isinstance(root, dict) else None
+        found = _LOCAL_PROXY.match(proxy) if isinstance(proxy, str) else None
+        if found is not None:
+            return int(found.group(1))
+    return None
+
+
 def share_on_tailnet(machine: Machine) -> Check:
     """`tailscale serve` for the user, so the guide needs no Terminal. The first time on a
     tailnet Tailscale asks to turn HTTPS on: its link comes back to open.
@@ -217,6 +238,17 @@ def share_on_tailnet(machine: Machine) -> Check:
     program = _tailscale_program(machine)
     if program is None:
         return check_tailscale(machine)
+    # `tailscale serve --bg` takes the address's root over from whatever it shares now,
+    # which may be another app, or the user's own Nest when this is a test copy.
+    taken = _root_port(machine.command(program, "serve", "status", "--json").stdout)
+    if taken is not None and taken != machine.port:
+        return check_tailscale(machine).model_copy(
+            update={
+                "message": f"Tailscale already shares another app at this address (port {taken}), "
+                "so Nest leaves it as it is.",
+                "fix": None,
+            }
+        )
     done = machine.command(program, "serve", "--bg", str(machine.port), limit=_SERVE_LIMIT)
     link = _TAILSCALE_LINK.search(done.stdout + done.stderr)
     check = check_tailscale(machine)

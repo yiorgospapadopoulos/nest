@@ -231,6 +231,24 @@ def test_sharing_brings_back_tailscales_link_to_turn_https_on(tmp_path: Path) ->
     assert check.fix.value == "https://login.tailscale.com/f/serve?node=n1"
 
 
+def test_sharing_never_takes_the_address_from_another_app(tmp_path: Path) -> None:
+    """Regression: a test copy's Share took the tailnet address from the user's own Nest."""
+    running = '{"BackendState": "Running", "Self": {"DNSName": "air.tail3f.ts.net."}}'
+    shared = '{"Web": {"air.tail3f.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:8765"}}}}}'
+    commands = Commands(
+        {
+            "tailscale status": CommandResult(0, running, ""),
+            "tailscale serve status": CommandResult(0, shared, ""),
+        }
+    )
+    machine = replace(_machine(tmp_path, commands, programs=["tailscale"], mac=False), port=41053)
+
+    check = share_on_tailnet(machine)
+
+    assert not [line for line in commands.ran if line.startswith("tailscale serve --bg")]
+    assert "port 8765" in check.message
+
+
 def test_check_nest_puts_what_stops_nest_first_and_what_is_fine_last(tmp_path: Path) -> None:
     machine = replace(
         _machine(tmp_path, Commands(), mac=False),
