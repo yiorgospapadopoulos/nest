@@ -19,12 +19,19 @@ from nestd.doctor.models import Check
 
 LOG_LINES = 200
 _REMOVED = "[removed]"
+_LABEL = (
+    r"[a-z0-9_-]*(?:token|secret|password|passwd|passphrase|credential|cookie|api[_-]?key"
+    r"|auth|key)[a-z0-9_-]*"
+)
 _PATTERNS = (
-    # URL credentials, before anything else takes part of them.
-    (re.compile(r"\b([a-z][a-z0-9+.-]*://)[^\s/@]+@", re.IGNORECASE), rf"\1{_REMOVED}@"),
+    # URL credentials up to the last `@`, before anything else takes part of them.
+    (re.compile(r"\b([a-z][a-z0-9+.-]*://)\S*@", re.IGNORECASE), rf"\1{_REMOVED}@"),
     (re.compile(r"(?i)\bbearer\s+\S+"), f"Bearer {_REMOVED}"),
     # A whole header value, whatever its scheme.
-    (re.compile(r"(?i)(authorization[\"']?\s*[:=]\s*)[^\n]+"), rf"\1{_REMOVED}"),
+    (
+        re.compile(r"(?i)((?:authorization|set-cookie|cookie)[\\\"']*\s*[:=]\s*)[^\n]+"),
+        rf"\1{_REMOVED}",
+    ),
     # Known token shapes: GitHub, Anthropic and OpenAI, Slack, Google, ntfy, JWTs.
     (
         re.compile(
@@ -35,17 +42,19 @@ _PATTERNS = (
         _REMOVED,
     ),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*"), _REMOVED),
-    # Anything labelled as a secret, in logs, JSON and URLs.
+    # A command line's `--token value`.
+    (re.compile(rf"(?i)(--{_LABEL}[= ])\S+"), rf"\1{_REMOVED}"),
+    # Anything labelled as a secret, in logs, JSON (escaped too) and URLs, quoted values whole.
     (
         re.compile(
-            r"(?i)((?:[a-z0-9_-]*(?:token|secret|password|passwd|credential|cookie|api[_-]?key"
-            r"|auth|key))[\"']?\s*[:=]\s*[\"']?)[^\s\"'&,;}]+"
+            rf"(?i)({_LABEL}[\\\"']*\s*[:=]\s*)"
+            r"(?:\\?\"[^\"\n]*\"|'[^'\n]*'|[\\\"']*[^\s\"'&,;}\\]+)"
         ),
         rf"\1{_REMOVED}",
     ),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"), _REMOVED),
-    # A long unbroken run is a key or a hash until shown otherwise.
-    (re.compile(r"\b[A-Za-z0-9_-]{32,}\b"), _REMOVED),
+    # A long unbroken run is a key, a hash or base64 until shown otherwise.
+    (re.compile(r"[A-Za-z0-9+/=_-]{32,}"), _REMOVED),
     (re.compile(r"\b[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net\b"), _REMOVED),
     # Home folders of anyone, as paths also name the user.
     (re.compile(r"/(?:Users|home)/[^/\s\"':]+"), "~"),
