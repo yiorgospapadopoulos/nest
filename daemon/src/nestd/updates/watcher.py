@@ -67,6 +67,7 @@ def watch(trial: Trial) -> bool:
     """Whether the new version came up; when it did not, everything is put back."""
     deadline = trial.now() + trial.seconds
     daemon_dir = trial.paths.daemon_dir
+    crashed = False
     while trial.now() < deadline:
         if trial.version_on(trial.port) == trial.new:
             logger.info("Nest %s answered; the update is confirmed", trial.new)
@@ -74,12 +75,13 @@ def watch(trial: Trial) -> bool:
             return True
         if starts_of(daemon_dir, trial.new) >= CRASH_STARTS:
             logger.error("Nest %s started %d times without answering", trial.new, CRASH_STARTS)
+            crashed = True
             break
         trial.pause(POLL_SECONDS)
     else:
         logger.error("Nest %s did not answer in time", trial.new)
     logger.error("going back to %s", trial.old)
-    roll_back(trial)
+    roll_back(trial, crashed=crashed)
     return False
 
 
@@ -89,7 +91,7 @@ def _done(daemon_dir: Path) -> None:
         save_state(daemon_dir, state.model_copy(update={"updating": None}))
 
 
-def roll_back(trial: Trial) -> None:
+def roll_back(trial: Trial, *, crashed: bool = False) -> None:
     daemon_dir = trial.paths.daemon_dir
     database = trial.paths.db_path
     trial.service.stop()
@@ -99,7 +101,9 @@ def roll_back(trial: Trial) -> None:
     point_current(daemon_dir, trial.old)
     shutil.rmtree(daemon_dir / trial.new, ignore_errors=True)
     state = read_state(daemon_dir)
-    notice = f"Nest {trial.new} did not start, so Nest went back to {trial.old}."
+    # What happened, in the user's words (2026-11-07): a crash, or no answer at all.
+    what = "kept crashing when it started" if crashed else "didn't respond when it started"
+    notice = f"Nest {trial.new} {what}, so Nest went back to {trial.old}. Your chats are safe."
     update = {
         "previous": None,
         "previous_schema": None,

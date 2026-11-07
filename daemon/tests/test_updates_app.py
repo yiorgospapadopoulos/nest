@@ -270,7 +270,9 @@ async def test_a_new_version_that_never_answers_puts_everything_back(rig: Rig) -
     assert not (rig.daemon / "2.0.0").exists()
     assert service.calls == ["stop", "install"]
     state = read_state(rig.daemon)
-    assert state.notice == "Nest 2.0.0 did not start, so Nest went back to 1.0.0."
+    assert state.notice == (
+        "Nest 2.0.0 didn't respond when it started, so Nest went back to 1.0.0. Your chats are safe."
+    )
     assert state.refused == ["2.0.0"]
 
 
@@ -289,6 +291,9 @@ async def test_a_new_version_that_keeps_crashing_is_undone_without_waiting(rig: 
     assert service.calls == ["stop", "install"]
     assert (rig.daemon / CURRENT).resolve().name == "1.0.0"
     assert read_state(rig.daemon).updating is None
+    notice = read_state(rig.daemon).notice
+    assert notice is not None
+    assert "kept crashing when it started" in notice
 
 
 async def test_a_release_that_failed_is_not_offered_again(rig: Rig) -> None:
