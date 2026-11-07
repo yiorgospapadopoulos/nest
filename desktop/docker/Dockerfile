@@ -18,9 +18,19 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-to
 # Tauri fetches this plugin only when it is missing. An AppImage's magic bytes stop it running
 # under emulation (amd64 on Apple silicon), and with no FUSE here each one unpacks itself.
 ENV APPIMAGE_EXTRACT_AND_RUN=1
-RUN arch="$(uname -m)"; plugin=/root/.cache/tauri/linuxdeploy-plugin-appimage.AppImage; \
+# The address only has a moving tag, so each file is pinned: a new upstream build stops here
+# until its digest is checked and updated.
+ARG APPIMAGE_PLUGIN_SHA256_X86_64=49d6a17160675a6bd1781699aae6bdf7692d98552e02a3671d2183d10547842e
+ARG APPIMAGE_PLUGIN_SHA256_AARCH64=518f4b49a561c157b23fd1ba4e857b8fa2271a038ac711bdedab6f018acbe7e5
+RUN set -eu; arch="$(uname -m)"; plugin=/root/.cache/tauri/linuxdeploy-plugin-appimage.AppImage; \
+    case "$arch" in \
+      x86_64) sum="$APPIMAGE_PLUGIN_SHA256_X86_64" ;; \
+      aarch64) sum="$APPIMAGE_PLUGIN_SHA256_AARCH64" ;; \
+      *) exit 1 ;; \
+    esac; \
     mkdir -p "$(dirname "$plugin")"; \
-    curl -fsSL -o "$plugin" "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${arch}.AppImage"; \
+    curl -fsSL -o "$plugin" "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-$arch.AppImage"; \
+    echo "$sum  $plugin" | sha256sum -c -; \
     printf '\0\0\0' | dd of="$plugin" bs=1 seek=8 count=3 conv=notrunc; \
     chmod +x "$plugin"
 
