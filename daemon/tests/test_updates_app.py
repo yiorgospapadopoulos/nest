@@ -271,7 +271,8 @@ async def test_a_new_version_that_never_answers_puts_everything_back(rig: Rig) -
     assert service.calls == ["stop", "install"]
     state = read_state(rig.daemon)
     assert state.notice == (
-        "Nest 2.0.0 didn't respond when it started, so Nest went back to 1.0.0. Your chats are safe."
+        "Nest 2.0.0 didn't respond when it started, so Nest went back to 1.0.0. "
+        "Your chats are safe."
     )
     assert state.refused == ["2.0.0"]
 
