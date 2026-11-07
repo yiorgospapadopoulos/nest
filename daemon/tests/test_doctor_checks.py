@@ -119,7 +119,13 @@ def test_apples_git_stub_is_never_run(tmp_path: Path) -> None:
     [(["brew"], "brew install gh"), ([], "Homebrew/install/HEAD/install.sh")],
 )
 def test_a_mac_gets_homebrews_line_for_gh(tmp_path: Path, programs: list[str], line: str) -> None:
-    check = check_github(_machine(tmp_path, Commands(), programs=programs))
+    class OnlyThese(Machine):
+        """Sees only the stand-ins, never this computer's own brew or gh."""
+
+        def which(self, program: str) -> str | None:
+            return f"/opt/homebrew/bin/{program}" if program in programs else None
+
+    check = check_github(OnlyThese(**vars(_machine(tmp_path, Commands()))))
 
     assert check.fix is not None
     assert check.fix.kind == "command"
