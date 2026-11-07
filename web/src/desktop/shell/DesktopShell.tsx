@@ -27,6 +27,7 @@ import { ShellSheets } from "../pixies/ShellSheets.tsx";
 import { placeOf } from "../settings/catalog.ts";
 import { SettingsPanel } from "../settings/SettingsPanel.tsx";
 import { SetupGuide } from "../setup/SetupGuide.tsx";
+import type { StepId } from "../setup/steps.ts";
 import { closeTopOverlay } from "../ui/overlays.ts";
 import type { Bridge } from "../bridge.ts";
 import { Board } from "./Board.tsx";
@@ -59,6 +60,7 @@ export function DesktopShell() {
   const [saved, setDesk] = useState<Desk>(() => loadDesk(storage));
   const [settings, setSettings] = useState<Shell["settings"]>(null);
   const [guide, setGuide] = useState<Shell["guide"]>(null);
+  const [guideStep, setGuideStep] = useState<StepId>("engine");
   const [palette, setPalette] = useState(false);
   // What the palette opens with typed in its search, as for /resume with a search.
   const [paletteSearch, setPaletteSearch] = useState("");
@@ -326,9 +328,9 @@ export function DesktopShell() {
         setSettings(null);
       },
       guide,
-      openGuide: () => {
-        setSettings(null);
+      openGuide: (step) => {
         setPalette(false);
+        setGuideStep(step);
         setGuide("again");
       },
       closeGuide: () => {
@@ -383,7 +385,7 @@ export function DesktopShell() {
     return (
       <ShellContext value={shell}>
         <WindowFrame>
-          <SetupGuide firstRun={guide === "first"} />
+          <SetupGuide firstRun={guide === "first"} start={guideStep} />
         </WindowFrame>
       </ShellContext>
     );

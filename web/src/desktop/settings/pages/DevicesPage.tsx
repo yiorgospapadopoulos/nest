@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import type { ListedDevice, PairingCode } from "../../../api/types.ts";
 import { useStore } from "../../../store/context.ts";
+import { Fireflies } from "../../../ui/Fireflies.tsx";
 import { Icon } from "../../../ui/Icon.tsx";
+import { useApi } from "../../context.ts";
+import { reachable, tailscaleStage } from "../../setup/steps.ts";
+import { useShell } from "../../shell/context.ts";
 import { Button } from "../../ui/controls.tsx";
 import { Alert } from "../../sheets/Alert.tsx";
 import {
@@ -22,6 +26,8 @@ import "../parts3/parts3.css";
  */
 export function DevicesPage() {
   const { actions } = useStore();
+  const api = useApi();
+  const shell = useShell();
   const [devices, setDevices] = useState<ListedDevice[] | null>(null);
   const [asking, setAsking] = useState<ListedDevice | null>(null);
   const [revoking, setRevoking] = useState<string[]>([]);
@@ -43,6 +49,20 @@ export function DevicesPage() {
     const created = await actions.pairingCode();
     setCreating(false);
     if (created !== null) setCode(created);
+  };
+
+  // A code is no use before the phone can reach Nest: until Nest is shared on Tailscale,
+  // the guide's Tailscale step opens instead. Checks that cannot run leave pairing as it was.
+  const pair = async () => {
+    setCreating(true);
+    const checks = await api.setupChecks().catch(() => null);
+    const tailscale = checks?.checks.find((check) => check.id === "tailscale");
+    if (tailscale !== undefined && !reachable(tailscaleStage(tailscale))) {
+      setCreating(false);
+      shell.openGuide("tailscale");
+      return;
+    }
+    await createCode();
   };
 
   const revoke = async (device: ListedDevice) => {
@@ -91,10 +111,11 @@ export function DevicesPage() {
         />
       ) : (
         <div className="dks3-after wide">
-          <Button kind="primary" disabled={creating} onClick={() => void createCode()}>
+          <Button kind="primary" disabled={creating} onClick={() => void pair()}>
             <Icon name="plus" />
             Pair a device
           </Button>
+          {creating && <Fireflies />}
         </div>
       )}
       {asking !== null && (
