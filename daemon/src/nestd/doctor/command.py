@@ -15,7 +15,7 @@ from nestd.auth.secrets import KeyringSecretStore
 from nestd.config.errors import ConfigError
 from nestd.config.loader import load_settings
 from nestd.config.models import ServerSettings
-from nestd.doctor.checks import run_checks
+from nestd.doctor.checks import by_rank, run_checks
 from nestd.doctor.machine import Machine, this_machine
 from nestd.doctor.models import Check
 from nestd.doctor.report import write_report
@@ -45,7 +45,7 @@ def machine_here() -> Machine:
 def print_check(check: Check) -> None:
     detail = f"  {check.detail}" if check.detail else ""
     print(f"{_MARKS[check.state]} {check.title}{detail}")
-    if check.message and check.state in ("missing", "warning"):
+    if check.message and check.state != "ok":
         print(f"   {check.message}")
     if check.fix is not None and check.state in ("missing", "warning"):
         print(f"   {'Run' if check.fix.kind == 'command' else 'Open'}: {check.fix.value}")
@@ -56,9 +56,10 @@ def doctor(machine: Machine, *, report: bool) -> int:
         written = write_report(machine, datetime.now(UTC))
         print(written.text)
         print(f"Saved to {written.path}")
-        print("Nothing was sent. Read it first, then attach it to a GitHub issue if you want to.")
+        print("Nothing was sent. Read it first. To report it, open this and add what happened:")
+        print(written.issue_url)
         return 0
-    checks = run_checks(machine)
+    checks = by_rank(run_checks(machine))
     for check in checks:
         print_check(check)
     return 1 if any(check.state == "missing" for check in checks) else 0

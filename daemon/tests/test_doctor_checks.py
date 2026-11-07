@@ -12,12 +12,14 @@ from pathlib import Path
 import pytest
 
 from nestd.doctor.checks import (
+    by_rank,
     check_engine,
     check_git,
     check_secret_service,
     check_service,
     check_tailscale,
     run_checks,
+    share_on_tailnet,
 )
 from nestd.doctor.machine import Machine, json_object, run_limited, within_limit
 from nestd.paths import AppPaths
@@ -141,7 +143,24 @@ def test_a_packaged_install_gets_the_one_line_repair(tmp_path: Path) -> None:
 
     assert check.state == "missing"
     assert check.fix is not None
-    assert check.fix.value == "curl -fsSL http://127.0.0.1:41050/install.sh | sh"
+    # A piped script cannot tell where it came from, so the address goes with it.
+    address = "http://127.0.0.1:41050"
+    assert check.fix.value == f"curl -fsSL {address}/install.sh | NEST_RELEASE_URL={address} sh"
+
+
+def test_an_install_keeps_following_the_address_it_came_from(tmp_path: Path) -> None:
+    """Regression: the daemon-down line always named GitHub, so a test install's 404'd."""
+    machine = replace(
+        _machine(tmp_path, Commands()),
+        service=FakeService(ServiceStatus(installed=False, loaded=False, detail="")),
+    )
+    machine.paths.data_dir.mkdir(parents=True)
+    (machine.paths.data_dir / "release-url").write_text("http://10.0.0.2:41051\n")
+
+    check = check_service(machine)
+
+    assert check.fix is not None
+    assert "http://10.0.0.2:41051/install.sh" in check.fix.value
 
 
 def test_tailscale_walks_from_install_to_a_paired_phone(tmp_path: Path) -> None:
@@ -150,16 +169,53 @@ def test_tailscale_walks_from_install_to_a_paired_phone(tmp_path: Path) -> None:
     machine = _machine(tmp_path, commands, programs=["tailscale"], mac=False)
 
     check = check_tailscale(machine)
-    assert check.fix is not None
-    assert check.fix.value == "tailscale serve --bg 8765"
-    assert check.detail == "air.tail3f.ts.net"
+    # Sharing is a button now, so no command; and no pairing code before it is shared.
+    assert (check.stage, check.fix, check.detail) == ("share", None, "air.tail3f.ts.net")
 
     commands.answers = {
         "tailscale status": CommandResult(0, running, ""),
         "tailscale serve": CommandResult(0, '{"proxy": "http://127.0.0.1:8765"}', ""),
     }
     check = check_tailscale(machine)
-    assert (check.state, check.fix) == ("missing", None)
+    assert (check.state, check.stage) == ("missing", "pair")
+
+
+def test_sharing_brings_back_tailscales_link_to_turn_https_on(tmp_path: Path) -> None:
+    running = '{"BackendState": "Running", "Self": {"DNSName": "air.tail3f.ts.net."}}'
+    waiting = "Serve is not enabled on your tailnet.\nTo enable, visit:\n\n  https://login.tailscale.com/f/serve?node=n1\n"
+    commands = Commands(
+        {
+            "tailscale status": CommandResult(0, running, ""),
+            "tailscale serve --bg": CommandResult(124, waiting, "timed out"),
+        }
+    )
+
+    check = share_on_tailnet(_machine(tmp_path, commands, programs=["tailscale"], mac=False))
+
+    assert "tailscale serve --bg 8765" in commands.ran
+    assert check.fix is not None
+    assert check.fix.value == "https://login.tailscale.com/f/serve?node=n1"
+
+
+def test_check_nest_puts_what_stops_nest_first_and_what_is_fine_last(tmp_path: Path) -> None:
+    machine = replace(
+        _machine(tmp_path, Commands(), mac=False),
+        service=FakeService(ServiceStatus(installed=False, loaded=False, detail="")),
+    )
+
+    ranked = by_rank(run_checks(machine))
+
+    ranks = [check.rank for check in ranked]
+    assert ranks == sorted(ranks)
+    assert ranked[0].importance == "required"
+    assert ranked[0].state == "missing"
+
+
+@pytest.mark.parametrize(("mac", "absent"), [(True, "secret_service"), (False, "dictation")])
+def test_a_check_for_the_other_platform_is_left_out(tmp_path: Path, mac: bool, absent: str) -> None:
+    ids = {check.id for check in run_checks(_machine(tmp_path, Commands(), mac=mac))}
+
+    assert absent not in ids
 
 
 def test_a_locked_keyring_cannot_hang_the_check(tmp_path: Path) -> None:

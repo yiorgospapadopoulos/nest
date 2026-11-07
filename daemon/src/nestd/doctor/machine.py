@@ -49,11 +49,18 @@ def run_limited(
             timeout=limit,
             stdin=subprocess.DEVNULL,
         )
-    except subprocess.TimeoutExpired:
-        return CommandResult(TIMED_OUT, "", "timed out")
+    except subprocess.TimeoutExpired as error:
+        # What it printed before it was ended: a waiting `tailscale serve` prints its link.
+        return CommandResult(TIMED_OUT, _text(error.stdout), _text(error.stderr) or "timed out")
     except OSError as error:
         return CommandResult(NOT_FOUND, "", str(error))
     return CommandResult(done.returncode, done.stdout, done.stderr)
+
+
+def _text(output: str | bytes | None) -> str:
+    if isinstance(output, bytes):
+        return output.decode(errors="replace")
+    return output or ""
 
 
 def answers_health(port: int) -> bool:
@@ -157,5 +164,17 @@ def this_machine(
     return Machine(paths, platform, home, env, port, service, read_secret, is_packaged())
 
 
-def system_line() -> str:
-    return f"{python_platform.system()} {python_platform.release()} {python_platform.machine()}"
+def system_line(os_release: Path = Path("/etc/os-release")) -> str:
+    """The system as people name it: "macOS 26.6.2", or the distribution on Linux."""
+    machine = python_platform.machine()
+    mac = python_platform.mac_ver()[0]
+    if mac:
+        return f"macOS {mac} {machine}"
+    try:
+        text = os_release.read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    for line in text.splitlines():
+        if line.startswith("PRETTY_NAME="):
+            return f"{line.split('=', 1)[1].strip().strip('"')} {machine}"
+    return f"{python_platform.system()} {python_platform.release()} {machine}"

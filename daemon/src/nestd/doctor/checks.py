@@ -1,6 +1,7 @@
 """The list of checks, in the setup guide's order, then what only `nest doctor` adds."""
 
 import platform as python_platform
+import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from importlib import metadata
@@ -9,7 +10,7 @@ from pathlib import Path
 from nestd import __version__
 from nestd.claude_code.cli import ClaudeLocations
 from nestd.doctor.machine import Machine, json_object, system_line, within_limit
-from nestd.doctor.models import Check, Fix
+from nestd.doctor.models import Check, Fix, Importance
 from nestd.release import install_line
 
 _CODEX_PACKAGE = "openai-codex-cli-bin"
@@ -21,7 +22,7 @@ _LINUX_PACKAGE_LINES = (
     ("pacman", "sudo pacman -S {}"),
     ("zypper", "sudo zypper install {}"),
 )
-_THE_APP_ANSWERS = "The app checks this."
+_THE_APP_ANSWERS = "Checked in the app."
 _GH_RELEASES = "https://github.com/cli/cli/releases/latest"
 _GH_LINUX = "https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
 
@@ -123,7 +124,7 @@ def check_service(machine: Machine) -> Check:
     if status.installed and status.loaded and machine.healthy(machine.port):
         return Check(id="service", title=title, state="ok", detail="Starts at login")
     if machine.packaged:
-        command = install_line(machine.env)
+        command = install_line(machine.env, machine.paths.data_dir)
     else:
         command = "cd daemon && uv run nestd service install"
     what = "isn't answering" if status.loaded else "isn't running"
@@ -158,6 +159,7 @@ def check_tailscale(machine: Machine) -> Check:
             state="missing",
             message="Your iPhone reaches Nest through Tailscale.",
             fix=Fix(kind="link", value="https://tailscale.com/download"),
+            stage="install",
         )
     status = json_object(machine.command(program, "status", "--json").stdout)
     if status is None or status.get("BackendState") != "Running":
@@ -165,8 +167,8 @@ def check_tailscale(machine: Machine) -> Check:
             id="tailscale",
             title=title,
             state="missing",
-            message="Tailscale is installed but not connected.",
-            fix=Fix(kind="command", value="tailscale up"),
+            message="Tailscale is installed but not connected. Open it and sign in.",
+            stage="connect",
         )
     own = status.get("Self")
     name = own.get("DNSName") if isinstance(own, dict) else None
@@ -178,19 +180,44 @@ def check_tailscale(machine: Machine) -> Check:
             state="missing",
             message="Tailscale is running. Share Nest with your own devices.",
             detail=host,
-            fix=Fix(kind="command", value=f"tailscale serve --bg {machine.port}"),
+            stage="share",
         )
     paired = machine.database(
         "SELECT 1 FROM devices WHERE is_local = 0 AND revoked_at IS NULL LIMIT 1"
     )
     if paired:
-        return Check(id="tailscale", title=title, state="ok", detail=host)
+        return Check(id="tailscale", title=title, state="ok", detail=host, stage="done")
     return Check(
         id="tailscale",
         title=title,
         state="missing",
         message="Nest is shared. Pair your iPhone.",
         detail=host,
+        stage="pair",
+    )
+
+
+_SERVE_LIMIT = 20.0
+_TAILSCALE_LINK = re.compile(r"https://login\.tailscale\.com/\S+")
+
+
+def share_on_tailnet(machine: Machine) -> Check:
+    """`tailscale serve` for the user, so the guide needs no Terminal. The first time on a
+    tailnet Tailscale asks to turn HTTPS on: its link comes back to open.
+    """
+    program = _tailscale_program(machine)
+    if program is None:
+        return check_tailscale(machine)
+    done = machine.command(program, "serve", "--bg", str(machine.port), limit=_SERVE_LIMIT)
+    link = _TAILSCALE_LINK.search(done.stdout + done.stderr)
+    check = check_tailscale(machine)
+    if link is None or check.stage != "share":
+        return check
+    return check.model_copy(
+        update={
+            "message": "Turn on HTTPS for your tailnet at this link, then share again.",
+            "fix": Fix(kind="link", value=link.group(0)),
+        }
     )
 
 
@@ -257,7 +284,7 @@ def check_engine_installs(machine: Machine) -> Check:
         title="Engine installs",
         state="missing",
         message="An engine's files are missing. Installing Nest again brings them back.",
-        fix=Fix(kind="command", value=install_line(machine.env)),
+        fix=Fix(kind="command", value=install_line(machine.env, machine.paths.data_dir)),
     )
 
 
@@ -313,6 +340,16 @@ def check_permissions(machine: Machine) -> Check:
 
 type CheckFunction = Callable[[Machine], Check]
 
+_IMPORTANCE: dict[str, Importance] = {
+    "engine": "required",
+    "service": "required",
+    "secret_service": "required",
+    "engine_installs": "required",
+    "ntfy": "optional",
+}
+# Checks for one platform only, left out elsewhere.
+_ONLY_ON = {"secret_service": "linux", "dictation": "macos", "permissions": "macos"}
+
 CHECKS: tuple[CheckFunction, ...] = (
     check_engine,
     check_git,
@@ -336,7 +373,14 @@ def run_checks(machine: Machine) -> list[Check]:
     """Every check, side by side so one slow command does not hold up the list."""
 
     def run(check: CheckFunction) -> Check:
-        return check(machine)
+        found = check(machine)
+        return found.model_copy(update={"importance": _IMPORTANCE.get(found.id, "recommended")})
 
     with ThreadPoolExecutor(max_workers=len(CHECKS), thread_name_prefix="nest-check") as pool:
-        return list(pool.map(run, CHECKS))
+        checks = list(pool.map(run, CHECKS))
+    return [c for c in checks if _ONLY_ON.get(c.id, machine.platform.name) == machine.platform.name]
+
+
+def by_rank(checks: list[Check]) -> list[Check]:
+    """Check Nest's and `nest doctor`'s order; the guide keeps its own."""
+    return sorted(checks, key=lambda check: check.rank)
