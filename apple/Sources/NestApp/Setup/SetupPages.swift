@@ -1,3 +1,4 @@
+import AppKit
 import NestKit
 import SwiftUI
 
@@ -22,7 +23,8 @@ struct SetupPage: View {
     }
 }
 
-/// A check's message, its fix and Check again.
+/// A check's message, its fix and Check again. On a Mac, git's command has an Install
+/// button beside it, and GitHub's page is a Download.
 private struct GenericPage: View {
     let check: SetupCheck?
 
@@ -30,10 +32,58 @@ private struct GenericPage: View {
         if let line = check.flatMap({ $0.message.isEmpty ? $0.detail : $0.message }) {
             SetupLine(text: line)
         }
-        if let fix = check?.fix {
-            FixAction(fix: fix)
+        if let check, let fix = check.fix {
+            if check.id == SetupStep.git.id, fix.value == GitInstall.command {
+                GitInstall()
+            } else {
+                FixAction(fix: fix, open: check.id == SetupStep.github.id ? "Download" : "Open")
+            }
         }
         CheckAgain()
+        if check?.id == SetupStep.git.id {
+            GitWatch(passed: check?.state == .ok)
+        }
+    }
+}
+
+/// Apple's command line tools, which bring git: the line to paste, and Install, which runs
+/// it. It only opens Apple's own installer window.
+private struct GitInstall: View {
+    static let command = "xcode-select --install"
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        HStack(spacing: 8) {
+            CopyableCommand(command: Self.command)
+            Button("Install") {
+                do {
+                    try DetachedSpawner().spawn("/usr/bin/xcode-select", ["--install"])
+                } catch {
+                    shell.show(error, doing: "Could not open Apple's installer")
+                }
+            }
+            .buttonStyle(.nest(.primary))
+        }
+    }
+}
+
+/// While git's page is open, its check runs again every few seconds until git passes, as
+/// Apple's installer finishes on its own.
+private struct GitWatch: View {
+    let passed: Bool
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .task(id: passed) {
+                let store = shell.model.setup
+                while !passed, !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(5))
+                    if !store.checking, !Task.isCancelled {
+                        await store.refresh()
+                    }
+                }
+            }
     }
 }
 
@@ -219,64 +269,200 @@ private struct ShareButton: View {
     }
 }
 
-/// The system's answer, with System Settings once refused, then the phone's own switch, then
-/// ntfy, the optional part, as Settings > Notifications has them.
+/// One switch per way a notification reaches the user, each showing its real state (design
+/// C): this Mac's, the phone's push, and ntfy with its fields under it while on.
 private struct NotificationsStepPage: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let permissions = shell.permissions
-        let answer = permissions.notifications
-        MarkLine(
-            mark: answer == .allowed ? .ok : .now,
-            text: SystemAnswers.line("Notifications", answer))
-        if answer == .refused {
-            OpenSystemSettings(address: SystemAnswers.notificationSettings)
-        } else if answer == .notAsked {
-            Button("Ask now") { Task { await permissions.askNotifications() } }
-                .buttonStyle(.nest(.soft))
+        let devices = shell.model.devices
+        let rules = shell.model.notificationRules
+        SwitchGroup {
+            PermissionRow(
+                title: "This Mac", answer: permissions.notifications,
+                address: SystemAnswers.notificationSettings
+            ) { await permissions.askNotifications() }
+            SwitchRow(
+                title: "iPhone", line: "Turn on in Account > Notifications on the phone",
+                divided: true
+            ) {
+                // Turned on on the phone itself, so it only shows here.
+                Switch(isOn: (devices.pushDevices ?? 0) > 0) {}
+                    .disabled(true)
+                    .accessibilityLabel("iPhone notifications")
+            }
+            if let ntfy = rules.rules?.ntfy {
+                NtfyRow(ntfy: ntfy)
+            }
         }
-        SetupLine(text: "Turn on notifications in Account > Notifications on your phone.")
-        Text("ntfy")
-            .font(.ui(TypeSize.ui, .semibold))
-            .padding(.top, 16)
-        SetupLine(text: "Push notifications through the ntfy app.")
-        NtfySection()
+        .task {
+            try? await rules.load()
+            try? await devices.loadPushStatus()
+        }
+        // A phone may have turned its push on meanwhile.
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+        ) { _ in Task { try? await devices.loadPushStatus() } }
     }
 }
 
-/// The microphone and speech recognition, a button that asks now, and System Settings once
-/// refused.
+/// ntfy's switch, with its fields under it while on. The daemon turns it on only with a
+/// topic, so one turned on without opens the fields first, and the topic turns it on.
+private struct NtfyRow: View {
+    let ntfy: NtfySettings
+    @Environment(Shell.self) private var shell
+    @State private var waitingForTopic = false
+
+    var body: some View {
+        let on = ntfy.enabled || waitingForTopic
+        SwitchRow(title: "ntfy", line: "Push notifications through the ntfy app", divided: true) {
+            Switch(isOn: on) {
+                if on {
+                    waitingForTopic = false
+                    if ntfy.enabled {
+                        shell.saveNtfy { $0.enabled = false }
+                    }
+                } else if ntfy.topic?.isEmpty == false {
+                    shell.saveNtfy { $0.enabled = true }
+                } else {
+                    waitingForTopic = true
+                }
+            }
+            .accessibilityLabel("Send to ntfy")
+        }
+        if on {
+            NtfyDetails(ntfy: ntfy, enablesWithTopic: waitingForTopic)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+        }
+    }
+}
+
+/// The microphone and speech recognition, a switch each; one not asked yet asks when turned
+/// on.
 private struct DictationStepPage: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let permissions = shell.permissions
-        let answers = [
-            ("Microphone", permissions.microphone, SystemAnswers.microphoneSettings),
-            ("Speech Recognition", permissions.speech, SystemAnswers.speechSettings),
-        ]
-        ForEach(answers, id: \.0) { name, answer, address in
-            MarkLine(
-                mark: answer == .allowed ? .ok : .now, text: SystemAnswers.line(name, answer))
-            if answer == .refused {
-                OpenSystemSettings(address: address)
-            }
-        }
-        if answers.contains(where: { $0.1 == .notAsked }) {
-            Button("Ask now") { Task { await permissions.askDictation() } }
-                .buttonStyle(.nest(.soft))
+        SwitchGroup {
+            PermissionRow(
+                title: "Microphone", answer: permissions.microphone,
+                address: SystemAnswers.microphoneSettings
+            ) { await permissions.askDictation() }
+            PermissionRow(
+                title: "Speech recognition", answer: permissions.speech,
+                address: SystemAnswers.speechSettings, divided: true
+            ) { await permissions.askDictation() }
         }
     }
 }
 
-private struct OpenSystemSettings: View {
+/// One rounded group of rows, as System Settings has them.
+private struct SwitchGroup<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0, content: content)
+            .background(Palette.soft, in: .rounded(10))
+            .overlay(RoundedRectangle.rounded(10).strokeBorder(Palette.divider))
+    }
+}
+
+/// A row of the group: its title, a line under it, and its switch.
+private struct SwitchRow<Line: View, Control: View>: View {
+    let title: String
+    var divided = false
+    @ViewBuilder let line: () -> Line
+    @ViewBuilder let control: () -> Control
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.ui(TypeSize.reading, .medium))
+                line()
+            }
+            Spacer(minLength: 8)
+            control()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(minHeight: 48)
+        .overlay(alignment: .top) {
+            if divided {
+                Separator()
+            }
+        }
+    }
+}
+
+extension SwitchRow where Line == SwitchLine {
+    init(
+        title: String, line: String?, divided: Bool = false,
+        @ViewBuilder control: @escaping () -> Control
+    ) {
+        self.init(
+            title: title, divided: divided, line: { SwitchLine(text: line) }, control: control)
+    }
+}
+
+private struct SwitchLine: View {
+    let text: String?
+
+    var body: some View {
+        if let text {
+            Text(text)
+                .font(.ui(TypeSize.small))
+                .foregroundStyle(Palette.t2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// A permission macOS answers: on once allowed. One not asked yet asks when turned on; one
+/// blocked shows off with a short red note and the way to System Settings, the only place
+/// it can change, as for turning an allowed one off.
+private struct PermissionRow: View {
+    let title: String
+    let answer: SystemPermission
     let address: String
+    var divided = false
+    let ask: @MainActor () async -> Void
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        Button("Open System Settings") { shell.permissions.openSettings(address) }
-            .buttonStyle(.nest(.soft))
+        SwitchRow(title: title, divided: divided) {
+            switch answer {
+            case .refused:
+                HStack(spacing: 4) {
+                    Text("Blocked in System Settings.")
+                        .foregroundStyle(StatusTone.failed.color)
+                    Button("Open") { shell.permissions.openSettings(address) }
+                        .buttonStyle(.plain)
+                        .underline()
+                        .foregroundStyle(Palette.t1)
+                        .pointerStyle(.link)
+                }
+                .font(.ui(TypeSize.small))
+            case .restricted:
+                SwitchLine(text: "Restricted on this Mac.")
+            case .notAsked:
+                SwitchLine(text: "Not asked yet")
+            case .allowed:
+                EmptyView()
+            }
+        } control: {
+            Switch(isOn: answer == .allowed) {
+                if answer == .notAsked {
+                    Task { await ask() }
+                } else {
+                    shell.permissions.openSettings(address)
+                }
+            }
+            .disabled(answer == .restricted)
+            .accessibilityLabel(title)
+        }
     }
 }
 

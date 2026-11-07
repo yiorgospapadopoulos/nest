@@ -146,6 +146,29 @@ public final class SetupFlow {
     }
 }
 
+/// What the main window shows (B130).
+public enum WindowContent: Sendable, Equatable {
+    /// Its background only: whether the guide shows is not known yet.
+    case blank
+    case daemonDown
+    case guide
+    case projects
+
+    /// `firstRun` is nil until the daemon was asked. A first run whose guide is not up yet
+    /// stays blank too: the projects never show for a moment before the guide.
+    public init(daemonDown: Bool, guideOpen: Bool, firstRun: Bool?) {
+        if daemonDown {
+            self = .daemonDown
+        } else if guideOpen {
+            self = .guide
+        } else if firstRun == false {
+            self = .projects
+        } else {
+            self = .blank
+        }
+    }
+}
+
 /// The model the first chat opens on.
 public struct FirstChatModel: Sendable, Equatable {
     public let provider: String

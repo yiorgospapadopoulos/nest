@@ -107,13 +107,15 @@ struct CopyableCommand: View {
 /// A check's way out: the command to paste, or the page to open.
 struct FixAction: View {
     let fix: SetupCheck.Fix
+    /// The link's button, such as Download for a page that downloads.
+    var open = "Open"
 
     var body: some View {
         switch fix.kind {
         case .command:
             CopyableCommand(command: fix.value)
         case .link:
-            Button("Open") {
+            Button(open) {
                 if let url = SafeLink.web(fix.value) {
                     NSWorkspace.shared.open(url)
                 }

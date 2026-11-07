@@ -1908,8 +1908,7 @@ final class Shell {
     /// True when the app should start the service itself now (`DaemonDownWatch`). `update`
     /// is This Mac's update under way, read while the daemon is down.
     func noteConnection(_ connection: ConnectionState, update: UpdateUnderWay?) -> Bool {
-        let reading = daemonDown.note(update: isRemote ? nil : update)
-        return daemonDown.note(connection, remote: isRemote) || reading
+        daemonDown.note(connection, remote: isRemote, update: update)
     }
 
     /// The update's note read again while the daemon is down; true as `noteConnection`.

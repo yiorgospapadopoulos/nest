@@ -252,28 +252,28 @@ import Testing
     @Test func theDaemonDownScreenShowsOnlyAtLaunchAfterASecondFailure() {
         var watch = DaemonDownWatch()
         var starts = false
-        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false, update: nil)
         #expect(!starts)
         #expect(!watch.isDown)
-        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: nil)
         #expect(starts)
         watch.startFinished()
-        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: nil)
         #expect(!starts)
         #expect(watch.screen == .down)
         // Try again starts over from the first attempt: the screen stays until it connects.
-        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false, update: nil)
         #expect(!starts)
         #expect(watch.isDown)
-        starts = watch.note(.connected, remote: false)
+        starts = watch.note(.connected, remote: false, update: nil)
         #expect(!starts)
         #expect(!watch.isDown)
-        starts = watch.note(.reconnecting(attempt: 5, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 5, delay: 1), remote: false, update: nil)
         #expect(!starts)
         #expect(!watch.isDown)
 
         var remote = DaemonDownWatch()
-        starts = remote.note(.reconnecting(attempt: 5, delay: 1), remote: true)
+        starts = remote.note(.reconnecting(attempt: 5, delay: 1), remote: true, update: nil)
         #expect(!starts)
         #expect(!remote.isDown)
     }
@@ -283,17 +283,17 @@ import Testing
     @Test func theAppStartsTheServiceOnceBeforeShowingTheLine() {
         var watch = DaemonDownWatch()
         var starts = false
-        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: nil)
         #expect(starts)
         // While the start runs, later failures neither start it again nor show the line.
-        starts = watch.note(.reconnecting(attempt: 3, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 3, delay: 1), remote: false, update: nil)
         #expect(!starts)
         #expect(watch.screen == .none)
         watch.startFinished()
-        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false, update: nil)
         #expect(!starts)
         #expect(watch.screen == .none)
-        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: nil)
         #expect(!starts)
         #expect(watch.screen == .down)
     }
@@ -301,25 +301,44 @@ import Testing
     /// Regression (B130): during an update the daemon-down screen asked for the repair line.
     @Test func anUpdateUnderWayShowsItsProgressAndNeverTheLine() {
         var watch = DaemonDownWatch()
+        let update = Self.update
         var starts = false
-        starts = watch.note(update: Self.update)
+        starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false, update: update)
         #expect(!starts)
-        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false)
+        starts = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: update)
         #expect(!starts)
-        #expect(watch.screen == .updating(Self.update))
-        starts = watch.note(.reconnecting(attempt: 9, delay: 1), remote: false)
+        #expect(watch.screen == .updating(update))
+        starts = watch.note(.reconnecting(attempt: 9, delay: 1), remote: false, update: update)
         #expect(!starts)
-        #expect(watch.screen == .updating(Self.update))
+        #expect(watch.screen == .updating(update))
         // The watcher cleared it but the daemon is not back: the service starts once, as at
         // launch.
         starts = watch.note(update: nil)
         #expect(starts)
         #expect(watch.screen == .none)
-        starts = watch.note(.connected, remote: false)
+        starts = watch.note(.connected, remote: false, update: nil)
         #expect(!starts)
-        starts = watch.note(update: Self.update)
+        starts = watch.note(update: update)
         #expect(!starts)
         #expect(!watch.isDown)
+    }
+
+    /// Regression (B130, fix 27): the updating screen tries the daemon every second, and each
+    /// try starting, which reads no update, took the screen away for a moment and started the
+    /// service in the middle of the update: the screen flickered in and out.
+    @Test func theUpdatingScreenStaysThroughEachNewTry() {
+        var watch = DaemonDownWatch()
+        let update = Self.update
+        _ = watch.note(.reconnecting(attempt: 2, delay: 1), remote: false, update: update)
+        #expect(watch.screen == .updating(update))
+        for _ in 0..<3 {
+            var starts = watch.note(.connecting, remote: false, update: nil)
+            #expect(!starts)
+            #expect(watch.screen == .updating(update))
+            starts = watch.note(.reconnecting(attempt: 1, delay: 1), remote: false, update: update)
+            #expect(!starts)
+            #expect(watch.screen == .updating(update))
+        }
     }
 
     @Test func anUpdatesNoteSaysWhenItIsSlowAndWhenItIsLeftOver() throws {
@@ -362,5 +381,30 @@ import Testing
         #expect(checks["dictation"]?.state == .missing)
         #expect(checks["dictation"]?.message == "Speech Recognition: refused")
         #expect(checks["dictation"]?.fix?.value == SystemAnswers.speechSettings)
+    }
+}
+
+@MainActor @Suite struct WindowContentTests {
+    /// Regression (B130, fix 28): at first start the projects showed for a moment before the
+    /// guide. The window shows its background only until it knows.
+    @Test func theWindowWaitsUntilItKnowsWhetherTheGuideShows() async {
+        let api = FakeAPI()
+        api.set { $0.setup = SetupState(firstRun: true, localOnly: false) }
+        let local = LocalModelsStore(api: api)
+        #expect(WindowContent(daemonDown: false, guideOpen: false, firstRun: local.firstRun) == .blank)
+        await local.load()
+        // A first run whose guide is not up yet.
+        let firstRun = local.firstRun
+        #expect(WindowContent(daemonDown: false, guideOpen: false, firstRun: firstRun) == .blank)
+        #expect(WindowContent(daemonDown: false, guideOpen: true, firstRun: firstRun) == .guide)
+        #expect(WindowContent(daemonDown: true, guideOpen: false, firstRun: nil) == .daemonDown)
+
+        // No first run, or a daemon that does not answer: the projects, not a blank for ever.
+        api.fail("setup")
+        let failed = LocalModelsStore(api: api)
+        await failed.load()
+        #expect(
+            WindowContent(daemonDown: false, guideOpen: false, firstRun: failed.firstRun)
+                == .projects)
     }
 }
