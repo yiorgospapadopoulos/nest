@@ -154,6 +154,43 @@
   flex: 1;
   font-weight: 500;
 }
+/* Notifications' switches in one rounded group (design C). */
+.su-switches {
+  border-radius: 10px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+}
+.su-srow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 16px;
+}
+.su-srow + .su-srow,
+.su-sfields + .su-srow {
+  border-top: 1px solid var(--dk-line);
+}
+.su-stitle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.su-stitle b {
+  font-weight: 500;
+}
+.su-sline {
+  font-size: 12px;
+  color: var(--t2);
+}
+.su-sline.su-fail {
+  color: var(--fail-t);
+}
+.su-sfields {
+  padding: 0 16px 12px;
+}
 .su-cmd {
   display: flex;
   align-items: center;

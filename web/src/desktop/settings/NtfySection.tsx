@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
-import type { NotificationSettings } from "../../api/types.ts";
+import { useState } from "react";
 import { useStore } from "../../store/context.ts";
 import { TextField } from "../ui/controls.tsx";
+import { useSaveNtfy, type Ntfy } from "./ntfy.ts";
 import { SettingsRow, SettingsSection, SwitchRow, WarningLine } from "./rows.tsx";
-
-type Ntfy = NotificationSettings["ntfy"];
 
 const WARNING = "Anyone who knows a public topic can read it. Use a long, random one.";
 
@@ -41,27 +39,22 @@ function Field({
   );
 }
 
-/** ntfy's switch and fields, saved on the daemon as they change; a refused one goes back. */
-export function NtfyFields() {
-  const { state, actions } = useStore();
-  const rules = state.notifications;
-  useEffect(() => {
-    void actions.loadNotifications();
-  }, [actions]);
-  if (rules === null) return null;
-  const { ntfy } = rules;
-  const save = (change: Partial<Ntfy>) => {
-    void actions.saveNotifications({ ...rules, ntfy: { ...ntfy, ...change } }, rules);
-  };
+/**
+ * The server, topic and link address, and the warning about public topics. With
+ * `enablesWithTopic`, ntfy was turned on with no topic yet, which the daemon refuses: the
+ * first topic turns it on with it.
+ */
+export function NtfyDetails({
+  ntfy,
+  save,
+  enablesWithTopic = false,
+}: {
+  ntfy: Ntfy;
+  save: (change: Partial<Ntfy>) => void;
+  enablesWithTopic?: boolean;
+}) {
   return (
-    <div className="dks-rows">
-      <SwitchRow
-        label="Send to ntfy"
-        on={ntfy.enabled}
-        onChange={(enabled) => {
-          save({ enabled });
-        }}
-      />
+    <>
       <Field
         label="Server"
         value={ntfy.server}
@@ -72,8 +65,9 @@ export function NtfyFields() {
       <Field
         label="Topic"
         value={text(ntfy.topic)}
-        onSave={(topic) => {
-          save({ topic: optional(topic) });
+        onSave={(typed) => {
+          const topic = optional(typed);
+          save(enablesWithTopic && topic !== null ? { topic, enabled: true } : { topic });
         }}
       />
       <Field
@@ -85,6 +79,27 @@ export function NtfyFields() {
         }}
       />
       <WarningLine text={WARNING} />
+    </>
+  );
+}
+
+/** ntfy's switch and fields, saved on the daemon as they change; a refused one goes back. */
+export function NtfyFields() {
+  const { state } = useStore();
+  const save = useSaveNtfy();
+  const rules = state.notifications;
+  if (rules === null || save === null) return null;
+  const { ntfy } = rules;
+  return (
+    <div className="dks-rows">
+      <SwitchRow
+        label="Send to ntfy"
+        on={ntfy.enabled}
+        onChange={(enabled) => {
+          save({ enabled });
+        }}
+      />
+      <NtfyDetails ntfy={ntfy} save={save} />
     </div>
   );
 }

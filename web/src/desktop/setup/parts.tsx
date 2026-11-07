@@ -38,8 +38,11 @@ export function CommandBox({ command }: { command: string }) {
   );
 }
 
-/** A check's way out: the command to paste, or the page to open. */
-export function FixAction({ fix }: { fix: CheckFix }) {
+/**
+ * A check's way out: the command to paste, or the page to open, its button named `open`,
+ * such as Download for a page that downloads.
+ */
+export function FixAction({ fix, open = "Open" }: { fix: CheckFix; open?: string }) {
   const bridge = useBridge();
   if (fix.kind === "command") return <CommandBox command={fix.value} />;
   return (
@@ -50,7 +53,7 @@ export function FixAction({ fix }: { fix: CheckFix }) {
           if (fix.value.startsWith("https://")) void bridge.openExternal(fix.value);
         }}
       >
-        Open
+        {open}
       </Button>
     </div>
   );

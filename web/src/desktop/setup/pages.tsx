@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { AccountProvider, EngineAccount, PairingCode, SetupCheck } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import type { DraftModel } from "../layout/project.ts";
@@ -6,11 +6,12 @@ import { otherEngines } from "../settings/accounts/engineSetup.ts";
 import { MoreEngineRows } from "../settings/accounts/MoreEngines.tsx";
 import { useSignIn } from "../settings/accounts/signIn.ts";
 import { FoldChevron } from "../settings/config/parts.tsx";
-import { NtfySection } from "../settings/NtfySection.tsx";
+import { NtfyDetails } from "../settings/NtfySection.tsx";
+import { useSaveNtfy } from "../settings/ntfy.ts";
 import { PairingCodeView } from "../settings/parts3/PairingCodeView.tsx";
-import { useApi } from "../context.ts";
+import { useApi, useBridge } from "../context.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
-import { Button } from "../ui/controls.tsx";
+import { Button, Toggle } from "../ui/controls.tsx";
 import { CheckAgain, FixAction, StepMark, TestNotification } from "./parts.tsx";
 import { reachable, tailscaleStage, type Mark } from "./steps.ts";
 
@@ -125,13 +126,15 @@ interface CheckedProps {
   onCheck: () => void;
 }
 
-/** A check's message, its fix and Check again. */
+/** A check's message, its fix and Check again. GitHub's page is a Download. */
 export function GenericPage({ check, checking, onCheck }: CheckedProps) {
   const line = check === undefined ? null : check.message || check.detail;
   return (
     <>
       {line != null && line !== "" && <p className="su-line">{line}</p>}
-      {check?.fix != null && <FixAction fix={check.fix} />}
+      {check?.fix != null && (
+        <FixAction fix={check.fix} open={check.id === "github" ? "Download" : "Open"} />
+      )}
       <CheckAgain checking={checking} onCheck={onCheck} />
     </>
   );
@@ -226,18 +229,139 @@ export function TailscalePage({ check, checking, onCheck }: CheckedProps) {
   );
 }
 
+/** `read` at once and again each time the window regains the focus; undefined until read. */
+function useOnFocus<T>(read: () => Promise<T>): T | undefined {
+  const [value, setValue] = useState<T>();
+  useEffect(() => {
+    let live = true;
+    const ask = () => {
+      read().then(
+        (found) => {
+          if (live) setValue(() => found);
+        },
+        () => undefined,
+      );
+    };
+    ask();
+    window.addEventListener("focus", ask);
+    return () => {
+      live = false;
+      window.removeEventListener("focus", ask);
+    };
+  }, [read]);
+  return value;
+}
+
+/** A row of the group: its title, a line under it, and its switch. */
+function SwitchGroupRow({
+  title,
+  line,
+  children,
+}: {
+  title: string;
+  line?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="su-srow">
+      <span className="su-stitle">
+        <b>{title}</b>
+        {line}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 /**
- * The system's own notifications first, then ntfy, the optional part, as Settings >
- * Notifications has them.
+ * One switch per way a notification reaches the user, each showing its real state (design
+ * C, as the Mac's): this computer's notification service, the phone's push, and ntfy with
+ * its fields under it while on. The first two change elsewhere, so their switches only show.
  */
 export function NotificationsPage({ onSent }: { onSent: () => void }) {
+  const bridge = useBridge();
+  const api = useApi();
+  const server = useOnFocus(useCallback(() => bridge.notificationServer(), [bridge]));
+  const push = useOnFocus(useCallback(() => api.pushStatus(), [api]));
   return (
     <>
+      <div className="su-switches">
+        <SwitchGroupRow
+          title="This computer"
+          line={
+            server === null && (
+              <span className="su-sline su-fail">No notification service answers.</span>
+            )
+          }
+        >
+          <Toggle
+            checked={server != null}
+            onChange={() => undefined}
+            label="This computer's notifications"
+            disabled
+          />
+        </SwitchGroupRow>
+        <SwitchGroupRow
+          title="iPhone"
+          line={
+            <span className="su-sline">Turn on in Account &gt; Notifications on the phone</span>
+          }
+        >
+          <Toggle
+            checked={(push?.devices ?? 0) > 0}
+            onChange={() => undefined}
+            label="iPhone notifications"
+            disabled
+          />
+        </SwitchGroupRow>
+        <NtfyRow />
+      </div>
       <TestNotification onSent={onSent} />
-      <p className="su-line">Turn on notifications in Account &gt; Notifications on your phone.</p>
-      <h2 className="su-part">ntfy</h2>
-      <p className="su-line">Push notifications through the ntfy app.</p>
-      <NtfySection />
+    </>
+  );
+}
+
+/**
+ * ntfy's switch, with its fields under it while on. The daemon turns it on only with a
+ * topic, so one turned on without opens the fields first, and the topic turns it on.
+ */
+function NtfyRow() {
+  const { state } = useStore();
+  const save = useSaveNtfy();
+  const [waitingForTopic, setWaitingForTopic] = useState(false);
+  const ntfy = state.notifications?.ntfy;
+  if (ntfy === undefined || save === null) return null;
+  const on = ntfy.enabled || waitingForTopic;
+  return (
+    <>
+      <SwitchGroupRow
+        title="ntfy"
+        line={<span className="su-sline">Push notifications through the ntfy app</span>}
+      >
+        <Toggle
+          checked={on}
+          label="Send to ntfy"
+          onChange={() => {
+            if (on) {
+              setWaitingForTopic(false);
+              if (ntfy.enabled) save({ enabled: false });
+            } else if ((ntfy.topic ?? "") !== "") {
+              save({ enabled: true });
+            } else {
+              setWaitingForTopic(true);
+            }
+          }}
+        />
+      </SwitchGroupRow>
+      {on && (
+        <div className="su-sfields dks-rows">
+          <NtfyDetails
+            ntfy={ntfy}
+            save={save}
+            enablesWithTopic={waitingForTopic && !ntfy.enabled}
+          />
+        </div>
+      )}
     </>
   );
 }

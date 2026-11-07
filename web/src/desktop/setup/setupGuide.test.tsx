@@ -165,6 +165,84 @@ describe("the setup guide on a new install", () => {
   });
 });
 
+// Regression (B130, fix 28): at first start the projects showed for a moment before the
+// guide, until the daemon said it was a first run.
+describe("the window at first start", () => {
+  it("stays blank until it knows, and never shows the projects before the guide", async () => {
+    const api = firstRun([check("engine")]);
+    let answer: (setup: { first_run: boolean; local_only: boolean }) => void = () => undefined;
+    api.setup.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    renderGuide(api);
+    await waitFor(() => {
+      expect(api.setup).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Set up Nest" })).not.toBeInTheDocument();
+
+    answer({ first_run: true, local_only: false });
+    expect(await screen.findByRole("navigation", { name: "Set up Nest" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the guide's steps", () => {
+  it("names GitHub's link Download", async () => {
+    const api = firstRun([
+      check("engine", { state: "ok" }),
+      check("github", { fix: { kind: "link", value: "https://cli.github.com" } }),
+    ]);
+    const { user } = renderGuide(api);
+    const rail = await screen.findByRole("navigation", { name: "Set up Nest" });
+    await user.click(within(rail).getByRole("button", { name: /GitHub/ }));
+    expect(await screen.findByRole("button", { name: "Download" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open" })).not.toBeInTheDocument();
+  });
+
+  it("shows each way a notification arrives as a switch in its real state", async () => {
+    const api = firstRun([check("engine", { state: "ok" })]);
+    api.pushStatus.mockResolvedValue({ devices: 1 });
+    const { user } = renderGuide(api, { notificationServer: () => Promise.resolve(null) });
+    const rail = await screen.findByRole("navigation", { name: "Set up Nest" });
+    await user.click(within(rail).getByRole("button", { name: /Notifications/ }));
+
+    expect(await screen.findByText("No notification service answers.")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "This computer's notifications" })).not.toBeChecked();
+    await waitFor(() => {
+      expect(screen.getByRole("switch", { name: "iPhone notifications" })).toBeChecked();
+    });
+    expect(await screen.findByRole("switch", { name: "Send to ntfy" })).not.toBeChecked();
+    expect(screen.queryByRole("textbox", { name: "Topic" })).not.toBeInTheDocument();
+  });
+
+  // The daemon refuses ntfy on with no topic: the switch opens the fields, and the first
+  // topic saved turns it on with it.
+  it("turns ntfy on with its first topic", async () => {
+    const api = firstRun([check("engine", { state: "ok" })]);
+    const { user } = renderGuide(api);
+    const rail = await screen.findByRole("navigation", { name: "Set up Nest" });
+    await user.click(within(rail).getByRole("button", { name: /Notifications/ }));
+    await user.click(await screen.findByRole("switch", { name: "Send to ntfy" }));
+
+    expect(api.saveNotificationSettings).not.toHaveBeenCalled();
+    expect(screen.getByRole("switch", { name: "Send to ntfy" })).toBeChecked();
+    await user.type(screen.getByRole("textbox", { name: "Topic" }), "a-long-random-topic");
+    await user.tab();
+
+    await waitFor(() => {
+      expect(api.saveNotificationSettings).toHaveBeenCalledOnce();
+    });
+    expect(api.saveNotificationSettings.mock.calls[0]?.[0].ntfy).toMatchObject({
+      enabled: true,
+      topic: "a-long-random-topic",
+    });
+  });
+});
+
 describe("the app swap", () => {
   const FILE = { version: "0.2.0", path: "/data/daemon/0.2.0/app-file" };
 
