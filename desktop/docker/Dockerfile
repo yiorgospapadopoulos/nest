@@ -1,5 +1,5 @@
 # Build and test environment for the Linux desktop app (linux/arm64 or amd64).
-FROM ubuntu:24.04
+FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev \
