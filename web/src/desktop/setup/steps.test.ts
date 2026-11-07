@@ -10,6 +10,7 @@ import {
   cheapestModel,
   firstChatModel,
   markOf,
+  reachable,
   STEPS,
   tailscaleStage,
 } from "./steps.ts";
@@ -67,23 +68,25 @@ describe("the first chat's model", () => {
 });
 
 describe("Tailscale's stage", () => {
-  const check = (fix: SetupCheck["fix"]): SetupCheck => ({
+  const check = (stage: string | null): SetupCheck => ({
     id: "tailscale",
     title: "Tailscale and iPhone",
     state: "missing",
     message: "",
     detail: null,
-    fix,
+    fix: null,
+    importance: "optional",
+    stage,
+    rank: 3,
   });
 
-  it("follows what the check asks for", () => {
-    expect(tailscaleStage(check({ kind: "link", value: "https://tailscale.com/download" }))).toBe(
-      "off",
-    );
-    expect(tailscaleStage(check({ kind: "command", value: "tailscale up" }))).toBe("off");
-    expect(tailscaleStage(check({ kind: "command", value: "tailscale serve --bg 8765" }))).toBe(
-      "unshared",
-    );
-    expect(tailscaleStage(check(null))).toBe("shared");
+  it("counts Nest as reachable, for the pairing code, only once it is shared", () => {
+    // Regression: the code showed with Tailscale not even installed.
+    for (const stage of ["install", "connect", "share", null, "later"]) {
+      expect(reachable(tailscaleStage(check(stage)))).toBe(false);
+    }
+    expect(reachable(tailscaleStage(undefined))).toBe(false);
+    expect(reachable(tailscaleStage(check("pair")))).toBe(true);
+    expect(reachable(tailscaleStage(check("done")))).toBe(true);
   });
 });

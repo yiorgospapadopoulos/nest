@@ -34,6 +34,9 @@ const check = (id: string, overrides: Partial<SetupCheck> = {}): SetupCheck => (
   message: "",
   detail: null,
   fix: null,
+  importance: "recommended",
+  stage: null,
+  rank: 1,
   ...overrides,
 });
 

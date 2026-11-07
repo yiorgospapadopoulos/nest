@@ -9,7 +9,6 @@ import {
   FirstChatPage,
   GenericPage,
   NotificationsPage,
-  NtfyPage,
   TailscalePage,
 } from "./pages.tsx";
 import { StepMark } from "./parts.tsx";
@@ -81,8 +80,6 @@ export function SetupGuide({ firstRun }: { firstRun: boolean }) {
             }}
           />
         );
-      case "ntfy":
-        return <NtfyPage />;
       case "first_chat":
         return (
           <FirstChatPage

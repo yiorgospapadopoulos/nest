@@ -3,12 +3,13 @@ import type { AccountProvider, EngineAccount, PairingCode, SetupCheck } from "..
 import { useStore } from "../../store/context.ts";
 import type { DraftModel } from "../layout/project.ts";
 import { useSignIn } from "../settings/accounts/signIn.ts";
-import { NtfyFields } from "../settings/NtfySection.tsx";
+import { NtfySection } from "../settings/NtfySection.tsx";
 import { PairingCodeView } from "../settings/parts3/PairingCodeView.tsx";
 import { useApi } from "../context.ts";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Button } from "../ui/controls.tsx";
 import { CheckAgain, FixAction, StepMark, TestNotification } from "./parts.tsx";
-import { tailscaleStage, type Mark } from "./steps.ts";
+import { reachable, tailscaleStage, type Mark } from "./steps.ts";
 
 const ENGINES: { provider: AccountProvider; title: string }[] = [
   { provider: "claude", title: "Claude Code" },
@@ -121,12 +122,44 @@ function Line({ mark, children }: { mark: Mark; children: string }) {
   );
 }
 
-/** Tailscale running, shared at its address, then the pairing code in place. */
+/** Sharing Nest on the tailnet, which the daemon runs itself: no Terminal (B130). */
+function ShareButton({ onShared }: { onShared: (check: SetupCheck) => void }) {
+  const { actions } = useStore();
+  const api = useApi();
+  const [sharing, setSharing] = useState(false);
+  const share = () => {
+    setSharing(true);
+    api
+      .shareTailscale()
+      .then(onShared, (error: unknown) => {
+        actions.toast(error instanceof Error ? error.message : String(error), "error");
+      })
+      .finally(() => {
+        setSharing(false);
+      });
+  };
+  return (
+    <div className="su-again">
+      <Button kind="primary" disabled={sharing} onClick={share}>
+        Share with my devices
+      </Button>
+      {sharing && <Fireflies />}
+    </div>
+  );
+}
+
+/**
+ * Tailscale step by step, as far as the check says it has come: installed, signed in,
+ * shared, then the pairing code in place, never before Nest is reachable.
+ */
 export function TailscalePage({ check, checking, onCheck }: CheckedProps) {
   const { actions } = useStore();
-  const stage = tailscaleStage(check);
-  const paired = check?.state === "ok";
-  const pairing = stage === "shared" && !paired;
+  // The share's own answer, which can carry Tailscale's link to turn HTTPS on; a newer
+  // check from the guide replaces it.
+  const [shared, setShared] = useState<{ after: SetupCheck | undefined; answer: SetupCheck }>();
+  const shown = shared !== undefined && shared.after === check ? shared.answer : check;
+  const stage = tailscaleStage(shown);
+  const pairing = reachable(stage) && shown?.state !== "ok";
   const [code, setCode] = useState<PairingCode | null>(null);
   const newCode = useCallback(() => {
     void actions.pairingCode().then((created) => {
@@ -136,43 +169,51 @@ export function TailscalePage({ check, checking, onCheck }: CheckedProps) {
   useEffect(() => {
     if (pairing) newCode();
   }, [pairing, newCode]);
-  const address = check?.detail ?? "";
+  if (shown === undefined) return <CheckAgain checking={checking} onCheck={onCheck} />;
+  const onShared = (answer: SetupCheck) => {
+    setShared({ after: check, answer });
+    if (answer.stage !== "share") onCheck();
+  };
   return (
     <>
-      {check === undefined ? null : stage === "off" ? (
-        <Line mark="now">{check.message}</Line>
+      {stage === "install" || stage === "connect" ? (
+        <Line mark="now">{shown.message}</Line>
       ) : (
+        <Line mark="ok">Tailscale is running</Line>
+      )}
+      {stage === "install" && shown.fix !== null && <FixAction fix={shown.fix} />}
+      {stage === "share" && shown.fix !== null && (
         <>
-          <Line mark="ok">Tailscale is running</Line>
-          {stage === "unshared" ? (
-            <Line mark="now">Share Nest with your own devices</Line>
-          ) : (
-            <Line mark="ok">{`Shared with your devices at ${address}`}</Line>
-          )}
+          <Line mark="now">{shown.message}</Line>
+          <FixAction fix={shown.fix} />
         </>
       )}
-      {check?.fix != null && <FixAction fix={check.fix} />}
-      {paired && <Line mark="ok">Your iPhone is paired</Line>}
+      {stage === "share" && <ShareButton onShared={onShared} />}
+      {reachable(stage) && (
+        <Line mark="ok">{`Shared with your devices at ${shown.detail ?? ""}`}</Line>
+      )}
+      {shown.state === "ok" && <Line mark="ok">Your iPhone is paired</Line>}
       {pairing && <Line mark="now">Open that address on your iPhone and enter this code</Line>}
       {pairing && code !== null && (
         <PairingCodeView code={code} className="su-code" onNewCode={newCode} />
       )}
-      {!pairing && <CheckAgain checking={checking} onCheck={onCheck} />}
+      {!pairing && stage !== "share" && <CheckAgain checking={checking} onCheck={onCheck} />}
     </>
   );
 }
 
+/**
+ * The system's own notifications first, then ntfy, the optional part, as Settings >
+ * Notifications has them.
+ */
 export function NotificationsPage({ onSent }: { onSent: () => void }) {
   return (
     <>
       <TestNotification onSent={onSent} />
       <p className="su-line">Turn on notifications in Account &gt; Notifications on your phone.</p>
+      <NtfySection />
     </>
   );
-}
-
-export function NtfyPage() {
-  return <NtfyFields />;
 }
 
 export function FirstChatPage({

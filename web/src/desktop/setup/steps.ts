@@ -13,7 +13,6 @@ export type StepId =
   | "service"
   | "tailscale"
   | "notifications"
-  | "ntfy"
   | "secret_service"
   | "first_chat";
 
@@ -30,7 +29,6 @@ export const STEPS: readonly Step[] = [
   { id: "service", rail: "Background service", title: "Background service" },
   { id: "tailscale", rail: "Tailscale and iPhone", title: "Pair your iPhone" },
   { id: "notifications", rail: "Notifications", title: "Notifications" },
-  { id: "ntfy", rail: "ntfy", title: "ntfy" },
   { id: "secret_service", rail: "Secret Service", title: "Secret Service" },
   { id: "first_chat", rail: "First chat", title: "Send your first message" },
 ];
@@ -96,11 +94,18 @@ export function firstChatModel(state: State): DraftModel | null {
   return local === undefined || provider == null ? null : { provider, model: local.value };
 }
 
-export type TailscaleStage = "off" | "unshared" | "shared";
+export type TailscaleStage = "install" | "connect" | "share" | "pair" | "done";
 
-/** How far Tailscale has come, from what the check's fix asks for. */
+const TAILSCALE_STAGES: readonly string[] = ["install", "connect", "share", "pair", "done"];
+
+/** How far Tailscale has come, as the check says; before its answer, the start. */
 export function tailscaleStage(check: SetupCheck | undefined): TailscaleStage {
-  if (check === undefined) return "off";
-  if (check.fix === null) return "shared";
-  return check.fix.value.includes("serve") ? "unshared" : "off";
+  const stage = check?.stage ?? "install";
+  return TAILSCALE_STAGES.includes(stage) ? (stage as TailscaleStage) : "install";
 }
+
+/**
+ * Whether the phone can reach Nest, after the sharing step: before it, a pairing code is no
+ * use, so it does not show.
+ */
+export const reachable = (stage: TailscaleStage) => stage === "pair" || stage === "done";
