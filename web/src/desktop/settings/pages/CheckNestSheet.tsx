@@ -41,10 +41,14 @@ function CheckRow({ check }: { check: SetupCheck }) {
   );
 }
 
+/** One list, what matters most on top: missing, then warnings, the optional, what is fine. */
+const ranked = (checks: readonly SetupCheck[]) =>
+  checks.filter(shown).sort((a, b) => a.rank - b.rank);
+
 /** Every check with its message and fix, the same list `nest doctor` prints. */
 export function CheckNestSheet({ onClose }: { onClose: () => void }) {
   const { checks, checking, refresh } = useChecks();
-  const list = useMemo(() => checks?.filter(shown) ?? null, [checks]);
+  const list = useMemo(() => (checks === null ? null : ranked(checks)), [checks]);
   return (
     <SheetFrame
       title="Check Nest"

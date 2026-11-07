@@ -21,15 +21,16 @@ export function useSettingsChange() {
 
 /**
  * Opens a folder in the file manager, or with `reveal` shows a file in its folder, as the
- * Mac's LocalOpen; null outside the desktop app, where these buttons do not show.
+ * Mac's LocalOpen; null outside the desktop app, where these buttons do not show. With
+ * `create`, a folder not there yet, such as the skills folder on a new machine, is made first.
  */
-export function useOpenPath(): ((path: string, reveal?: boolean) => void) | null {
+export function useOpenPath(): ((path: string, reveal?: boolean, create?: boolean) => void) | null {
   const bridge = useBridge();
   const change = useSettingsChange();
   if (!bridge.native) return null;
-  return (path, reveal = false) => {
+  return (path, reveal = false, create = false) => {
     change(reveal ? "Could not show the file" : "Could not open the folder", () =>
-      bridge.openPath(path, reveal),
+      create ? bridge.openPath(path, reveal, true) : bridge.openPath(path, reveal),
     );
   };
 }

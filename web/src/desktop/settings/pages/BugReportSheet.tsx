@@ -1,4 +1,5 @@
 import type { SetupReport } from "../../../api/types.ts";
+import { useBridge } from "../../context.ts";
 import { SheetFrame } from "../../sheets/SheetFrame.tsx";
 import { useCopy } from "../../setup/useCopy.ts";
 import { Button } from "../../ui/controls.tsx";
@@ -7,7 +8,14 @@ import { shortPath, useOpenPath } from "../config/util.ts";
 /** The report in full, before anything else: Nest sends nothing, the file is the user's. */
 export function BugReportSheet({ report, onClose }: { report: SetupReport; onClose: () => void }) {
   const open = useOpenPath();
+  const bridge = useBridge();
   const { copied, copy } = useCopy(report.text);
+  // The issue opens in the browser for the user to read and submit; too long a report is
+  // attached by hand, so its file shows too.
+  const reportOnGitHub = () => {
+    void bridge.openExternal(report.issue_url);
+    if (report.attach_file) open?.(report.path, true);
+  };
   return (
     <SheetFrame
       title="Bug report"
@@ -28,6 +36,9 @@ export function BugReportSheet({ report, onClose }: { report: SetupReport; onClo
               Show the file
             </Button>
           )}
+          <Button kind="primary" size="large" onClick={reportOnGitHub}>
+            Report on GitHub
+          </Button>
         </>
       }
     >

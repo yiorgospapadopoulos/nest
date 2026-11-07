@@ -210,7 +210,7 @@ function SharedSection({ page }: { page: ConfigurationPage }) {
         {openPath !== null && (
           <Button
             onClick={() => {
-              openPath(skills.folder);
+              openPath(skills.folder, false, true);
             }}
           >
             Open folder
