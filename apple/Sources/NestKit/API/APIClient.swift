@@ -1101,8 +1101,12 @@ public struct APIClient: NestAPI {
         return answer.checks
     }
 
-    public func setupReport() async throws -> SetupReport {
-        try await call("POST", ["setup", "report"])
+    public func setupReport(answers: [SetupCheck]) async throws -> SetupReport {
+        try await call("POST", ["setup", "report"], body: SetupReportAsk(checks: answers))
+    }
+
+    public func shareTailscale() async throws -> SetupCheck {
+        try await call("POST", ["setup", "tailscale", "share"])
     }
 
     // MARK: Plumbing

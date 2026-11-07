@@ -6,7 +6,7 @@ public enum SystemPermission: Sendable, Equatable {
 }
 
 /// What only the app can answer (B130): the daemon's `notifications`, `dictation` and
-/// `permissions` checks say "The app checks this."; on the Mac these replace them.
+/// `permissions` checks say "Checked in the app."; on the Mac these replace them.
 public struct SystemAnswers: Sendable, Equatable {
     public var notifications: SystemPermission
     public var microphone: SystemPermission
@@ -43,6 +43,16 @@ public struct SystemAnswers: Sendable, Equatable {
             }
             return check
         }
+    }
+
+    /// The checks only the app can make, answered, for the bug report: the daemon puts them
+    /// in place of its own "Checked in the app." (B130).
+    public var reportChecks: [SetupCheck] {
+        filling([
+            SetupCheck(id: "notifications", title: "Notifications", state: .notApplicable),
+            SetupCheck(id: "dictation", title: "Dictation", state: .notApplicable),
+            SetupCheck(id: "permissions", title: "Mac permissions", state: .notApplicable),
+        ])
     }
 
     /// "Microphone: refused", as the guide's and Check Nest's lines say it.

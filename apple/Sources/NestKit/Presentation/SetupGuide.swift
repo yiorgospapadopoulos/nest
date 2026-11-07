@@ -2,9 +2,9 @@ import Foundation
 import Observation
 
 /// The setup guide's steps on the Mac (B130), in order. The Linux app's list has the Secret
-/// Service in Dictation's place.
+/// Service in Dictation's place. ntfy is the optional part of Notifications.
 public enum SetupStep: String, CaseIterable, Sendable, Identifiable {
-    case engine, git, github, service, tailscale, notifications, ntfy, dictation
+    case engine, git, github, service, tailscale, notifications, dictation
     case firstChat = "first_chat"
 
     /// Also its check's id.
@@ -18,7 +18,6 @@ public enum SetupStep: String, CaseIterable, Sendable, Identifiable {
         case .service: "Background service"
         case .tailscale: "Tailscale and iPhone"
         case .notifications: "Notifications"
-        case .ntfy: "ntfy"
         case .dictation: "Dictation"
         case .firstChat: "First chat"
         }
@@ -175,19 +174,15 @@ extension ModelCatalog {
     }
 }
 
-/// How far Tailscale has come, from what its check's fix asks for.
-public enum TailscaleStage: Sendable, Equatable {
-    case off, unshared, shared
+/// How far Tailscale has come, as its check's `stage` says; before its answer, the start.
+public enum TailscaleStage: String, Sendable, Equatable {
+    case install, connect, share, pair, done
 
     public init(_ check: SetupCheck?) {
-        guard let check else {
-            self = .off
-            return
-        }
-        guard let fix = check.fix else {
-            self = .shared
-            return
-        }
-        self = fix.value.contains("serve") ? .unshared : .off
+        self = check?.stage.flatMap(Self.init(rawValue:)) ?? .install
     }
+
+    /// Whether the phone can reach Nest, after the sharing step: before it, a pairing code is
+    /// no use, so it does not show.
+    public var reachable: Bool { self == .pair || self == .done }
 }

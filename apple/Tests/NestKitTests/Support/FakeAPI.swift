@@ -147,6 +147,8 @@ final class FakeAPI: NestAPI {
         var setup = SetupState(firstRun: false, localOnly: false)
         var setupChecks: [SetupCheck] = []
         var setupReport = SetupReport(path: "/data/report.txt", text: "Nest")
+        var reportAnswers: [SetupCheck]?
+        var tailscaleShare = SetupCheck(id: "tailscale", title: "Tailscale", state: .missing)
         /// Settings > Features (B103); a seen report answers it as it is then.
         var features = FeaturesCatalog(groups: [], newCount: 0)
         /// Settings > Performance (B115). A run marks its sections running; a recorded
@@ -1748,7 +1750,14 @@ final class FakeAPI: NestAPI {
         return try call("setupChecks") { $0.setupChecks }
     }
 
-    func setupReport() async throws -> SetupReport {
-        try call("setupReport") { $0.setupReport }
+    func setupReport(answers: [SetupCheck]) async throws -> SetupReport {
+        try call("setupReport") {
+            $0.reportAnswers = answers
+            return $0.setupReport
+        }
+    }
+
+    func shareTailscale() async throws -> SetupCheck {
+        try call("shareTailscale") { $0.tailscaleShare }
     }
 }

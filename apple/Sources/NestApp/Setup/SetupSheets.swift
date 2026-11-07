@@ -6,6 +6,7 @@ import SwiftUI
 enum SetupSheet: Equatable {
     case checks
     case report(SetupReport)
+    case uninstall
 }
 
 struct SetupSheets: View {
@@ -21,6 +22,7 @@ struct SetupSheets: View {
                     switch sheet {
                     case .checks: CheckNestSheet()
                     case .report(let report): BugReportSheet(report: report)
+                    case .uninstall: UninstallSheet()
                     }
                 }
                 .padding(40)
@@ -67,13 +69,14 @@ private struct SetupSheetFrame<Content: View, Footer: View>: View {
     }
 }
 
-/// Every check with its message and fix, the same list `nest doctor` prints.
+/// Every check with its message and fix, the same list `nest doctor` prints: one list, what
+/// matters most on top.
 private struct CheckNestSheet: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let store = shell.model.setup
-        let checks = shell.setupChecks?.filter(\.isShown)
+        let checks = shell.setupChecks.map(SetupCheck.ranked)
         SetupSheetFrame(title: "Check Nest") {
             if let checks {
                 ForEach(checks) { CheckRow(check: $0) }
@@ -150,11 +153,79 @@ private struct BugReportSheet: View {
             CopyButton(text: report.text, height: 30)
             // A remote daemon's file is on its machine.
             if !shell.isRemote {
-                Button("Show the file") {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: report.path)])
-                }
-                .buttonStyle(.nest(.soft, height: 30))
+                Button("Show the file") { showFile() }
+                    .buttonStyle(.nest(.soft, height: 30))
             }
+            Button("Report on GitHub") { reportOnGitHub() }
+                .buttonStyle(.nest(.primary, height: 30))
+                .disabled(URL(string: report.issueURL) == nil)
+        }
+    }
+
+    private func showFile() {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: report.path)])
+    }
+
+    /// The issue opens in the browser for the user to read and submit; too long a report is
+    /// attached by hand, so its file shows too.
+    private func reportOnGitHub() {
+        guard let url = URL(string: report.issueURL) else { return }
+        NSWorkspace.shared.open(url)
+        if report.attachFile, !shell.isRemote {
+            showFile()
+        }
+    }
+}
+
+/// Uninstall Nest's confirmation (B130), with the choice to delete chats, settings and secrets
+/// too, off by default, saying which. `nest uninstall` runs in a session of its own, so it
+/// outlives the app and the service, and the app quits.
+private struct UninstallSheet: View {
+    @Environment(AppController.self) private var controller
+    @Environment(Shell.self) private var shell
+    @State private var deleteData = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Uninstall Nest?")
+                .font(.ui(TypeSize.body, .semibold))
+                .padding(.bottom, 8)
+                .accessibilityAddTraits(.isHeader)
+            SetupLine(
+                text: deleteData
+                    ? "Nest, its background service, and your chats, settings and secrets are"
+                        + " deleted."
+                    : "Nest and its background service are removed. Your chats, settings and"
+                        + " secrets stay."
+            )
+            .padding(.bottom, 14)
+            HStack(spacing: 12) {
+                Text("Also delete chats, settings and secrets").font(.ui(TypeSize.ui))
+                Spacer(minLength: 8)
+                Switch(isOn: deleteData) { deleteData.toggle() }
+                    .accessibilityLabel("Also delete chats, settings and secrets")
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button("Cancel") { shell.setupSheet = nil }
+                    .buttonStyle(.nest(.soft, height: 30))
+                Button("Uninstall") { uninstall() }
+                    .buttonStyle(.nest(.destructive, height: 30))
+            }
+            .padding(.top, 18)
+        }
+        .foregroundStyle(Palette.t1)
+        .padding(20)
+        .frame(width: 420)
+        .sheetSurface()
+    }
+
+    private func uninstall() {
+        shell.setupSheet = nil
+        if controller.install.uninstall(deleteData: deleteData, spawner: DetachedSpawner()) {
+            NSApp.terminate(nil)
+        } else {
+            shell.show("Could not start the uninstall", kind: .failed)
         }
     }
 }

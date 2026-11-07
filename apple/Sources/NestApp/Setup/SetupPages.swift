@@ -13,8 +13,7 @@ struct SetupPage: View {
             switch flow.step {
             case .engine: EnginePage()
             case .tailscale: TailscalePage(check: check)
-            case .notifications: NotificationsStepPage(check: check)
-            case .ntfy: NtfyFields()
+            case .notifications: NotificationsStepPage()
             case .dictation: DictationStepPage()
             case .firstChat: FirstChatPage(disabled: !flow.canFinish(engineReady: engineReady))
             default: GenericPage(check: check)
@@ -118,7 +117,8 @@ private struct EngineCard<Trailing: View>: View {
     }
 }
 
-/// Tailscale running, shared at its address, then the pairing code in place.
+/// Tailscale step by step, as far as the check says it has come: installed, signed in,
+/// shared, then the pairing code in place, never before Nest is reachable (B130).
 private struct TailscalePage: View {
     let check: SetupCheck?
     @Environment(Shell.self) private var shell
@@ -126,35 +126,38 @@ private struct TailscalePage: View {
     var body: some View {
         let devices = shell.model.devices
         let stage = TailscaleStage(check)
-        let paired = check?.state == .ok
-        let pairing = stage == .shared && !paired
+        let pairing = stage.reachable && check?.state != .ok
         VStack(alignment: .leading, spacing: 12) {
             if let check {
-                if stage == .off {
+                if stage == .install || stage == .connect {
                     MarkLine(mark: .now, text: check.message)
                 } else {
                     MarkLine(mark: .ok, text: "Tailscale is running")
-                    if stage == .unshared {
-                        MarkLine(mark: .now, text: "Share Nest with your own devices")
-                    } else {
-                        MarkLine(
-                            mark: .ok,
-                            text: "Shared with your devices at \(check.detail ?? "")")
-                    }
                 }
-                if let fix = check.fix {
+                if stage == .install, let fix = check.fix {
                     FixAction(fix: fix)
                 }
-            }
-            if paired {
-                MarkLine(mark: .ok, text: "Your iPhone is paired")
+                if stage == .share {
+                    // Tailscale's link to turn HTTPS on for the tailnet, then share again.
+                    if let fix = check.fix {
+                        MarkLine(mark: .now, text: check.message)
+                        FixAction(fix: fix)
+                    }
+                    ShareButton()
+                }
+                if stage.reachable {
+                    MarkLine(mark: .ok, text: "Shared with your devices at \(check.detail ?? "")")
+                }
+                if check.state == .ok {
+                    MarkLine(mark: .ok, text: "Your iPhone is paired")
+                }
             }
             if pairing {
                 MarkLine(mark: .now, text: "Open that address on your iPhone and enter this code")
                 if let code = devices.pairingCode {
                     PairingCodeView(code: code).padding(.leading, 22)
                 }
-            } else {
+            } else if stage != .share {
                 CheckAgain()
             }
         }
@@ -169,9 +172,28 @@ private struct TailscalePage: View {
     }
 }
 
-/// The system's answer, with System Settings once refused, then the phone's own switch.
+/// Sharing Nest on the tailnet, which the daemon runs itself: no Terminal.
+private struct ShareButton: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let store = shell.model.setup
+        HStack(spacing: 8) {
+            Button("Share with my devices") {
+                shell.settingsChange("Could not share Nest") { try await store.shareTailscale() }
+            }
+            .buttonStyle(.nest(.primary))
+            .disabled(store.sharing)
+            if store.sharing {
+                Fireflies()
+            }
+        }
+    }
+}
+
+/// The system's answer, with System Settings once refused, then the phone's own switch, then
+/// ntfy, the optional part, as Settings > Notifications has them.
 private struct NotificationsStepPage: View {
-    let check: SetupCheck?
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -187,6 +209,7 @@ private struct NotificationsStepPage: View {
                 .buttonStyle(.nest(.soft))
         }
         SetupLine(text: "Turn on notifications in Account > Notifications on your phone.")
+        NtfySection()
     }
 }
 

@@ -34,9 +34,19 @@ final class AppController {
         dataFolder: daemons.local.dataFolder)
 
     init() {
-        service = .local(repoPath: AppBuild.checkout)
-        daemons = DaemonList(
-            local: DaemonLocation(environment: ProcessInfo.processInfo.environment))
+        let environment = ProcessInfo.processInfo.environment
+        let local = DaemonLocation(environment: environment)
+        daemons = DaemonList(local: local)
+        service = .local(
+            repoPath: AppBuild.checkout,
+            releaseURL: ReleasedInstall(dataFolder: local.dataFolder, environment: environment)
+                .releaseURL)
+    }
+
+    /// This Mac's install, read from its data folder while the daemon is down.
+    var install: ReleasedInstall {
+        ReleasedInstall(
+            dataFolder: daemons.local.dataFolder, environment: ProcessInfo.processInfo.environment)
     }
 
     /// A controller around a prepared shell, for snapshots.
@@ -86,8 +96,8 @@ final class AppController {
         switch choice {
         case .local:
             let model = try await Self.localModel(daemons.local)
-            model.updates.reopen = { [daemon = daemons.local.baseURL] in
-                Self.reopen(daemon: daemon)
+            model.updates.reopen = { [weak self, daemon = daemons.local.baseURL] newApp in
+                self?.reopen(daemon: daemon, newApp: newApp)
             }
             model.updates.followApp = { [weak self] file in self?.follow(file) }
             return model
@@ -100,9 +110,14 @@ final class AppController {
         }
     }
 
-    /// Quits so the app reopens once `daemon` restarted. A reopen that cannot start leaves
-    /// the app running, which then reconnects.
-    private static func reopen(daemon: URL) {
+    /// Quits so the app reopens once `daemon` restarted: with a new app, the swap's helper
+    /// opens that one once the daemon answers on its version. A reopen that cannot start
+    /// leaves the app running, which then reconnects.
+    private func reopen(daemon: URL, newApp: String?) {
+        if let newApp, swapper.afterUpdate(to: newApp, daemon: daemon) {
+            NSApp.terminate(nil)
+            return
+        }
         let arguments = AppRelaunch.afterDaemonRestart(
             appPath: Bundle.main.bundleURL.path, pid: getpid(), daemon: daemon,
             environment: ProcessInfo.processInfo.environment)
@@ -215,18 +230,46 @@ final class AppController {
 
     /// Starts or restarts the daemon's service, then connects again once it is up.
     func startService() {
-        // A test daemon is not the service: launchd would restart the real one.
-        guard daemons.local.baseURL == APIClient.defaultBaseURL else {
+        Task {
+            await runService()
             connect()
+        }
+    }
+
+    private func runService() async {
+        // A test daemon is not the service: launchd would restart the real one.
+        guard daemons.local.baseURL == APIClient.defaultBaseURL, await service.start() else {
             return
         }
+        // launchd returns before the daemon listens; give it a moment.
+        try? await Task.sleep(for: .seconds(1.5))
+    }
+
+    /// The window's connection changed. This Mac's daemon down at launch gets its service
+    /// started once by the app itself before the window asks the user for anything (B130).
+    func noteConnection(_ connection: ConnectionState) {
+        guard let shell else { return }
+        let update = connection.isUnreachable ? install.updating() : nil
+        if shell.noteConnection(connection, update: update) {
+            startServiceOnce()
+        }
+    }
+
+    /// While an update has the daemon down: its note read again, and the daemon tried again,
+    /// so the window moves on as soon as it is back.
+    func followUpdate() {
+        guard let shell else { return }
+        if shell.noteUpdate(install.updating()) {
+            startServiceOnce()
+        } else {
+            connect()
+        }
+    }
+
+    private func startServiceOnce() {
         Task {
-            guard await service.start() else {
-                connect()
-                return
-            }
-            // launchd returns before the daemon listens; give it a moment.
-            try? await Task.sleep(for: .seconds(1.5))
+            await runService()
+            shell?.serviceStartFinished()
             connect()
         }
     }

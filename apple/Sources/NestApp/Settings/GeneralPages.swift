@@ -21,6 +21,7 @@ struct GeneralPage: View {
             UpdateRow()
             UndoUpdateRow()
             SetupRows()
+            UninstallRow()
         }
     }
 
@@ -297,11 +298,27 @@ private struct SetupRows: View {
             }
             Button("Make") {
                 shell.settingsChange("Could not make the report") {
-                    shell.setupSheet = .report(try await store.makeReport())
+                    shell.setupSheet = .report(try await shell.makeReport())
                 }
             }
             .buttonStyle(.nest(.soft))
             .disabled(store.reporting)
+        }
+    }
+}
+
+/// Uninstall Nest, on a released install of This Mac only (B130); the confirmation is a
+/// sheet over Settings.
+private struct UninstallRow: View {
+    @Environment(AppController.self) private var controller
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        if AppBuild.checkout == nil, !shell.isRemote, controller.install.nestCommand != nil {
+            SettingsRow(label: "Uninstall Nest") {
+                Button("Uninstall") { shell.setupSheet = .uninstall }
+                    .buttonStyle(.nest(.soft))
+            }
         }
     }
 }

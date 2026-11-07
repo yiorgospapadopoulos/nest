@@ -408,8 +408,12 @@ public protocol NestAPI: Sendable {
     func finishSetup() async throws
     /// Every check of the guide and Check Nest; it can take several seconds.
     func setupChecks() async throws -> [SetupCheck]
-    /// Writes the bug report and answers its text; nothing is sent anywhere.
-    func setupReport() async throws -> SetupReport
+    /// Writes the bug report and answers its text; nothing is sent anywhere. `answers` are
+    /// the app's own for the checks only it can make, which replace the daemon's.
+    func setupReport(answers: [SetupCheck]) async throws -> SetupReport
+    /// Runs `tailscale serve` for the user; the Tailscale check again, with the link to turn
+    /// HTTPS on when Tailscale asks for it.
+    func shareTailscale() async throws -> SetupCheck
 }
 
 extension NestAPI {

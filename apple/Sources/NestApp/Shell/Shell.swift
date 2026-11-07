@@ -152,7 +152,7 @@ final class Shell {
     let permissions = SystemPermissions()
     /// Whether the island may use the free menu bar space.
     @ObservationIgnored var island: () -> Bool = { false }
-    /// This Mac's daemon is down at launch (B130, screen Z).
+    /// This Mac's daemon is down at launch, or for an update (B130, screen Z).
     private(set) var daemonDown = DaemonDownWatch()
     var projectTab = ProjectSettingsTab.general
     /// Settings > Configuration's open folds, such as "claude:plugins" (B97).
@@ -1896,13 +1896,43 @@ final class Shell {
         }
     }
 
-    func noteConnection(_ connection: ConnectionState) {
-        daemonDown.note(connection, remote: isRemote)
+    /// True when the app should start the service itself now (`DaemonDownWatch`). `update`
+    /// is This Mac's update under way, read while the daemon is down.
+    func noteConnection(_ connection: ConnectionState, update: UpdateUnderWay?) -> Bool {
+        let reading = daemonDown.note(update: isRemote ? nil : update)
+        return daemonDown.note(connection, remote: isRemote) || reading
+    }
+
+    /// The update's note read again while the daemon is down; true as `noteConnection`.
+    func noteUpdate(_ update: UpdateUnderWay?) -> Bool {
+        daemonDown.note(update: isRemote ? nil : update)
+    }
+
+    func serviceStartFinished() {
+        daemonDown.startFinished()
     }
 
     /// The daemon's checks with this Mac's answers in place.
     var setupChecks: [SetupCheck]? {
         model.setup.checks.map { permissions.answers(accessibility: island()).filling($0) }
+    }
+
+    /// The bug report, with this Mac's own answers for the checks only it can make.
+    func makeReport() async throws -> SetupReport {
+        await permissions.refresh()
+        let answers = permissions.answers(accessibility: island()).reportChecks
+        return try await model.setup.makeReport(answers: answers)
+    }
+
+    /// Makes a folder that is not there yet, such as the Claude skills folder on a new Mac,
+    /// then opens it; only in the home folder.
+    func openFolder(making path: String) {
+        do {
+            try HomeFolder.make(path, home: FileManager.default.homeDirectoryForCurrentUser)
+            LocalOpen.folder(path)
+        } catch {
+            show(error, doing: "Could not open the folder")
+        }
     }
 
     /// What the first chat opens on.
