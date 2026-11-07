@@ -102,6 +102,33 @@ public final class AppSwapper {
         return .swapping
     }
 
+    /// Relaunch to update with a new app (B130): starts the helper that waits for the daemon
+    /// to come back and opens the new app once, so the old one does not load again only to
+    /// quit for the swap. True when it started and the app should quit; false leaves the
+    /// plain reopen, as for a developer build.
+    public func afterUpdate(to version: String, daemon: URL) -> Bool {
+        guard let ownVersion, !developerBuild, appPath.hasSuffix(".app"), ownVersion != version,
+            Self.isPlain(version)
+        else { return false }
+        let daemons = dataFolder.appending(path: "daemon", directoryHint: .isDirectory)
+        let zip = daemons.appending(path: "\(version)/app-file").path
+        guard isOurs(zip) else { return false }
+        // A swap that does not stick opens this app again, whose connect tries once more as
+        // after any update, then says so.
+        let arguments = AppRelaunch.afterUpdate(
+            appPath: appPath, zipPath: zip, version: version, pid: pid, daemon: daemon,
+            updateFile: daemons.appending(path: "update.json").path, environment: environment)
+        return (try? spawner.spawn(AppRelaunch.shell, arguments)) != nil
+    }
+
+    /// A version is a folder's name: no separators and no `..`.
+    private static func isPlain(_ version: String) -> Bool {
+        !version.isEmpty && !version.contains("..")
+            && version.allSatisfy {
+                $0.isASCII && ($0.isLetter || $0.isNumber || ".+-_".contains($0))
+            }
+    }
+
     /// `<data>/daemon/<version>/app-file`: the path comes from the daemon and what it names
     /// gets run, so nothing else is accepted.
     private func isOurs(_ path: String) -> Bool {

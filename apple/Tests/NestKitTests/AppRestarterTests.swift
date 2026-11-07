@@ -164,4 +164,25 @@ final class FakeSpawner: ProcessSpawner {
             try DetachedSpawner().spawn("/no/such/program", [])
         }
     }
+
+    /// The helpers and `nest uninstall` lead a session of their own (B130), so they outlive
+    /// the app and whatever ends its session.
+    @Test func theProgramLeadsASessionOfItsOwn() throws {
+        let marker = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: marker) }
+
+        try DetachedSpawner().spawn(
+            "/bin/sh",
+            [
+                "-c", "/bin/ps -o stat= -p $$ > \"$1.part\"; mv \"$1.part\" \"$1\"", "sh",
+                marker.path,
+            ])
+
+        let deadline = Date().addingTimeInterval(5)
+        while !FileManager.default.fileExists(atPath: marker.path) && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        // `s` in ps's state: the session leader.
+        #expect(try String(contentsOf: marker, encoding: .utf8).contains("s"))
+    }
 }

@@ -62,6 +62,30 @@ import Testing
     @Test func aHelperThatCannotStartKeepsTheAppOpen() {
         #expect(swapper(spawner: FakeSpawner(fails: true)).follow(Self.file) == .failed("1.2.0"))
     }
+
+    static let daemon = URL(string: "http://127.0.0.1:8765")!
+
+    /// Relaunch to update with a new app starts the one helper that opens it once (B130).
+    @Test func aRelaunchWithANewAppStartsTheHelperThatOpensItOnce() throws {
+        #expect(swapper().afterUpdate(to: "1.2.0", daemon: Self.daemon))
+        let arguments = try #require(spawner.spawned.first)
+        #expect(arguments.first == AppRelaunch.shell)
+        let script = try #require(arguments.last)
+        #expect(script.contains("'/data/daemon/1.2.0/app-file'"))
+        #expect(script.contains("'/data/daemon/update.json'"))
+        #expect(script.contains("'http://127.0.0.1:8765/api/health'"))
+    }
+
+    @Test func aDeveloperBuildOrAStrangeVersionKeepsThePlainReopen() {
+        #expect(!swapper(developer: true).afterUpdate(to: "1.2.0", daemon: Self.daemon))
+        #expect(!swapper(own: "1.2.0").afterUpdate(to: "1.2.0", daemon: Self.daemon))
+        #expect(!swapper().afterUpdate(to: "../../etc", daemon: Self.daemon))
+        #expect(!swapper().afterUpdate(to: "1.2/../1.3", daemon: Self.daemon))
+        #expect(
+            !swapper(spawner: FakeSpawner(fails: true)).afterUpdate(
+                to: "1.2.0", daemon: Self.daemon))
+        #expect(spawner.spawned.isEmpty)
+    }
 }
 
 /// The swap's script itself, run on real folders with spaces in their paths; only `open` is
@@ -185,5 +209,172 @@ import Testing
         #expect(try version(of: app).contains("echo old"))
         #expect(try openedPaths() == [app.path])
         #expect(leftovers.isEmpty)
+    }
+}
+
+/// The helper after Relaunch to update (B130), run for real against a stand-in daemon that
+/// serves `/api/health` from a folder, and a stand-in `open`.
+@Suite(.serialized) struct AfterUpdateScriptTests {
+    let root: URL
+    let app: URL
+    let zip: URL
+    let opened: URL
+    let health: URL
+    let updateFile: URL
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory
+            .appending(path: "nest after update \(UUID().uuidString)", directoryHint: .isDirectory)
+        app = root.appending(path: "My Apps/Nest.app", directoryHint: .isDirectory)
+        zip = root.appending(path: "the data/daemon/0.2.0/app-file")
+        opened = root.appending(path: "opened")
+        health = root.appending(path: "served/api/health")
+        updateFile = root.appending(path: "the data/daemon/update.json")
+        let manager = FileManager.default
+        for folder in [zip, health] {
+            try manager.createDirectory(
+                at: folder.deletingLastPathComponent(), withIntermediateDirectories: true)
+        }
+        try Self.makeApp(at: app, version: "old")
+        let new = root.appending(path: "built/Nest.app", directoryHint: .isDirectory)
+        try Self.makeApp(at: new, version: "new")
+        _ = try Self.run("/usr/bin/ditto", ["-c", "-k", "--keepParent", new.path, zip.path])
+        let bin = root.appending(path: "bin", directoryHint: .isDirectory)
+        try manager.createDirectory(at: bin, withIntermediateDirectories: true)
+        try Self.tool(bin.appending(path: "open"), "printf '%s\\n' \"$@\" >> \"$OPENED\"")
+    }
+
+    private static func tool(_ path: URL, _ body: String) throws {
+        try "#!/bin/sh\n\(body)\n".write(to: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path.path)
+    }
+
+    private static func makeApp(at app: URL, version: String) throws {
+        let binary = app.appending(path: "Contents/MacOS/Nest")
+        try FileManager.default.createDirectory(
+            at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try tool(binary, "echo \(version)")
+    }
+
+    private static func run(_ program: String, _ arguments: [String]) throws -> Process {
+        let process = Process()
+        process.executableURL = URL(filePath: program)
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        return process
+    }
+
+    /// A plain HTTP server on a free port, serving `served/`; its port.
+    private func serve() throws -> (Process, Int) {
+        let portFile = root.appending(path: "port")
+        let server = Process()
+        server.executableURL = URL(filePath: "/usr/bin/python3")
+        server.arguments = [
+            "-c",
+            "import http.server, os, sys\n"
+                + "os.chdir(sys.argv[1])\n"
+                + "class Quiet(http.server.SimpleHTTPRequestHandler):\n"
+                + "    def log_message(self, *args): pass\n"
+                + "s = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Quiet)\n"
+                + "open(sys.argv[2], 'w').write(str(s.server_port))\n"
+                + "s.serve_forever()\n",
+            root.appending(path: "served").path, portFile.path,
+        ]
+        try server.run()
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            if let text = try? String(contentsOf: portFile, encoding: .utf8), let port = Int(text) {
+                return (server, port)
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        server.terminate()
+        throw CocoaError(.fileReadNoSuchFile)
+    }
+
+    private func answer(_ version: String) throws {
+        try #"{"status":"ok","version":"\#(version)","machine":"m"}"#
+            .write(to: health, atomically: true, encoding: .utf8)
+    }
+
+    private func updating(_ on: Bool) throws {
+        let note =
+            on
+            ? #"{"from_version":"0.1.0","to_version":"0.2.0","started_at":"2026-11-07T10:00:00+00:00"}"#
+            : "null"
+        try #"{"ready":null,"updating":\#(note),"previous":"0.1.0"}"#
+            .write(to: updateFile, atomically: true, encoding: .utf8)
+    }
+
+    /// Starts the helper for a process that has already quit; it runs in the background.
+    private func startHelper(port: Int) throws -> Process {
+        let finished = try Self.run("/usr/bin/true", [])
+        let arguments = AppRelaunch.afterUpdate(
+            appPath: app.path, zipPath: zip.path, version: "0.2.0",
+            pid: finished.processIdentifier,
+            daemon: try #require(URL(string: "http://127.0.0.1:\(port)")),
+            updateFile: updateFile.path, environment: [:])
+        let helper = Process()
+        helper.executableURL = URL(filePath: AppRelaunch.shell)
+        helper.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = root.appending(path: "bin").path + ":/usr/bin:/bin"
+        environment["OPENED"] = opened.path
+        helper.environment = environment
+        try helper.run()
+        return helper
+    }
+
+    private func finish(_ helper: Process, within seconds: Double) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while helper.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        let finished = !helper.isRunning
+        if !finished {
+            helper.terminate()
+        }
+        return finished
+    }
+
+    private func version() throws -> String {
+        try String(contentsOf: app.appending(path: "Contents/MacOS/Nest"), encoding: .utf8)
+    }
+
+    private func openedPaths() -> [String] {
+        ((try? String(contentsOf: opened, encoding: .utf8)) ?? "")
+            .split(separator: "\n").map(String.init)
+    }
+
+    @Test func theNewVersionAnsweringSwapsAndOpensTheNewAppOnce() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (server, port) = try serve()
+        defer { server.terminate() }
+        try updating(true)
+        try answer("0.1.0")
+        let helper = try startHelper(port: port)
+        // Regression: the old daemon, still answering just after the relaunch, is not the
+        // update going back.
+        Thread.sleep(forTimeInterval: 1.5)
+        #expect(helper.isRunning)
+        #expect(openedPaths().isEmpty)
+
+        try answer("0.2.0")
+        #expect(finish(helper, within: 10))
+        #expect(try version().contains("echo new"))
+        #expect(openedPaths() == [app.path])
+    }
+
+    @Test func anUpdateThatWentBackOpensTheOldAppAsItIs() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (server, port) = try serve()
+        defer { server.terminate() }
+        try updating(false)
+        try answer("0.1.0")
+        let helper = try startHelper(port: port)
+        #expect(finish(helper, within: 10))
+        #expect(try version().contains("echo old"))
+        #expect(openedPaths() == [app.path])
     }
 }

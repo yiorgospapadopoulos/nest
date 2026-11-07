@@ -62,9 +62,10 @@ public final class UpdatesStore {
     public private(set) var asking: RestartQuestion?
     @ObservationIgnored private var checked = false
     @ObservationIgnored private var reading = false
-    /// Quits and reopens the app once the daemon accepted a restart. Set only for This
+    /// Quits and reopens the app once the daemon accepted a restart, given the new app's
+    /// version when a relaunch brings one, so that one opens once (B130). Set only for This
     /// Mac's daemon: on a remote one the app stays and reconnects.
-    @ObservationIgnored public var reopen: (@MainActor () -> Void)?
+    @ObservationIgnored public var reopen: (@MainActor (String?) -> Void)?
     /// Told the app that belongs to the daemon on every connect; `AppSwapper` keeps it to
     /// once a launch. Set only for This Mac's daemon: a remote's file is on its machine.
     @ObservationIgnored public var followApp: (@MainActor (AppFile) -> Void)?
@@ -144,6 +145,7 @@ public final class UpdatesStore {
     public func run(_ kind: UpdateRestart) async throws {
         asking = nil
         restarting = kind
+        let newApp = kind == .relaunch ? status?.app?.version : nil
         do {
             switch kind {
             case .relaunch: try await api.relaunchUpdate()
@@ -154,7 +156,7 @@ public final class UpdatesStore {
             await load()
             throw error
         }
-        reopen?()
+        reopen?(newApp)
     }
 
     public func cancel() {

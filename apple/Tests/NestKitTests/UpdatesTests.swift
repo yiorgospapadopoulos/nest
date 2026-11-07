@@ -202,7 +202,7 @@ import Testing
 
     @Test func theAppReopensOnlyOnceTheDaemonAccepted() async throws {
         var reopened = 0
-        store.reopen = { reopened += 1 }
+        store.reopen = { _ in reopened += 1 }
         api.set { $0.updates = Self.ready }
         await store.load()
         api.fail("relaunchUpdate", with: APIError.conflict("No update is ready"))
@@ -217,6 +217,20 @@ import Testing
 
         try await store.run(.undo)
         #expect(reopened == 2)
+    }
+
+    /// Regression (B130): with a new app the reopen is told its version, so the swap's helper
+    /// opens it once instead of the old app loading again only to quit for the swap.
+    @Test func aRelaunchWithANewAppTellsTheReopenItsVersion() async throws {
+        var told: [String?] = []
+        store.reopen = { told.append($0) }
+        let app = AppUpdate(version: "1.2.0", notes: "")
+        api.set { $0.updates = EngineUpdates(state: .ready, canUndo: true, app: app) }
+        await store.load()
+
+        try await store.run(.relaunch)
+        try await store.run(.undo)
+        #expect(told == ["1.2.0", nil])
     }
 
     @Test func withoutAReopenTheAppStaysUntilTheDaemonIsBack() async throws {
