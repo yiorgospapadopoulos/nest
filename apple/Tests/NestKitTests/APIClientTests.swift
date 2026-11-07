@@ -40,7 +40,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         """
     static let storageJSON = """
         {"total_bytes": 10, "chats_bytes": 4, "attachments_bytes": 3, "artifacts_bytes": 0,
-         "other_bytes": 3}
+         "engines_bytes": 1, "backups_bytes": 1, "logs_bytes": 0, "other_bytes": 1}
         """
     static let githubJSON = """
         {"state": "signed_in", "login": "octo", "checked_at": "2026-10-17T09:00:00Z"}
