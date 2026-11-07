@@ -23,6 +23,7 @@ dependencies = [
 
 [project.scripts]
 nestd = "nestd.cli:main"
+nest = "nestd.doctor.command:main"
 
 [dependency-groups]
 dev = [
