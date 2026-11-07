@@ -25,7 +25,7 @@ curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/download/
 
 It needs no developer tools and nothing else installed. It downloads Nest, checks every file against its sha256, starts the background service and opens the app, whose guide walks you through signing in to an engine, `git`, GitHub, your iPhone and a first chat. You can skip every step but one: Nest needs one engine, either your own Claude or ChatGPT plan or local models. Settings > General > Set up Nest opens the guide again.
 
-Nest goes in `/Applications` on a Mac and in your app menu on Linux, with no `sudo`. It changes no shell files: if `~/.local/bin` is not on your `PATH`, the script prints the line to add. Run the same line again at any time to repair an install; it keeps your chats. It refuses to run over a Nest that runs from a checkout.
+Nest goes in `/Applications` on a Mac and in your app menu on Linux, with no `sudo`. It changes no shell files: if `~/.local/bin` is not on your `PATH`, the script prints the line to add. Run the same line again at any time to repair an install; it keeps your chats. When the background service is down, Nest first starts it again itself, and only shows this line if that fails. It refuses to run over a Nest that runs from a checkout.
 
 On Linux Nest needs a systemd user session and the Secret Service, which Ubuntu has. Without them the script says what is missing and stops.
 
@@ -33,15 +33,15 @@ Downloading the Mac app from the Releases page in a browser also works, but as t
 
 ### Updates
 
-When a new Nest is out, the app downloads it in the background, checks it runs, and only then shows the strip. Relaunch to update installs it together with any engine updates, after a backup of the database in `backups-update/`, and permissions stay. If the new version does not start, Nest goes back to the old one and the old database by itself and tells you. Undo update in Settings > General goes back one version, unless the update changed the database. Updates start from the Mac and Linux apps; the iPhone app follows the daemon.
+When a new Nest is out, the app downloads it in the background, checks it runs, and only then shows the strip. Relaunch to update installs it together with any engine updates, after a backup of the database in `backups-update/`, and permissions stay. While it updates, the app says so. If the new version does not start, Nest goes back to the old one and the old database by itself, within seconds when it keeps crashing and after 2 minutes when it hangs, and tells you. Undo update in Settings > General goes back one version, unless the update changed the database. Updates start from the Mac and Linux apps; the iPhone app follows the daemon.
 
 ### Something's wrong
 
-`nest doctor` says in plain words what is wrong and how to fix it, and it works with the daemon down. Settings > General > Check Nest runs the same checks. `nest doctor --report`, or Make a bug report in the same place, writes a file to `reports/` in Nest's data folder with versions, check results and the end of the log, with tokens, keys, URL credentials, emails and home paths removed. Nest sends it nowhere: read it, then attach it to a GitHub issue if you want to.
+`nest doctor` says in plain words what is wrong and how to fix it, and it works with the daemon down. Settings > General > Check Nest runs the same checks. `nest doctor --report`, or Make a bug report in the same place, writes a file to `reports/` in Nest's data folder with versions, check results and the end of the log, with tokens, keys, URL credentials, emails and home paths removed. Nest sends it nowhere itself: read it, then Report on GitHub opens a new issue with the report filled in for you to send (or asks you to attach the file, when it is too long).
 
 ### Uninstall
 
-`nest uninstall` stops the service and removes the app, the `nest` command and Nest's programs. It keeps your chats, settings and secrets, says where they are, and installing again brings them back. `nest uninstall --delete-data` deletes those too. It leaves `tailscale serve` alone and tells you how to stop it.
+Settings > General > Uninstall Nest, or `nest uninstall` in a terminal, stops the service and removes the app, the `nest` command and Nest's programs. It keeps your chats, settings and secrets, says where they are, and installing again brings them back. Choose to delete them too in the app, or run `nest uninstall --delete-data`. It leaves `tailscale serve` alone and tells you how to stop it.
 
 ## Layout
 
