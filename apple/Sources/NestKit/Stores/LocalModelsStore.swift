@@ -16,6 +16,9 @@ public final class LocalModelsStore {
     public private(set) var usage: LocalUsage?
     /// Nil until read.
     public private(set) var setup: SetupState?
+    /// Asked for once since this store began, whatever the answer: until then the window
+    /// cannot tell whether the guide shows.
+    public private(set) var setupAsked = false
     /// Chats whose server did not answer, by session id.
     public private(set) var serverDown: [String: LocalServerDown] = [:]
     /// Apps whose server is being started.
@@ -46,6 +49,7 @@ public final class LocalModelsStore {
         if let setup = try? await api.setup() {
             self.setup = setup
         }
+        setupAsked = true
         await loadUsage()
     }
 
@@ -61,6 +65,10 @@ public final class LocalModelsStore {
     public var signInOptional: Bool { localOnly || hasModels }
 
     public var isFirstRun: Bool { setup?.firstRun == true }
+
+    /// Whether this is a first run, nil until the daemon was asked. One that does not answer
+    /// counts as no first run, so the window does not wait for ever.
+    public var firstRun: Bool? { setupAsked ? isFirstRun : nil }
 
     /// The local model a chat's model value names.
     public func model(_ value: String?) -> LocalModel? {

@@ -48,17 +48,27 @@ public struct DaemonDownWatch: Sendable, Equatable {
     public var isDown: Bool { screen != .none }
 
     /// True when the app should start the service now: once, and never during an update,
-    /// whose watcher is at work. `startFinished()` follows it.
-    public mutating func note(_ connection: ConnectionState, remote: Bool) -> Bool {
-        if connection == .connected {
+    /// whose watcher is at work. `startFinished()` follows it. `update` is This Mac's update
+    /// under way, as `update.json` says now. A try only starting tells nothing and changes
+    /// nothing: the updating screen starts one every second, and taking it for "no update"
+    /// had that screen flicker out and back each time, starting the service mid-update.
+    public mutating func note(
+        _ connection: ConnectionState, remote: Bool, update: UpdateUnderWay?
+    ) -> Bool {
+        switch connection {
+        case .connected:
             connected = true
             lost = false
             screen = .none
             return false
-        }
-        if !connected, !remote, case .reconnecting(let attempt, _) = connection, attempt > 1 {
+        case .connecting:
+            return false
+        case .reconnecting(let attempt, _) where !connected && !remote && attempt > 1:
             lost = true
+        default:
+            break
         }
+        self.update = remote ? nil : update
         return settle()
     }
 

@@ -16,7 +16,8 @@ struct RootView: View {
                     ShellView().environment(shell).id(ObjectIdentifier(shell))
                 }
             case .loading:
-                StartupView(title: "Starting", message: nil, retry: nil)
+                // Only the background until the guide or the projects can show (B130).
+                StartupView(title: nil, message: nil, retry: nil)
             case .failed(let message):
                 StartupView(
                     title: "Nest could not start", message: message, retry: controller.start)
@@ -40,6 +41,15 @@ struct ShellView: View {
     @State private var fullScreen = false
     @State private var windowSize = CGSize.zero
 
+    /// The guide or the projects, never the projects for a moment before the guide.
+    private var content: WindowContent {
+        let firstRun = shell.model.local.firstRun
+        return WindowContent(
+            daemonDown: shell.daemonDown.isDown, guideOpen: shell.guide != nil,
+            // A snapshot shows what it set up, read or not.
+            firstRun: snapshot ? firstRun ?? false : firstRun)
+    }
+
     var body: some View {
         let settings = shell.settings
         // Offscreen there is no desktop to show through: the window draws opaque.
@@ -47,11 +57,16 @@ struct ShellView: View {
             reduceTransparency: reduceTransparency || snapshot, fullScreen: fullScreen)
         ZStack(alignment: .top) {
             WindowBackground(backdrop: backdrop, image: shell.chatBackground?.image)
-            if shell.daemonDown.isDown {
+            switch content {
+            case .daemonDown:
                 DaemonDownView()
-            } else if let guide = shell.guide {
-                SetupGuideView(flow: guide)
-            } else {
+            case .guide:
+                if let guide = shell.guide {
+                    SetupGuideView(flow: guide)
+                }
+            case .blank:
+                EmptyView()
+            case .projects:
                 VStack(spacing: 0) {
                     // No line under the tabs: the project bar it divided off is gone (B73).
                     TabStrip(fullScreen: fullScreen)
@@ -438,7 +453,8 @@ struct ToastView: View {
 }
 
 private struct StartupView: View {
-    let title: String
+    /// Nil draws the background only.
+    let title: String?
     let message: String?
     let retry: (() -> Void)?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -447,24 +463,23 @@ private struct StartupView: View {
     var body: some View {
         ZStack {
             WindowBackground(backdrop: .of(reduceTransparency: reduceTransparency || offscreen))
-            VStack(spacing: 10) {
-                if retry == nil {
-                    Fireflies()
+            if let title {
+                VStack(spacing: 10) {
+                    Text(title).font(.ui(TypeSize.headline, .semibold))
+                    if let message {
+                        Text(message)
+                            .font(.ui(TypeSize.ui))
+                            .foregroundStyle(Palette.t2)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 360)
+                    }
+                    if let retry {
+                        Button("Try again", action: retry).buttonStyle(.nest(.primary))
+                    }
                 }
-                Text(title).font(.ui(TypeSize.headline, .semibold))
-                if let message {
-                    Text(message)
-                        .font(.ui(TypeSize.ui))
-                        .foregroundStyle(Palette.t2)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 360)
-                }
-                if let retry {
-                    Button("Try again", action: retry).buttonStyle(.nest(.primary))
-                }
+                .padding(28)
+                .sheetSurface()
             }
-            .padding(28)
-            .sheetSurface()
         }
     }
 }
