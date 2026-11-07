@@ -180,6 +180,58 @@ pub fn reopen(install: &Install, scrub: &[String]) -> Result<(), String> {
     relaunch(install, None, std::process::id(), scrub)
 }
 
+/// Whether a Nest of this install runs besides this process, as one the user opened by hand
+/// while a helper waited: never swapped under it, it swaps itself once it connects.
+pub fn open_elsewhere(install: &Install) -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    exe.file_name().is_some_and(|name| {
+        opened(
+            Path::new("/proc"),
+            install,
+            std::process::id(),
+            &name.to_string_lossy(),
+        )
+    })
+}
+
+/// A process in `proc` other than `own` that runs the app's program, `binary`, from this
+/// install: from inside its unpacked copy, or with its AppImage named in its first
+/// environment. Its AppImage runtime and anything else of the user's are not it.
+fn opened(proc: &Path, install: &Install, own: u32, binary: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(proc) else {
+        return false;
+    };
+    let image = format!("APPIMAGE={}", install.image.display());
+    entries.flatten().any(|entry| {
+        let folder = entry.path();
+        let is_other = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+            .is_some_and(|pid| pid != own);
+        let Some(exe) = is_other
+            .then(|| std::fs::read_link(folder.join("exe")).ok())
+            .flatten()
+        else {
+            return false;
+        };
+        if exe.file_name().is_none_or(|name| name != binary) {
+            return false;
+        }
+        install
+            .app_dir
+            .as_ref()
+            .is_some_and(|app_dir| exe.starts_with(app_dir))
+            || std::fs::read(folder.join("environ")).is_ok_and(|environ| {
+                environ
+                    .split(|byte| *byte == 0)
+                    .any(|pair| pair == image.as_bytes())
+            })
+    })
+}
+
 /// Swaps to `file` and leaves a waiting process to start it; the caller then exits.
 /// `scrub`: the variables Nest set for itself, which the new app must work out again.
 pub fn swap(file: &Path, install: &Install, scrub: &[String]) -> Result<(), String> {
@@ -238,6 +290,47 @@ mod tests {
                 app_dir: Some(app_dir)
             })
         );
+    }
+
+    #[cfg(unix)]
+    fn process(proc: &Path, pid: u32, exe: &Path, environ: &[&str]) {
+        let folder = proc.join(pid.to_string());
+        std::fs::create_dir_all(&folder).unwrap();
+        std::os::unix::fs::symlink(exe, folder.join("exe")).unwrap();
+        std::fs::write(folder.join("environ"), environ.join("\0")).unwrap();
+    }
+
+    /// A Nest the user opened while the helper waited is found, so the helper leaves it to
+    /// swap itself; the helper itself, the AppImage's runtime and other apps are not one.
+    #[cfg(unix)]
+    #[test]
+    fn a_nest_opened_by_hand_is_found_and_nothing_else() {
+        let dir = TempDir::new("swap");
+        let proc = dir.path().join("proc");
+        let image = dir.path().join(APP_IMAGE);
+        let packed = Install {
+            image: image.clone(),
+            app_dir: None,
+        };
+        let appimage = format!("APPIMAGE={}", image.display());
+        let mounted = Path::new("/tmp/.mount_abc/usr/bin/nest-desktop");
+        process(&proc, 10, mounted, &["HOME=/home/me", &appimage]);
+        process(&proc, 11, &image, &[]);
+        process(&proc, 12, Path::new("/usr/bin/bash"), &[&appimage]);
+        assert!(!opened(&proc, &packed, 10, "nest-desktop"));
+        process(&proc, 20, mounted, &[&appimage]);
+        assert!(opened(&proc, &packed, 10, "nest-desktop"));
+
+        let app_dir = dir.path().join(APP_DIR);
+        let unpacked = Install {
+            image,
+            app_dir: Some(app_dir.clone()),
+        };
+        let other = dir.path().join("other");
+        process(&other, 30, &app_dir.join("usr/bin/nest-desktop"), &[]);
+        assert!(!opened(&other, &unpacked, 30, "nest-desktop"));
+        process(&other, 31, &app_dir.join("usr/bin/nest-desktop"), &[]);
+        assert!(opened(&other, &unpacked, 30, "nest-desktop"));
     }
 
     #[test]
