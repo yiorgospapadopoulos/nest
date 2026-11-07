@@ -229,6 +229,61 @@ describe("the daemon down for an update", () => {
   });
 });
 
+// Regression (B130, fix 27): on the Mac the updating screen flickered out and back as each
+// try passed through a state taken for "no update", which also started the service
+// mid-update. Here no try, not even one whose read of the update fails, leaves the screen.
+describe("the update's screen", () => {
+  it("holds through every try until the daemon is back", async () => {
+    vi.useFakeTimers();
+    let running = false;
+    let reads = 0;
+    const startService = vi.fn(() => Promise.resolve("started" as const));
+    const updating = {
+      from_version: "0.1.0",
+      to_version: "0.2.0",
+      started_at: new Date(Date.now()).toISOString(),
+    };
+    const bridge = bridgeWith(
+      () => (running ? Promise.resolve(DAEMON) : Promise.reject(new Error("not running"))),
+      {
+        startService,
+        installState: () => {
+          reads += 1;
+          return reads % 3 === 0
+            ? Promise.reject(new Error("busy"))
+            : Promise.resolve({ updating, releaseUrl: "https://example.com", released: true });
+        },
+      },
+    );
+    render(
+      <DesktopRoot
+        bridge={bridge}
+        open={() => ({ api: fakeApi(), connect: socketFactory().connect })}
+        storage={memoryStorage}
+      />,
+    );
+    await flush();
+    for (let tick = 0; tick < 40; tick += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
+      });
+      expect(
+        screen.getByRole("heading", { name: "Updating Nest to 0.2.0..." }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Connecting to Nest")).not.toBeInTheDocument();
+    }
+    expect(reads).toBeGreaterThan(6);
+    expect(startService).not.toHaveBeenCalled();
+
+    running = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    vi.useRealTimers();
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+  });
+});
+
 // Regression (production check, 2026-11-03): a new chat's unsent text came back after a
 // relaunch, kept on the device by the shared store. As the Mac's DraftBook, it lives only
 // while the app runs.

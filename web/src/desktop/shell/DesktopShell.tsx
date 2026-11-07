@@ -80,14 +80,23 @@ export function DesktopShell() {
     saveDesk(storage, desk);
   }, [storage, desk]);
 
+  // Until the daemon says whether this is a first run, the window cannot tell whether the
+  // guide shows: it stays blank, so the projects never flash before the guide (B130). One
+  // that does not answer counts as no first run.
+  const [setupAsked, setSetupAsked] = useState(false);
   useEffect(() => {
     let live = true;
-    api.setup().then(
-      (setup) => {
-        if (live && setup.first_run) setGuide("first");
-      },
-      () => undefined,
-    );
+    api
+      .setup()
+      .then(
+        (setup) => {
+          if (live && setup.first_run) setGuide("first");
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        if (live) setSetupAsked(true);
+      });
     return () => {
       live = false;
     };
@@ -380,6 +389,14 @@ export function DesktopShell() {
   useWindowWatch(shell);
   useGonePlaces();
   useAppSwap();
+
+  if (!setupAsked) {
+    return (
+      <WindowFrame>
+        <main className="center" aria-busy="true" aria-label="Loading" />
+      </WindowFrame>
+    );
+  }
 
   if (guide !== null) {
     return (

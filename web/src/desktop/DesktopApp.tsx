@@ -145,12 +145,16 @@ function Launch({ pill, found }: { pill: boolean; found: () => Promise<boolean> 
   const [now, setNow] = useState(() => Date.now());
   const [started, setStarted] = useState(false);
   const startedOnce = useRef(false);
+  const lastInstall = useRef<InstallState | null>(null);
   const tried = useCallback(async () => {
     if (await found().catch(() => false)) return true;
+    // A read that failed tells nothing: the last answer stands. Taken for "no update", it
+    // would have the update's screen flicker out and start the service mid-update.
     const [why, state] = await Promise.all([
       bridge.daemonProblem().catch(() => null),
-      bridge.installState().catch(() => null),
+      bridge.installState().catch(() => lastInstall.current),
     ]);
+    lastInstall.current = state;
     const at = Date.now();
     setProblem(why);
     setInstall(state);
