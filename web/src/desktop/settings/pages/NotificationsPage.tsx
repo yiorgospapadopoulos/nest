@@ -13,6 +13,7 @@ import {
 } from "../../notifications.ts";
 import { Segmented } from "../../ui/controls.tsx";
 import { StatusLabel } from "../config/parts.tsx";
+import { NtfySection } from "../NtfySection.tsx";
 import { SettingsRow, SettingsSection, SwitchRow } from "../rows.tsx";
 
 // The least severe pixie report that reaches the phone, in the Mac's words (B85).
@@ -61,6 +62,7 @@ export function NotificationsPage() {
         />
         <PushRow />
       </SettingsSection>
+      <NtfySection />
     </>
   );
 }

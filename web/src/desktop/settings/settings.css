@@ -461,3 +461,6 @@
 .dks-drop:disabled {
   opacity: 0.5;
 }
+.dks-ntfy {
+  width: 240px;
+}

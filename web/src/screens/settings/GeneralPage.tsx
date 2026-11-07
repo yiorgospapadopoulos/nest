@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/context.ts";
 import {
-  engineChanges,
   readyUpdate,
   restartQuestion,
+  updateChanges,
   useUpdateRestart,
 } from "../../store/updates.ts";
 import { Confirm } from "../pixies/Confirm.tsx";
@@ -82,12 +82,12 @@ function NestSection() {
 function UpdateRow() {
   const { state } = useStore();
   const relaunch = useUpdateRestart("relaunch");
-  const ready = readyUpdate(state.updates);
+  const ready = readyUpdate(state.updates, "phone");
   if (ready === null) return null;
   return (
     <>
       <Row label="Update available">
-        <span className="sval mono lines">{engineChanges(ready.engines)}</span>
+        <span className="sval mono lines">{updateChanges(ready)}</span>
         <button className="b" disabled={ready.relaunching} onClick={() => void relaunch.start()}>
           {ready.relaunching ? "Relaunching..." : "Relaunch to update"}
         </button>

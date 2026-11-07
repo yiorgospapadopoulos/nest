@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
+import type { SetupReport } from "../../../api/types.ts";
 import { useStore } from "../../../store/context.ts";
 import {
-  engineChanges,
   readyUpdate,
   restartQuestion,
+  updateChanges,
   useUpdateRestart,
 } from "../../../store/updates.ts";
 import { Fireflies } from "../../../ui/Fireflies.tsx";
 import type { LinuxSettings } from "../../bridge.ts";
-import { useBridge } from "../../context.ts";
+import { useApi, useBridge } from "../../context.ts";
+import { useShell } from "../../shell/context.ts";
 import { Button, Toggle } from "../../ui/controls.tsx";
 import { Alert } from "../../sheets/Alert.tsx";
+import { BugReportSheet } from "./BugReportSheet.tsx";
+import { CheckNestSheet } from "./CheckNestSheet.tsx";
 import {
   Failure,
   SettingsListRow,
@@ -38,7 +42,66 @@ export function GeneralPage() {
         <RestartRow />
         <UpdateRow />
         <UndoUpdateRow />
+        <SetupRows />
       </SettingsSection>
+    </>
+  );
+}
+
+/** The setup guide again, every check, and a bug report to read first (B130). */
+function SetupRows() {
+  const { actions } = useStore();
+  const api = useApi();
+  const shell = useShell();
+  const [checking, setChecking] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [report, setReport] = useState<SetupReport | null>(null);
+  const makeReport = () => {
+    setReporting(true);
+    api
+      .setupReport()
+      .then(setReport, (error: unknown) => {
+        actions.toast(error instanceof Error ? error.message : String(error), "error");
+      })
+      .finally(() => {
+        setReporting(false);
+      });
+  };
+  return (
+    <>
+      <SettingsRow label="Set up Nest">
+        <Button onClick={shell.openGuide}>Open</Button>
+      </SettingsRow>
+      <SettingsRow label="Check Nest">
+        <Button
+          onClick={() => {
+            setChecking(true);
+          }}
+        >
+          Check
+        </Button>
+      </SettingsRow>
+      <SettingsRow label="Make a bug report">
+        {reporting && <Fireflies />}
+        <Button disabled={reporting} onClick={makeReport}>
+          Make
+        </Button>
+      </SettingsRow>
+      {checking && (
+        <CheckNestSheet
+          onClose={() => {
+            setChecking(false);
+          }}
+        />
+      )}
+      {report !== null && (
+        <BugReportSheet
+          report={report}
+          onClose={() => {
+            setReport(null);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -160,13 +223,13 @@ function RestartRow() {
 function UpdateRow() {
   const { state } = useStore();
   const relaunch = useUpdateRestart("relaunch");
-  const ready = readyUpdate(state.updates);
+  const ready = readyUpdate(state.updates, "app");
   if (ready === null) return null;
   const question = relaunch.asking === null ? null : restartQuestion("relaunch", relaunch.asking);
   return (
     <>
       <SettingsRow label="Update available">
-        <span className="dks-val lines">{engineChanges(ready.engines)}</span>
+        <span className="dks-val lines">{updateChanges(ready)}</span>
         <Button disabled={ready.relaunching} onClick={() => void relaunch.start()}>
           {ready.relaunching ? "Relaunching..." : "Relaunch to update"}
         </Button>
