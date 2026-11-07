@@ -64,13 +64,14 @@ describe("no daemon at launch", () => {
     );
     await flush();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("Reconnecting to the Nest daemon");
+    expect(screen.getByText("Connecting to Nest")).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Can't reach the Nest daemon. Trying again in 1s",
-    );
+    expect(
+      screen.getByRole("heading", { name: "Nest's background service isn't running" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/releases\/latest\/download\/install\.sh \| sh/)).toBeInTheDocument();
     running = true;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
@@ -80,10 +81,34 @@ describe("no daemon at launch", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("starts the service, or shows how to install it when it is missing", async () => {
+  it("says what stops the daemon when the app can tell", async () => {
+    vi.useFakeTimers();
+    const api = fakeApi();
+    const bridge = bridgeWith(() => Promise.reject(new Error("not running")), {
+      daemonProblem: () => Promise.resolve("Install gnome-keyring."),
+    });
+    render(
+      <DesktopRoot
+        bridge={bridge}
+        open={() => ({ api, connect: socketFactory().connect })}
+        storage={memoryStorage}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(screen.getByRole("heading", { name: "Nest can't start" })).toBeInTheDocument();
+    expect(screen.getByText("Install gnome-keyring.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
+  });
+
+  it("starts the service on Try again and keeps the screen while it tries", async () => {
     vi.useFakeTimers();
     let running = false;
-    const startService = vi.fn(() => Promise.resolve("not_installed" as const));
+    const startService = vi.fn(() => {
+      running = true;
+      return Promise.resolve("started" as const);
+    });
     const bridge = bridgeWith(
       () => (running ? Promise.resolve(DAEMON) : Promise.reject(new Error("not running"))),
       { startService },
@@ -96,15 +121,11 @@ describe("no daemon at launch", () => {
         storage={memoryStorage}
       />,
     );
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Start Nest service" }));
-    await flush();
-    expect(
-      screen.getByText("cd <your Nest checkout>/daemon && uv run nestd service install"),
-    ).toBeInTheDocument();
-    startService.mockResolvedValue("started" as never);
-    running = true;
-    fireEvent.click(screen.getByRole("button", { name: "Start Nest service" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(startService).toHaveBeenCalledOnce();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500);
     });

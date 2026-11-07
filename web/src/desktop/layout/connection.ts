@@ -41,6 +41,15 @@ export function installCommand(checkout: string | null): string {
   return `cd ${daemon} && uv run nestd service install`;
 }
 
+/** What repairs an install and keeps the data (release/install.sh). */
+export const INSTALL_LINE =
+  "curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/download/install.sh | sh";
+
+/** After a second failed try, so a daemon just starting shows no alarm. */
+export function daemonDown(connection: Connection): boolean {
+  return connection.kind === "reconnecting" && connection.attempt > 1;
+}
+
 export type BannerAction = "retry" | "startService";
 
 /** Retry (not while the service starts) and Start Nest service while it cannot be reached. */
