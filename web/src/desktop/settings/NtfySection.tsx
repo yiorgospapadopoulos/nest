@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "../../store/context.ts";
 import { TextField } from "../ui/controls.tsx";
-import { useSaveNtfy, type Ntfy } from "./ntfy.ts";
+import { turnOn, useSaveNtfy, type Ntfy } from "./ntfy.ts";
 import { SettingsRow, SettingsSection, SwitchRow, WarningLine } from "./rows.tsx";
 
 const WARNING = "Anyone who knows a public topic can read it. Use a long, random one.";
@@ -39,20 +39,8 @@ function Field({
   );
 }
 
-/**
- * The server, topic and link address, and the warning about public topics. With
- * `enablesWithTopic`, ntfy was turned on with no topic yet, which the daemon refuses: the
- * first topic turns it on with it.
- */
-export function NtfyDetails({
-  ntfy,
-  save,
-  enablesWithTopic = false,
-}: {
-  ntfy: Ntfy;
-  save: (change: Partial<Ntfy>) => void;
-  enablesWithTopic?: boolean;
-}) {
+/** The server, topic and link address, and the warning about public topics. */
+function NtfyDetails({ ntfy, save }: { ntfy: Ntfy; save: (change: Partial<Ntfy>) => void }) {
   return (
     <>
       <Field
@@ -65,9 +53,8 @@ export function NtfyDetails({
       <Field
         label="Topic"
         value={text(ntfy.topic)}
-        onSave={(typed) => {
-          const topic = optional(typed);
-          save(enablesWithTopic && topic !== null ? { topic, enabled: true } : { topic });
+        onSave={(topic) => {
+          save({ topic: optional(topic) });
         }}
       />
       <Field
@@ -83,8 +70,12 @@ export function NtfyDetails({
   );
 }
 
-/** ntfy's switch and fields, saved on the daemon as they change; a refused one goes back. */
-export function NtfyFields() {
+/**
+ * ntfy's switch, with its fields under it while on, saved on the daemon as they change; a
+ * refused one goes back (B130). The daemon turns it on only with a topic, so turning it on
+ * with none makes a long random one, which the user can change.
+ */
+function NtfyFields() {
   const { state } = useStore();
   const save = useSaveNtfy();
   const rules = state.notifications;
@@ -96,10 +87,10 @@ export function NtfyFields() {
         label="Send to ntfy"
         on={ntfy.enabled}
         onChange={(enabled) => {
-          save({ enabled });
+          save(enabled ? turnOn(ntfy) : { enabled });
         }}
       />
-      <NtfyDetails ntfy={ntfy} save={save} />
+      {ntfy.enabled && <NtfyDetails ntfy={ntfy} save={save} />}
     </div>
   );
 }

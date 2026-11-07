@@ -167,8 +167,7 @@
   min-height: 48px;
   padding: 12px 16px;
 }
-.su-srow + .su-srow,
-.su-sfields + .su-srow {
+.su-srow + .su-srow {
   border-top: 1px solid var(--dk-line);
 }
 .su-stitle {
@@ -187,9 +186,6 @@
 }
 .su-sline.su-fail {
   color: var(--fail-t);
-}
-.su-sfields {
-  padding: 0 16px 12px;
 }
 .su-cmd {
   display: flex;
@@ -261,6 +257,9 @@
 .su-down p {
   margin: 0 0 16px;
   color: var(--t2);
+}
+.su-down .su-slow {
+  margin: 16px 0 0;
 }
 .su-down code {
   display: block;

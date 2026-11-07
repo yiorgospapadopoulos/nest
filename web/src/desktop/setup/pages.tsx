@@ -6,8 +6,6 @@ import { otherEngines } from "../settings/accounts/engineSetup.ts";
 import { MoreEngineRows } from "../settings/accounts/MoreEngines.tsx";
 import { useSignIn } from "../settings/accounts/signIn.ts";
 import { FoldChevron } from "../settings/config/parts.tsx";
-import { NtfyDetails } from "../settings/NtfySection.tsx";
-import { useSaveNtfy } from "../settings/ntfy.ts";
 import { PairingCodeView } from "../settings/parts3/PairingCodeView.tsx";
 import { useApi, useBridge } from "../context.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
@@ -275,8 +273,8 @@ function SwitchGroupRow({
 
 /**
  * One switch per way a notification reaches the user, each showing its real state (design
- * C, as the Mac's): this computer's notification service, the phone's push, and ntfy with
- * its fields under it while on. The first two change elsewhere, so their switches only show.
+ * C, as the Mac's): this computer's notification service and the phone's push. Both change
+ * elsewhere, so their switches only show. ntfy is in Settings only (B130).
  */
 export function NotificationsPage({ onSent }: { onSent: () => void }) {
   const bridge = useBridge();
@@ -314,54 +312,8 @@ export function NotificationsPage({ onSent }: { onSent: () => void }) {
             disabled
           />
         </SwitchGroupRow>
-        <NtfyRow />
       </div>
       <TestNotification onSent={onSent} />
-    </>
-  );
-}
-
-/**
- * ntfy's switch, with its fields under it while on. The daemon turns it on only with a
- * topic, so one turned on without opens the fields first, and the topic turns it on.
- */
-function NtfyRow() {
-  const { state } = useStore();
-  const save = useSaveNtfy();
-  const [waitingForTopic, setWaitingForTopic] = useState(false);
-  const ntfy = state.notifications?.ntfy;
-  if (ntfy === undefined || save === null) return null;
-  const on = ntfy.enabled || waitingForTopic;
-  return (
-    <>
-      <SwitchGroupRow
-        title="ntfy"
-        line={<span className="su-sline">Push notifications through the ntfy app</span>}
-      >
-        <Toggle
-          checked={on}
-          label="Send to ntfy"
-          onChange={() => {
-            if (on) {
-              setWaitingForTopic(false);
-              if (ntfy.enabled) save({ enabled: false });
-            } else if ((ntfy.topic ?? "") !== "") {
-              save({ enabled: true });
-            } else {
-              setWaitingForTopic(true);
-            }
-          }}
-        />
-      </SwitchGroupRow>
-      {on && (
-        <div className="su-sfields dks-rows">
-          <NtfyDetails
-            ntfy={ntfy}
-            save={save}
-            enablesWithTopic={waitingForTopic && !ntfy.enabled}
-          />
-        </div>
-      )}
     </>
   );
 }

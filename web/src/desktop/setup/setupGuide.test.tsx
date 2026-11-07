@@ -215,31 +215,8 @@ describe("the guide's steps", () => {
     await waitFor(() => {
       expect(screen.getByRole("switch", { name: "iPhone notifications" })).toBeChecked();
     });
-    expect(await screen.findByRole("switch", { name: "Send to ntfy" })).not.toBeChecked();
-    expect(screen.queryByRole("textbox", { name: "Topic" })).not.toBeInTheDocument();
-  });
-
-  // The daemon refuses ntfy on with no topic: the switch opens the fields, and the first
-  // topic saved turns it on with it.
-  it("turns ntfy on with its first topic", async () => {
-    const api = firstRun([check("engine", { state: "ok" })]);
-    const { user } = renderGuide(api);
-    const rail = await screen.findByRole("navigation", { name: "Set up Nest" });
-    await user.click(within(rail).getByRole("button", { name: /Notifications/ }));
-    await user.click(await screen.findByRole("switch", { name: "Send to ntfy" }));
-
-    expect(api.saveNotificationSettings).not.toHaveBeenCalled();
-    expect(screen.getByRole("switch", { name: "Send to ntfy" })).toBeChecked();
-    await user.type(screen.getByRole("textbox", { name: "Topic" }), "a-long-random-topic");
-    await user.tab();
-
-    await waitFor(() => {
-      expect(api.saveNotificationSettings).toHaveBeenCalledOnce();
-    });
-    expect(api.saveNotificationSettings.mock.calls[0]?.[0].ntfy).toMatchObject({
-      enabled: true,
-      topic: "a-long-random-topic",
-    });
+    // ntfy is in Settings only (B130).
+    expect(screen.queryByRole("switch", { name: "Send to ntfy" })).not.toBeInTheDocument();
   });
 });
 
