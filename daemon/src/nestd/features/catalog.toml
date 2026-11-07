@@ -662,3 +662,12 @@ text = "A new chat takes a name that says what it is about a few seconds after y
 where = "Chat"
 added = 2026-11-05
 block = "B125"
+
+[[features]]
+id = "storage-breakdown"
+group = "chats"
+name = "See what takes the space"
+text = "Storage shows how much room the engines, backups and logs take, next to chats, attachments and artifacts, so little is left under Other."
+where = "Settings > Storage"
+added = 2026-11-07
+block = "B134"
