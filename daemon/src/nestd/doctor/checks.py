@@ -54,13 +54,19 @@ def check_engine(machine: Machine) -> Check:
         "SELECT 1 FROM local_settings WHERE key = 'local_only' AND value IN ('1', 'true')"
     ):
         found.append("Local models")
+    # An engine from More engines, signed in or with its key, as Nest last saw it.
+    if machine.database(
+        "SELECT 1 FROM engine_accounts WHERE provider NOT IN ('claude', 'codex')"
+        " AND signed_in = 1 LIMIT 1"
+    ):
+        found.append("Another engine")
     if found:
         return Check(id="engine", title="Engine", state="ok", detail=", ".join(found))
     return Check(
         id="engine",
         title="Engine",
         state="missing",
-        message="Nest needs one engine. Sign in to Claude Code or Codex, or use local models.",
+        message="Nest needs one engine: Claude Code, Codex, another engine or local models.",
     )
 
 

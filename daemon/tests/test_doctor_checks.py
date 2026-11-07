@@ -3,6 +3,7 @@ install dialog by itself, sending someone to the wrong fix, or hanging on a lock
 """
 
 import os
+import sqlite3
 import stat
 import time
 from collections.abc import Mapping, Sequence
@@ -95,6 +96,20 @@ def _machine(
         run=commands,
         healthy=lambda _: True,
     )
+
+
+def test_an_engine_from_more_engines_counts(tmp_path: Path) -> None:
+    machine = _machine(tmp_path, Commands())
+    machine.paths.data_dir.mkdir(parents=True)
+    database = sqlite3.connect(machine.paths.db_path)
+    database.execute("CREATE TABLE engine_accounts (provider TEXT, signed_in INTEGER)")
+    database.execute("INSERT INTO engine_accounts VALUES ('claude', 0), ('opencode', 1)")
+    database.commit()
+    database.close()
+
+    check = check_engine(machine)
+
+    assert (check.state, check.detail) == ("ok", "Another engine")
 
 
 def test_apples_git_stub_is_never_run(tmp_path: Path) -> None:
