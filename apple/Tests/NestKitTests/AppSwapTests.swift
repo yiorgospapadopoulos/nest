@@ -154,7 +154,8 @@ import Testing
         try finished.run()
         finished.waitUntilExit()
         let arguments = AppRelaunch.swapping(
-            appPath: app.path, zipPath: zip.path, pid: finished.processIdentifier, environment: [:])
+            appPath: app.path, zipPath: zip.path, pid: finished.processIdentifier, environment: [:],
+            log: root.appending(path: "logs/app-update.log").path)
         try run(AppRelaunch.shell, arguments)
     }
 
@@ -221,6 +222,7 @@ import Testing
     let opened: URL
     let health: URL
     let updateFile: URL
+    let log: URL
 
     init() throws {
         root = FileManager.default.temporaryDirectory
@@ -230,6 +232,7 @@ import Testing
         opened = root.appending(path: "opened")
         health = root.appending(path: "served/api/health")
         updateFile = root.appending(path: "the data/daemon/update.json")
+        log = root.appending(path: "the data/logs/app-update.log")
         let manager = FileManager.default
         for folder in [zip, health] {
             try manager.createDirectory(
@@ -308,13 +311,14 @@ import Testing
     }
 
     /// Starts the helper for a process that has already quit; it runs in the background.
-    private func startHelper(port: Int) throws -> Process {
+    private func startHelper(port: Int, openWithin: TimeInterval = 20) throws -> Process {
         let finished = try Self.run("/usr/bin/true", [])
         let arguments = AppRelaunch.afterUpdate(
             appPath: app.path, zipPath: zip.path, version: "0.2.0",
             pid: finished.processIdentifier,
             daemon: try #require(URL(string: "http://127.0.0.1:\(port)")),
-            updateFile: updateFile.path, environment: [:])
+            updateFile: updateFile.path, environment: [:], log: log.path,
+            openWithin: openWithin)
         let helper = Process()
         helper.executableURL = URL(filePath: AppRelaunch.shell)
         helper.arguments = arguments
@@ -376,5 +380,47 @@ import Testing
         #expect(finish(helper, within: 10))
         #expect(try version().contains("echo old"))
         #expect(openedPaths() == [app.path])
+    }
+
+    /// Regression (B130, fix 27): a new daemon that crashed and went back took 33 seconds in
+    /// the VM, with no Nest on screen the whole time, so the user opened it by hand. A daemon
+    /// slower than the wait gets the old app back at once, which shows the update's progress
+    /// and swaps itself later; the helper says what it did in its log.
+    @Test func aSlowDaemonGetsTheOldAppBackAtOnce() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (server, port) = try serve()
+        defer { server.terminate() }
+        try updating(true)
+        try answer("0.1.0")
+        let helper = try startHelper(port: port, openWithin: 1)
+        #expect(finish(helper, within: 10))
+        #expect(try version().contains("echo old"))
+        #expect(openedPaths() == [app.path])
+        let lines = try String(contentsOf: log, encoding: .utf8)
+        #expect(lines.contains("the daemon is not back yet"))
+    }
+
+    /// An app the user opened while the helper waited swaps itself on connect: the helper
+    /// never moves the bundle out from under it.
+    @Test func anAppAlreadyOpenIsNotSwappedUnderIt() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let binary = app.appending(path: "Contents/MacOS/Nest")
+        try FileManager.default.removeItem(at: binary)
+        try FileManager.default.copyItem(atPath: "/bin/sleep", toPath: binary.path)
+        let running = Process()
+        running.executableURL = binary
+        running.arguments = ["30"]
+        try running.run()
+        defer { running.terminate() }
+        let (server, port) = try serve()
+        defer { server.terminate() }
+        try updating(true)
+        try answer("0.2.0")
+        let helper = try startHelper(port: port)
+        #expect(finish(helper, within: 10))
+        #expect(running.isRunning)
+        #expect(openedPaths().isEmpty)
+        #expect(FileManager.default.contentsEqual(atPath: binary.path, andPath: "/bin/sleep"))
+        #expect(try String(contentsOf: log, encoding: .utf8).contains("Nest is open already"))
     }
 }

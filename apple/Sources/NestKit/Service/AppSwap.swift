@@ -95,16 +95,17 @@ public final class AppSwapper {
         }
         preferences.set(file.version, forKey: Self.triedKey)
         let arguments = AppRelaunch.swapping(
-            appPath: appPath, zipPath: file.path, pid: pid, environment: environment)
+            appPath: appPath, zipPath: file.path, pid: pid, environment: environment,
+            log: logFile.path)
         guard (try? spawner.spawn(AppRelaunch.shell, arguments)) != nil else {
             return .failed(file.version)
         }
         return .swapping
     }
 
-    /// Relaunch to update with a new app (B130): starts the helper that waits for the daemon
-    /// to come back and opens the new app once, so the old one does not load again only to
-    /// quit for the swap. True when it started and the app should quit; false leaves the
+    /// Relaunch to update with a new app (B130): starts the helper that waits a moment for the
+    /// daemon to come back and opens the new app once, so the old one does not load again
+    /// only to quit for the swap; a slower daemon gets the old app back at once. True when it started and the app should quit; false leaves the
     /// plain reopen, as for a developer build.
     public func afterUpdate(to version: String, daemon: URL) -> Bool {
         guard let ownVersion, !developerBuild, appPath.hasSuffix(".app"), ownVersion != version,
@@ -117,9 +118,13 @@ public final class AppSwapper {
         // after any update, then says so.
         let arguments = AppRelaunch.afterUpdate(
             appPath: appPath, zipPath: zip, version: version, pid: pid, daemon: daemon,
-            updateFile: daemons.appending(path: "update.json").path, environment: environment)
+            updateFile: daemons.appending(path: "update.json").path, environment: environment,
+            log: logFile.path)
         return (try? spawner.spawn(AppRelaunch.shell, arguments)) != nil
     }
+
+    /// `<data>/logs/app-update.log`: the helpers start detached, with no output of their own.
+    var logFile: URL { dataFolder.appending(path: "logs/app-update.log") }
 
     /// A version is a folder's name: no separators and no `..`.
     private static func isPlain(_ version: String) -> Bool {

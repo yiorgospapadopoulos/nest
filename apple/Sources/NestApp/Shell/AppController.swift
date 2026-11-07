@@ -111,8 +111,9 @@ final class AppController {
     }
 
     /// Quits so the app reopens once `daemon` restarted: with a new app, the swap's helper
-    /// opens that one once the daemon answers on its version. A reopen that cannot start
-    /// leaves the app running, which then reconnects.
+    /// opens that one once the daemon answers on its version, or this one again when the
+    /// daemon takes longer (`AppRelaunch.afterUpdate`). A reopen that cannot start leaves the
+    /// app running, which then reconnects.
     private func reopen(daemon: URL, newApp: String?) {
         if let newApp, swapper.afterUpdate(to: newApp, daemon: daemon) {
             NSApp.terminate(nil)
