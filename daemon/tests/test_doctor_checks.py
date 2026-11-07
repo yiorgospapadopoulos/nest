@@ -15,6 +15,7 @@ from nestd.doctor.checks import (
     by_rank,
     check_engine,
     check_git,
+    check_github,
     check_secret_service,
     check_service,
     check_tailscale,
@@ -111,6 +112,18 @@ def test_apples_git_stub_is_never_run(tmp_path: Path) -> None:
     assert check.fix is not None
     assert check.fix.value == "xcode-select --install"
     assert not [line for line in commands.ran if line.startswith("git")]
+
+
+@pytest.mark.parametrize(
+    ("programs", "line"),
+    [(["brew"], "brew install gh"), ([], "Homebrew/install/HEAD/install.sh")],
+)
+def test_a_mac_gets_homebrews_line_for_gh(tmp_path: Path, programs: list[str], line: str) -> None:
+    check = check_github(_machine(tmp_path, Commands(), programs=programs))
+
+    assert check.fix is not None
+    assert check.fix.kind == "command"
+    assert line in check.fix.value
 
 
 def test_a_real_git_answers_with_its_version(tmp_path: Path) -> None:
