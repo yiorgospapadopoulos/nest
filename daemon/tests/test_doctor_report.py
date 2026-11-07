@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from nestd.doctor.machine import Machine
-from nestd.doctor.report import redact, write_report
+from nestd.doctor.models import Check
+from nestd.doctor.report import issue_url, redact, write_report
 from nestd.paths import AppPaths
 from nestd.platform import MACOS
 from nestd.service.base import CommandResult, ServiceStatus
@@ -60,10 +61,28 @@ def test_nothing_private_survives(line: str, secret: str) -> None:
     assert secret not in redact(line, HOME)
 
 
-def test_what_helps_with_a_bug_stays() -> None:
-    line = "2026-11-07 00:39:37,753 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8765"
-
+@pytest.mark.parametrize(
+    "line",
+    [
+        "2026-11-07 00:39:37,753 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8765",
+        # Regression: the module name read as a label and took "serving" with it.
+        "INFO nestd.auth.token_socket: serving this Mac's device token on ~/nest/token.sock",
+        # Regression: a long path read as a key.
+        "Using bundled Claude Code CLI: ~/Library/Application Support/nest/daemon/0.1.2/lib/"
+        "python3.12/site-packages/claude_agent_sdk/_bundled/claude",
+    ],
+)
+def test_what_helps_with_a_bug_stays(line: str) -> None:
     assert redact(line, HOME) == line
+
+
+def test_a_long_report_asks_for_the_file_instead() -> None:
+    short = issue_url("a short report", "nest-report-1.txt")
+    long = issue_url("x " * 10000, "nest-report-1.txt")
+
+    assert "a+short+report" in short
+    assert len(long) < 1000
+    assert "nest-report-1.txt" in long
 
 
 class Service:
@@ -87,7 +106,8 @@ def test_the_report_file_holds_the_checks_and_a_clean_log(tmp_path: Path) -> Non
     home.mkdir()
     paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
     paths.logs_dir.mkdir(parents=True)
-    log = f"ERROR at {home}/projects/x with token=abc123 for me@example.com\n"
+    routine = '2026-11-07 09:59:33 INFO uvicorn.access: 1.2.3.4:5 - "GET /api/pixies HTTP/1.1" 200'
+    log = f"ERROR at {home}/projects/x with token=abc123 for me@example.com\n{routine}\n"
     (paths.logs_dir / "daemon.log").write_text(log, encoding="utf-8")
 
     def nothing(_args: object, _env: object, _limit: float = 1.0) -> CommandResult:
@@ -112,7 +132,8 @@ def test_the_report_file_holds_the_checks_and_a_clean_log(tmp_path: Path) -> Non
         healthy=down,
     )
 
-    report = write_report(machine, datetime(2026, 11, 7, tzinfo=UTC))
+    allowed = Check(id="dictation", title="Dictation", state="ok", detail="Allowed")
+    report = write_report(machine, datetime(2026, 11, 7, tzinfo=UTC), [allowed])
 
     text = Path(report.path).read_text(encoding="utf-8")
     assert text == report.text
@@ -121,3 +142,6 @@ def test_the_report_file_holds_the_checks_and_a_clean_log(tmp_path: Path) -> Non
     assert "abc123" not in text
     assert "me@example.com" not in text
     assert oct(Path(report.path).stat().st_mode)[-3:] == "600"
+    assert "/api/pixies" not in text
+    assert "[ok] Dictation: Allowed" in text
+    assert report.issue_url.startswith("https://github.com/")

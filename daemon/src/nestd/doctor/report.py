@@ -9,13 +9,15 @@ import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
 from pydantic import BaseModel
 
 from nestd import __version__
-from nestd.doctor.checks import run_checks
-from nestd.doctor.machine import Machine
+from nestd.doctor.checks import by_rank, run_checks
+from nestd.doctor.machine import Machine, system_line
 from nestd.doctor.models import Check
+from nestd.release import ISSUES_URL
 
 LOG_LINES = 200
 _REMOVED = "[removed]"
@@ -45,16 +47,15 @@ _PATTERNS = (
     # A command line's `--token value`.
     (re.compile(rf"(?i)(--{_LABEL}[= ])\S+"), rf"\1{_REMOVED}"),
     # Anything labelled as a secret, in logs, JSON (escaped too) and URLs, quoted values whole.
+    # Not a dotted module name such as `nestd.auth.token_socket:`, which only starts a line.
     (
         re.compile(
-            rf"(?i)({_LABEL}[\\\"']*\s*[:=]\s*)"
+            rf"(?i)(?<![\w.])({_LABEL}[\\\"']*\s*[:=]\s*)"
             r"(?:\\?\"[^\"\n]*\"|'[^'\n]*'|[\\\"']*[^\s\"'&,;}\\]+)"
         ),
         rf"\1{_REMOVED}",
     ),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"), _REMOVED),
-    # A long unbroken run is a key, a hash or base64 until shown otherwise.
-    (re.compile(r"[A-Za-z0-9+/=_-]{32,}"), _REMOVED),
     (re.compile(r"\b[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net\b"), _REMOVED),
     # Home folders of anyone, as paths also name the user.
     (re.compile(r"/(?:Users|home)/[^/\s\"':]+"), "~"),
@@ -66,20 +67,54 @@ class Report(BaseModel):
 
     path: str
     text: str
+    # A new GitHub issue with the report filled in, for the user to read and submit; when
+    # the report is too long for an address, one that asks them to attach the file.
+    issue_url: str
+
+
+def issue_url(text: str, file_name: str) -> str:
+    title = f"Nest {__version__}: "
+    body = f"What happened:\n\n\n```\n{text}\n```\n"
+    url = f"{ISSUES_URL}?{urlencode({'title': title, 'body': body})}"
+    if len(url) <= _ISSUE_URL_LIMIT:
+        return url
+    short = f"What happened:\n\n\nThe report is attached: {file_name}\n"
+    return f"{ISSUES_URL}?{urlencode({'title': title, 'body': short})}"
+
+
+# A long unbroken run is a key, a hash or base64 until shown otherwise. A path is shown
+# otherwise: several short parts between slashes.
+_LONG_RUN = re.compile(r"[A-Za-z0-9+/=_-]{32,}")
+_PATH_PART_LIMIT = 24
+# The routine answers of the daemon's own server, which say nothing about a problem.
+_ROUTINE = re.compile(r'uvicorn\.access: .*" [123]\d\d$')
+# How far back to look for the lines that are kept.
+_LOG_SCAN = 5000
+_ISSUE_URL_LIMIT = 7000
+
+
+def _long_run(match: re.Match[str]) -> str:
+    run = match.group(0)
+    parts = [part for part in run.split("/") if part]
+    if len(parts) > 1 and all(len(part) < _PATH_PART_LIMIT for part in parts):
+        return run
+    return _REMOVED
 
 
 def redact(text: str, home: Path) -> str:
     cleaned = text.replace(str(home), "~")
     for pattern, replacement in _PATTERNS:
         cleaned = pattern.sub(replacement, cleaned)
-    return cleaned
+    return _LONG_RUN.sub(_long_run, cleaned)
 
 
 def _last_lines(path: Path, count: int) -> list[str]:
+    """The last lines that could say something, without the server's routine answers."""
     try:
-        return path.read_text(encoding="utf-8", errors="replace").splitlines()[-count:]
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-_LOG_SCAN:]
     except OSError:
         return []
+    return [line for line in lines if not _ROUTINE.search(line)][-count:]
 
 
 def _check_line(check: Check) -> str:
@@ -92,7 +127,7 @@ def report_text(checks: Sequence[Check], log_lines: Sequence[str], when: datetim
     return "\n".join(
         (
             f"Nest {__version__} report, {when.isoformat(timespec='seconds')}",
-            f"Python {python_platform.python_version()}, {python_platform.platform()}",
+            f"Python {python_platform.python_version()}, {system_line()}",
             "",
             "Checks",
             *(_check_line(check) for check in checks),
@@ -104,12 +139,15 @@ def report_text(checks: Sequence[Check], log_lines: Sequence[str], when: datetim
     )
 
 
-def write_report(machine: Machine, when: datetime) -> Report:
+def write_report(machine: Machine, when: datetime, app_checks: Sequence[Check] = ()) -> Report:
+    """`app_checks` are the app's own answers, for what only it can check."""
     log = _last_lines(machine.paths.logs_dir / "daemon.log", LOG_LINES)
-    text = redact(report_text(run_checks(machine), log, when), machine.home)
+    answers = {check.id: check for check in app_checks}
+    checks = by_rank([answers.get(check.id, check) for check in run_checks(machine)])
+    text = redact(report_text(checks, log, when), machine.home)
     folder = machine.paths.reports_dir
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"nest-report-{when.strftime('%Y%m%d-%H%M%S')}.txt"
     path.write_text(text, encoding="utf-8")
     path.chmod(0o600)
-    return Report(path=str(path), text=text)
+    return Report(path=str(path), text=text, issue_url=issue_url(text, path.name))
