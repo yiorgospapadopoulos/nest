@@ -62,7 +62,9 @@ private struct RepairView: View {
 }
 
 /// While the daemon is down for an update: never the repair line, as Nest sees to it. Looks
-/// again every second, so the window moves on as soon as the daemon is back.
+/// again every second, so the window moves on as soon as the daemon is back. One screen the
+/// whole time (B130, fix 30b): the slow line's place is kept from the start, so nothing moves
+/// when it appears.
 private struct UpdatingNestView: View {
     let update: UpdateUnderWay
     @Environment(AppController.self) private var controller
@@ -74,10 +76,12 @@ private struct UpdatingNestView: View {
                     .font(.ui(24, .semibold))
                     .padding(.bottom, 8)
                     .accessibilityAddTraits(.isHeader)
-                if update.isSlow(at: context.date) {
-                    SetupLine(text: "Taking longer than usual").padding(.bottom, 8)
-                }
                 Fireflies().padding(.top, 8)
+                let slow = update.isSlow(at: context.date)
+                SetupLine(text: "Taking longer than usual")
+                    .padding(.top, 16)
+                    .opacity(slow ? 1 : 0)
+                    .accessibilityHidden(!slow)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -82,6 +82,8 @@ final class AppController {
     private func open() async {
         do {
             install(try await model(for: daemons.selection))
+            // An update under way shows at once, before the first try can show the banner.
+            _ = shell?.noteUpdate(install.updating())
             phase = .ready
             connect()
         } catch {

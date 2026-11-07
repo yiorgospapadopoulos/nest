@@ -23,8 +23,9 @@ extension ConnectionState {
 /// What the window shows while This Mac's daemon cannot be reached at launch (B130, screen
 /// Z), from a second failed try on, so a daemon just starting shows no alarm, until it
 /// connects. A daemon lost later has the banner instead. While an update has the daemon down,
-/// its progress shows, never the repair line. Otherwise the app first starts the service
-/// once by itself, and only if the daemon is still down after that shows the line.
+/// its progress shows at once, never the repair line, and stays until the daemon answers.
+/// Otherwise the app first starts the service once by itself, and only if the daemon is
+/// still down after that shows the line.
 public struct DaemonDownWatch: Sendable, Equatable {
     public enum Screen: Sendable, Equatable {
         case none
@@ -36,11 +37,17 @@ public struct DaemonDownWatch: Sendable, Equatable {
         case notYet, running, done
     }
 
+    /// How long the updating screen waits for the daemon once `update.json` no longer says
+    /// so: going back, the watcher clears it and only then starts the old version.
+    static let afterUpdate: TimeInterval = 30
+
     public private(set) var screen = Screen.none
     private var connected = false
     /// A second try failed since launch, or since the app's own start of the service.
     private var lost = false
     private var update: UpdateUnderWay?
+    /// When `update.json` stopped saying so while the updating screen showed.
+    private var updateEnded: Date?
     private var start = Start.notYet
 
     public init() {}
@@ -53,7 +60,8 @@ public struct DaemonDownWatch: Sendable, Equatable {
     /// nothing: the updating screen starts one every second, and taking it for "no update"
     /// had that screen flicker out and back each time, starting the service mid-update.
     public mutating func note(
-        _ connection: ConnectionState, remote: Bool, update: UpdateUnderWay?
+        _ connection: ConnectionState, remote: Bool, update: UpdateUnderWay?,
+        at now: Date = Date()
     ) -> Bool {
         switch connection {
         case .connected:
@@ -69,13 +77,15 @@ public struct DaemonDownWatch: Sendable, Equatable {
             break
         }
         self.update = remote ? nil : update
-        return settle()
+        return settle(at: now)
     }
 
-    /// The update under way as `update.json` says now, read again while the daemon is down.
-    public mutating func note(update: UpdateUnderWay?) -> Bool {
+    /// The update under way as `update.json` says now: read at launch before the first try,
+    /// so an update under way shows at once (B130, fix 30a), and again while the daemon is
+    /// down.
+    public mutating func note(update: UpdateUnderWay?, at now: Date = Date()) -> Bool {
         self.update = update
-        return settle()
+        return settle(at: now)
     }
 
     /// The app's own start of the service is over; a second failed try after it shows the
@@ -85,13 +95,23 @@ public struct DaemonDownWatch: Sendable, Equatable {
         lost = false
     }
 
-    private mutating func settle() -> Bool {
+    private mutating func settle(at now: Date) -> Bool {
         guard !connected else { return false }
         if let update {
-            if lost || screen != .none {
-                screen = .updating(update)
-            }
+            updateEnded = nil
+            screen = .updating(update)
             return false
+        }
+        // The same screen until the daemon answers, not the window and its banner for the
+        // moment between the watcher's end and the daemon's start (B130, fix 30b).
+        if case .updating = screen {
+            let ended = updateEnded ?? now
+            updateEnded = ended
+            if now.timeIntervalSince(ended) < Self.afterUpdate {
+                return false
+            }
+            updateEnded = nil
+            screen = .none
         }
         if screen == .down {
             return false
