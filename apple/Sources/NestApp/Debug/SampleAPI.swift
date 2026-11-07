@@ -1560,8 +1560,9 @@
 
         func storage() async throws -> StorageUsage {
             StorageUsage(
-                totalBytes: 1_420_000_000, chatsBytes: 820_000_000, attachmentsBytes: 540_000_000,
-                artifactsBytes: 40_000_000, otherBytes: 20_000_000)
+                totalBytes: 3_000_000_000, chatsBytes: 820_000_000, attachmentsBytes: 540_000_000,
+                artifactsBytes: 40_000_000, enginesBytes: 1_100_000_000, backupsBytes: 470_000_000,
+                logsBytes: 10_000_000, otherBytes: 20_000_000)
         }
 
         func storageSettings() async throws -> StorageSettings {

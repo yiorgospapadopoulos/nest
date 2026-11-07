@@ -177,6 +177,9 @@ extension StorageText.Part {
         case .chats: StatusTone.running.color
         case .attachments: StatusTone.waiting.color
         case .artifacts: StatusTone.review.color
+        case .engines: Color(DesignTokens.Colors.Lane.pink)
+        case .backups: Color(DesignTokens.Colors.Lane.teal)
+        case .logs: Color(DesignTokens.Colors.Lane.violet)
         case .other: Palette.raised
         }
     }
