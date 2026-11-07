@@ -71,11 +71,15 @@ public final class LiveSync {
         self.updates = updates
     }
 
-    /// Runs until the task is cancelled or the daemon refuses the connection.
+    /// Runs until the task is cancelled or the daemon refuses the connection. A cancelled
+    /// run, replaced by a new connect, says nothing more about the connection: ending after
+    /// the new one connected, it marked the window as not connected (B130).
     public func run() async {
         app.connection = .connecting
+        let ended: ConnectionState
         do {
             for try await update in source.updates() {
+                guard !Task.isCancelled else { return }
                 switch update {
                 case .connected:
                     app.connection = .connected
@@ -88,13 +92,16 @@ public final class LiveSync {
                     route(event)
                 }
             }
-            app.connection = .disconnected
+            ended = .disconnected
         } catch EventStreamError.unauthorized {
-            app.connection = .unauthorized
+            ended = .unauthorized
         } catch EventStreamError.forbiddenOrigin {
-            app.connection = .forbiddenOrigin
+            ended = .forbiddenOrigin
         } catch {
-            app.connection = .disconnected
+            ended = .disconnected
+        }
+        if !Task.isCancelled {
+            app.connection = ended
         }
     }
 
