@@ -12,7 +12,14 @@ import type { Bridge, DaemonConnection, InstallState } from "./bridge.ts";
 import { ApiContext, BridgeContext, useBridge } from "./context.ts";
 import { TranscriptPage } from "./chat/TranscriptPage.tsx";
 import type { TranscriptTarget } from "./chat/transcriptTarget.ts";
-import { DEFAULT_RELEASE_URL, daemonDown, installLine, updateView } from "./layout/connection.ts";
+import {
+  DEFAULT_RELEASE_URL,
+  daemonDown,
+  heldView,
+  holdUpdate,
+  installLine,
+  type UpdateHold,
+} from "./layout/connection.ts";
 import { Pill } from "./Pill.tsx";
 import { ConnectionBanner, Connecting } from "./shell/ConnectionBanner.tsx";
 import { DaemonDown, UpdatingNest } from "./shell/DaemonDown.tsx";
@@ -134,33 +141,48 @@ const wait = (ms: number) =>
 /**
  * Before the daemon first answers: the frame and Connecting, then what to do about it (B130,
  * screens Z). While an update has the daemon down, its progress instead, never the repair
- * line. Otherwise the app first starts the service once by itself, and only if the daemon
- * is still down shows the line, or what stops it when the Tauri side can tell. A small
- * window stays empty.
+ * line: `update.json` is read before the first try, so it shows at once (fix 30a), and the
+ * screen stays a while after it clears, until the daemon answers (fix 30b). Otherwise the
+ * app first starts the service once by itself, and only if the daemon is still down shows
+ * the line, or what stops it when the Tauri side can tell. A small window stays empty.
  */
 function Launch({ pill, found }: { pill: boolean; found: () => Promise<boolean> }) {
   const bridge = useBridge();
   const [problem, setProblem] = useState<string | null>(null);
   const [install, setInstall] = useState<InstallState | null>(null);
+  const [hold, setHold] = useState<UpdateHold | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [started, setStarted] = useState(false);
   const startedOnce = useRef(false);
+  const readOnce = useRef(false);
   const lastInstall = useRef<InstallState | null>(null);
-  const tried = useCallback(async () => {
-    if (await found().catch(() => false)) return true;
+  const held = useRef<UpdateHold | null>(null);
+  // Whether the Updating screen shows after this read of `update.json`.
+  const readInstall = useCallback(async () => {
     // A read that failed tells nothing: the last answer stands. Taken for "no update", it
     // would have the update's screen flicker out and start the service mid-update.
-    const [why, state] = await Promise.all([
-      bridge.daemonProblem().catch(() => null),
-      bridge.installState().catch(() => lastInstall.current),
-    ]);
+    const state = await bridge.installState().catch(() => lastInstall.current);
     lastInstall.current = state;
     const at = Date.now();
-    setProblem(why);
+    held.current = holdUpdate(held.current, state?.updating ?? null, at);
     setInstall(state);
+    setHold(held.current);
     setNow(at);
+    return held.current !== null;
+  }, [bridge]);
+  const tried = useCallback(async () => {
+    if (!readOnce.current) {
+      readOnce.current = true;
+      await readInstall();
+    }
+    if (await found().catch(() => false)) return true;
+    const [why, updating] = await Promise.all([
+      bridge.daemonProblem().catch(() => null),
+      readInstall(),
+    ]);
+    setProblem(why);
     // The watcher is at work during an update; starting the service would get in its way.
-    if (updateView(state?.updating ?? null, at) !== null || startedOnce.current) return false;
+    if (updating || startedOnce.current) return false;
     startedOnce.current = true;
     const running = await bridge.startService().then(
       (answer) => answer === "started",
@@ -169,9 +191,9 @@ function Launch({ pill, found }: { pill: boolean; found: () => Promise<boolean> 
     if (running) await wait(SETTLE_MS);
     setStarted(true);
     return running && (await found().catch(() => false));
-  }, [bridge, found]);
+  }, [bridge, found, readInstall]);
   const reconnect = useReconnect(true, tried);
-  const update = updateView(install?.updating ?? null, now);
+  const update = heldView(hold, now);
   const updating = update !== null;
   const { retry } = reconnect;
   useEffect(() => {

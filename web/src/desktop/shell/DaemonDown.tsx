@@ -55,15 +55,21 @@ export function DaemonDown({
   );
 }
 
-/** While the daemon is down for an update: never the repair line, as Nest sees to it. */
+/**
+ * While the daemon is down for an update: never the repair line, as Nest sees to it. One
+ * screen the whole time (B130, fix 30b): the slow line's place is kept from the start, so
+ * nothing moves when it appears.
+ */
 export function UpdatingNest({ version, slow }: { version: string; slow: boolean }) {
   const title = `Updating Nest to ${version}...`;
   return (
     <main className="su-down" aria-label={title}>
       <section>
         <h1>{title}</h1>
-        {slow && <p>Taking longer than usual</p>}
         <Fireflies />
+        <p className="su-slow" style={{ visibility: slow ? "visible" : "hidden" }}>
+          Taking longer than usual
+        </p>
       </section>
     </main>
   );

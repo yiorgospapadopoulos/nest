@@ -67,18 +67,47 @@ function startedAt(text: string): number {
   return Date.parse(text.replace(/(\.\d{3})\d+/, "$1"));
 }
 
+/** Whether `update.json` says an update is under way: there, and not left over. */
+function underWay(updating: Updating, now: number): boolean {
+  const started = startedAt(updating.started_at);
+  return !Number.isNaN(started) && now - started < UPDATE_FRESH_MS;
+}
+
+// How long the Updating screen waits for the daemon once `update.json` no longer says so:
+// going back, the watcher clears it and only then starts the old version (B130, fix 30b).
+const AFTER_UPDATE_MS = 30_000;
+
+/** The update the Updating screen shows, and when `update.json` stopped saying so. */
+export interface UpdateHold {
+  updating: Updating;
+  ended: number | null;
+}
+
 /**
  * What shows instead of the daemon-down screen while the daemon is down for an update
- * (B130): the version it goes to, and whether it is slow. Null for none, or a stale one.
+ * (B130), after a read of `update.json`: the update under way, or for
+ * `AFTER_UPDATE_MS` the last one, so the screen stays until the daemon answers rather than
+ * giving way to the window and the app's own start of the service mid-rollback.
  */
-export function updateView(
+export function holdUpdate(
+  hold: UpdateHold | null,
   updating: Updating | null,
   now: number,
+): UpdateHold | null {
+  if (updating !== null && underWay(updating, now)) return { updating, ended: null };
+  if (hold === null) return null;
+  const ended = hold.ended ?? now;
+  return now - ended < AFTER_UPDATE_MS ? { updating: hold.updating, ended } : null;
+}
+
+/** What the Updating screen shows: the version it goes to, and whether it is slow. */
+export function heldView(
+  hold: UpdateHold | null,
+  now: number,
 ): { version: string; slow: boolean } | null {
-  if (updating === null) return null;
-  const started = startedAt(updating.started_at);
-  if (Number.isNaN(started) || now - started >= UPDATE_FRESH_MS) return null;
-  return { version: updating.to_version, slow: now - started >= UPDATE_SLOW_MS };
+  if (hold === null) return null;
+  const started = startedAt(hold.updating.started_at);
+  return { version: hold.updating.to_version, slow: now - started >= UPDATE_SLOW_MS };
 }
 
 /** After a second failed try, so a daemon just starting shows no alarm. */

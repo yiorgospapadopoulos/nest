@@ -211,12 +211,14 @@ describe("the daemon down for an update", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
     expect(screen.getByRole("heading", { name: "Updating Nest to 0.2.0..." })).toBeInTheDocument();
-    expect(screen.queryByText("Taking longer than usual")).not.toBeInTheDocument();
+    // Regression (B130, fix 30b): the line's place is kept from the start, so the screen
+    // does not move when it appears.
+    expect(screen.getByText("Taking longer than usual")).not.toBeVisible();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(13_000);
     });
-    expect(screen.getByText("Taking longer than usual")).toBeInTheDocument();
+    expect(screen.getByText("Taking longer than usual")).toBeVisible();
     expect(screen.queryByText(/install\.sh/)).not.toBeInTheDocument();
     expect(startService).not.toHaveBeenCalled();
 
@@ -281,6 +283,74 @@ describe("the update's screen", () => {
     });
     vi.useRealTimers();
     expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+  });
+});
+
+const INSTALL = { releaseUrl: "https://example.com", released: true };
+const UPDATING = { from_version: "0.1.0", to_version: "0.2.0" };
+
+describe("an update at launch", () => {
+  // Regression (B130, fix 30a): the window showed Connecting until a first try failed.
+  // `update.json` is read before the first try, so the update shows while it is pending.
+  it("shows the Updating screen before the first try ends", async () => {
+    vi.useFakeTimers();
+    const updating = { ...UPDATING, started_at: new Date(Date.now()).toISOString() };
+    const bridge = bridgeWith(() => new Promise<DaemonConnection>(() => undefined), {
+      installState: () => Promise.resolve({ updating, ...INSTALL }),
+    });
+    render(
+      <DesktopRoot
+        bridge={bridge}
+        open={() => ({ api: fakeApi(), connect: socketFactory().connect })}
+        storage={memoryStorage}
+      />,
+    );
+    await flush();
+    expect(screen.getByRole("heading", { name: "Updating Nest to 0.2.0..." })).toBeInTheDocument();
+    expect(screen.queryByText("Connecting to Nest")).not.toBeInTheDocument();
+  });
+
+  // Regression (B130, fix 30b): going back, the watcher clears `update.json` before the old
+  // version answers, and the screen gave way to the window, which started the service
+  // mid-rollback. It stays until the daemon answers, for up to 30 seconds.
+  it("keeps the Updating screen a while after update.json clears", async () => {
+    vi.useFakeTimers();
+    let updating: (typeof UPDATING & { started_at: string }) | null = {
+      ...UPDATING,
+      started_at: new Date(Date.now()).toISOString(),
+    };
+    const startService = vi.fn(() => Promise.resolve("started" as const));
+    const bridge = bridgeWith(() => Promise.reject(new Error("not running")), {
+      startService,
+      installState: () => Promise.resolve({ updating, ...INSTALL }),
+    });
+    render(
+      <DesktopRoot
+        bridge={bridge}
+        open={() => ({ api: fakeApi(), connect: socketFactory().connect })}
+        storage={memoryStorage}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    updating = null;
+    for (let second = 0; second < 28; second += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(
+        screen.getByRole("heading", { name: "Updating Nest to 0.2.0..." }),
+      ).toBeInTheDocument();
+    }
+    expect(startService).not.toHaveBeenCalled();
+
+    // Still not back: the service starts once, as at launch.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.queryByRole("heading", { name: /Updating Nest/ })).not.toBeInTheDocument();
+    expect(startService).toHaveBeenCalledOnce();
   });
 });
 
