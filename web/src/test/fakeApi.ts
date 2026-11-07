@@ -147,6 +147,17 @@ export function fakeApi(): FakeApi {
     relaunchUpdate: vi.fn<Api["relaunchUpdate"]>().mockResolvedValue({ restarting: true }),
     undoUpdate: vi.fn<Api["undoUpdate"]>().mockResolvedValue({ restarting: true }),
     dismissUpdateNotice: vi.fn<Api["dismissUpdateNotice"]>().mockResolvedValue(engineUpdates()),
+    setup: vi.fn<Api["setup"]>().mockResolvedValue({ first_run: false, local_only: false }),
+    finishSetup: vi
+      .fn<Api["finishSetup"]>()
+      .mockResolvedValue({ first_run: false, local_only: false }),
+    useLocalOnly: vi
+      .fn<Api["useLocalOnly"]>()
+      .mockResolvedValue({ first_run: false, local_only: true }),
+    setupChecks: vi.fn<Api["setupChecks"]>().mockResolvedValue({ checks: [] }),
+    setupReport: vi
+      .fn<Api["setupReport"]>()
+      .mockResolvedValue({ path: "/home/me/.local/share/nest/reports/r.txt", text: "Nest report" }),
     health: vi.fn<Api["health"]>().mockResolvedValue({ status: "ok", version: "0.1.0" }),
     reportVisibility: vi.fn<Api["reportVisibility"]>().mockResolvedValue(null),
     vapidKey: vi.fn<Api["vapidKey"]>().mockResolvedValue({ public_key: "BAEC" }),

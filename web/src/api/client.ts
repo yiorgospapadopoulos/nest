@@ -9,6 +9,9 @@ import type {
   CheckResult,
   EngineAccount,
   EngineUpdates,
+  SetupCheck,
+  SetupReport,
+  SetupState,
   FoundModels,
   IssueList,
   IssueShow,
@@ -258,6 +261,12 @@ export interface Api {
   relaunchUpdate(): Promise<{ restarting: boolean }>;
   undoUpdate(): Promise<{ restarting: boolean }>;
   dismissUpdateNotice(): Promise<EngineUpdates>;
+  // The setup guide and its checks (B130).
+  setup(): Promise<SetupState>;
+  finishSetup(): Promise<SetupState>;
+  useLocalOnly(): Promise<SetupState>;
+  setupChecks(): Promise<{ checks: SetupCheck[] }>;
+  setupReport(): Promise<SetupReport>;
   health(): Promise<Health>;
   reportVisibility(visible: boolean): Promise<null>;
   vapidKey(): Promise<{ public_key: string }>;
@@ -833,6 +842,26 @@ export class HttpApi implements Api {
 
   dismissUpdateNotice() {
     return this.json<EngineUpdates>("POST", "/api/updates/dismiss");
+  }
+
+  setup() {
+    return this.json<SetupState>("GET", "/api/setup");
+  }
+
+  finishSetup() {
+    return this.json<SetupState>("POST", "/api/setup/done");
+  }
+
+  useLocalOnly() {
+    return this.json<SetupState>("POST", "/api/setup/local-only");
+  }
+
+  setupChecks() {
+    return this.json<{ checks: SetupCheck[] }>("GET", "/api/setup/checks");
+  }
+
+  setupReport() {
+    return this.json<SetupReport>("POST", "/api/setup/report");
   }
 
   health() {

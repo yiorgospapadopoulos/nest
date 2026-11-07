@@ -1152,7 +1152,16 @@ export function codexAccount(overrides: Partial<CodexAccount> = {}): CodexAccoun
 }
 
 export function engineUpdates(overrides: Partial<EngineUpdates> = {}): EngineUpdates {
-  return { state: "none", engines: [], busy_chats: 0, can_undo: false, notice: null, ...overrides };
+  return {
+    state: "none",
+    engines: [],
+    app: null,
+    app_file: null,
+    busy_chats: 0,
+    can_undo: false,
+    notice: null,
+    ...overrides,
+  };
 }
 
 export function engineLimits(overrides: Partial<EngineLimits> = {}): EngineLimits {
