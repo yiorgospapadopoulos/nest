@@ -118,6 +118,17 @@ find_uv() {
     fi
 }
 
+# On a Mac without Apple's developer tools, /usr/bin/install_name_tool is a stand-in that
+# opens Apple's install window. uv runs it after fetching Python, for a rename it can do
+# without, so uv runs with only its own folder on the PATH there.
+run_uv() {
+    if [ "$system" = macos ] && ! xcode-select -p >/dev/null 2>&1; then
+        PATH="$(dirname "$uv")" "$uv" "$@"
+    else
+        "$uv" "$@"
+    fi
+}
+
 # The daemon in a folder of its own, made beside the others and renamed once it runs.
 build_daemon() {
     say "Setting up the background service"
@@ -127,12 +138,12 @@ build_daemon() {
     mkdir -p "$data/daemon"
     export UV_PYTHON_INSTALL_DIR="$data/bin/python"
     export UV_CACHE_DIR="$work/uv-cache"
-    "$uv" venv --quiet --relocatable --python 3.12 --python-preference only-managed "$partial"
-    "$uv" pip install --quiet --python "$partial/bin/python" --require-hashes -r "$work/requirements.txt"
+    run_uv venv --quiet --relocatable --python 3.12 --python-preference only-managed "$partial"
+    run_uv pip install --quiet --python "$partial/bin/python" --require-hashes -r "$work/requirements.txt"
     # uv reads the version from the name, and engine updates install this copy again.
     wheel="$partial/$(field "$(entry wheel any)" name)"
     cp "$work/nestd.whl" "$wheel"
-    "$uv" pip install --quiet --python "$partial/bin/python" --no-deps "$wheel"
+    run_uv pip install --quiet --python "$partial/bin/python" --no-deps "$wheel"
     # Kept for Undo update, and for an app that has to swap to this version's copy.
     cp "$work/app" "$partial/app-file"
     "$partial/bin/python" -m nestd service --help >/dev/null ||
@@ -144,6 +155,8 @@ build_daemon() {
     rm -rf "$folder.old"
     ln -sfn "$version" "$data/daemon/current"
     python="$data/daemon/current/bin/python"
+    # Where updates and the repair line come from, readable with the daemon down.
+    printf '%s\n' "$RELEASE_URL" >"$data/release-url"
 }
 
 install_mac_app() {
