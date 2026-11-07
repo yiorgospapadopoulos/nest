@@ -124,9 +124,11 @@ class LocalModels:
         zone: tzinfo | None = None,
         signed_in: SignedIn = _never,
         claude_signed_in: SignedIn = _never,
+        has_chats: SignedIn = _never,
     ) -> None:
         """`port` is the daemon's, where the translator listens. `signed_in` says whether
-        any engine is signed in, and `claude_signed_in` whether Claude is.
+        any engine is signed in, `claude_signed_in` whether Claude is, and `has_chats`
+        whether this install has ever had a chat.
         """
         self._store = store
         self._secrets = secrets
@@ -141,6 +143,7 @@ class LocalModels:
         self._zone = zone
         self._signed_in = signed_in
         self._claude_signed_in = claude_signed_in
+        self._has_chats = has_chats
         self._client = httpx.AsyncClient(transport=setup.transport)
         # The translator reaches the servers the same way.
         self.transport = setup.transport
@@ -300,12 +303,9 @@ class LocalModels:
         await self._changed()
 
     async def setup(self) -> SetupState:
-        """The first run: nothing signed in, no local model, and the user has not chosen."""
-        first = (
-            not await self._flag(FIRST_RUN_DONE)
-            and not await self._store.models()
-            and not await self._signed_in()
-        )
+        """The first run: the guide was never finished and no chat exists. Someone already
+        logged in to Claude Code still gets it, and an existing install never does (B130)."""
+        first = not await self._flag(FIRST_RUN_DONE) and not await self._has_chats()
         return SetupState(first_run=first, local_only=await self._flag(LOCAL_ONLY))
 
     async def use_local_only(self) -> SetupState:
