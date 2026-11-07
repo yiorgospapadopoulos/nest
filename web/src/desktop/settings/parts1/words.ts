@@ -93,12 +93,16 @@ export function bytes(count: number): string {
   return `${(count / 1_000_000_000).toFixed(1)} GB`;
 }
 
-export type StoragePart = "chats" | "attachments" | "artifacts" | "other";
+export type StoragePart =
+  "chats" | "attachments" | "artifacts" | "engines" | "backups" | "logs" | "other";
 
 export const PART_NAMES: Record<StoragePart, string> = {
   chats: "Chats",
   attachments: "Attachments",
   artifacts: "Artifacts",
+  engines: "Engines",
+  backups: "Backups",
+  logs: "Logs",
   other: "Other",
 };
 
@@ -107,6 +111,9 @@ function parts(usage: StorageUsage): { part: StoragePart; bytes: number }[] {
     { part: "chats", bytes: usage.chats_bytes },
     { part: "attachments", bytes: usage.attachments_bytes },
     { part: "artifacts", bytes: usage.artifacts_bytes },
+    { part: "engines", bytes: usage.engines_bytes },
+    { part: "backups", bytes: usage.backups_bytes },
+    { part: "logs", bytes: usage.logs_bytes },
     { part: "other", bytes: usage.other_bytes },
   ];
 }
@@ -123,7 +130,7 @@ export function shareText(share: number): string {
   return `${String(Math.round(share * 100))}%`;
 }
 
-/** The ledger's lines (B86): each part with its size and share, all four even at zero. */
+/** The ledger's lines (B86): each part with its size and share, all of them even at zero. */
 export function ledger(usage: StorageUsage): { part: StoragePart; size: string; share: string }[] {
   const total = usage.total_bytes;
   return parts(usage).map(({ part, bytes: size }) => ({
