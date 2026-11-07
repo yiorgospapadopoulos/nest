@@ -23,7 +23,7 @@ struct SetupGuideView: View {
             NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
         ) { _ in shell.recheckSetup() }
         .overlay {
-            // Only a guide reopened from Settings can be left this way.
+            // Only a guide opened from Settings can be left this way.
             if !flow.firstRun {
                 Button("Close") { shell.closeGuide() }
                     .keyboardShortcut(.cancelAction)
@@ -41,6 +41,7 @@ private struct SetupRail: View {
 
     var body: some View {
         let checks = shell.setupChecks ?? []
+        let engineReady = shell.setupEngineReady
         VStack(alignment: .leading, spacing: 0) {
             Text("Set up Nest")
                 .font(.ui(13, .semibold))
@@ -55,8 +56,9 @@ private struct SetupRail: View {
                     HStack(spacing: 8) {
                         StepMark(
                             mark: SetupMark(
-                                checks.first { $0.id == step.id }?.state, open: open,
-                                skipped: flow.skipped.contains(step)))
+                                step == .engine && engineReady
+                                    ? .ok : checks.first { $0.id == step.id }?.state,
+                                open: open, skipped: flow.skipped.contains(step)))
                         Text(step.rail).font(.ui(13, open ? .medium : .regular))
                         Spacer(minLength: 0)
                     }
@@ -85,7 +87,7 @@ private struct SetupPane: View {
 
     var body: some View {
         let step = flow.step
-        let engineReady = shell.setupChecks?.first { $0.id == "engine" }?.state == .ok
+        let engineReady = shell.setupEngineReady
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {

@@ -91,6 +91,45 @@ import Testing
         #expect(stages.map(\.reachable) == [false, false, false, true, true])
     }
 
+    /// Regression (B130): Pair a device made a code while Nest was not shared on Tailscale,
+    /// so the phone could not reach it; the guide's Tailscale step opens instead.
+    @Test func pairingADeviceWaitsForNestToBeShared() async {
+        let api = FakeAPI()
+        let store = SetupChecksStore(api: api)
+        let needs = { (stage: String) in
+            api.set {
+                $0.setupChecks = [
+                    SetupCheck(id: "tailscale", title: "", state: .missing, stage: stage)
+                ]
+            }
+            return await store.pairingNeedsSharing()
+        }
+        #expect(await needs("install"))
+        #expect(await needs("connect"))
+        #expect(await needs("share"))
+        #expect(!(await needs("pair")))
+        #expect(!(await needs("done")))
+        #expect(await needs("share"))
+        // Checks that cannot answer leave pairing as it was.
+        api.fail("setupChecks")
+        #expect(!(await store.pairingNeedsSharing()))
+
+        let flow = SetupFlow(firstRun: false, start: .tailscale)
+        #expect(flow.step == .tailscale)
+        #expect(flow.canFinish(engineReady: false))
+    }
+
+    @Test func anEngineReadyUnderMoreEnginesCountsAsTheEngine() {
+        let providers = Fixture.decode(ProviderList.self, json: MoreEnginesTests.json).providers
+        let missing = SetupCheck(id: "engine", title: "", state: .missing)
+        #expect(SetupFlow.engineReady(missing, providers: providers))
+        let notReady = providers.filter { $0.name != "opencode" }
+        #expect(!SetupFlow.engineReady(missing, providers: notReady))
+        #expect(
+            SetupFlow.engineReady(
+                SetupCheck(id: "engine", title: "", state: .ok), providers: notReady))
+    }
+
     @Test func sharingShowsItsAnswerAndAsksAgainOncePastTheSharingStep() async throws {
         let api = FakeAPI()
         let waiting = SetupCheck(

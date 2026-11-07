@@ -89,13 +89,23 @@ public enum SetupMark: Sendable, Equatable {
 /// Where the guide stands while it is open; skipped steps are remembered only that long.
 @MainActor @Observable
 public final class SetupFlow {
-    /// A guide reopened from Settings can always be left.
+    /// A guide opened from Settings, as Pair a device opens Tailscale's step, can always be
+    /// left.
     public let firstRun: Bool
-    public private(set) var step = SetupStep.engine
+    public private(set) var step: SetupStep
     public private(set) var skipped: Set<SetupStep> = []
 
-    public init(firstRun: Bool) {
+    public init(firstRun: Bool, start: SetupStep = .engine) {
         self.firstRun = firstRun
+        step = start
+    }
+
+    /// The engine step is done when the daemon's check is (Claude Code, Codex or local
+    /// models), or when another engine is ready, signed in under More engines.
+    public nonisolated static func engineReady(
+        _ check: SetupCheck?, providers: [ProviderInfo]
+    ) -> Bool {
+        check?.state == .ok || EngineSetup.others(providers).contains(where: \.ready)
     }
 
     private static let steps = SetupStep.allCases

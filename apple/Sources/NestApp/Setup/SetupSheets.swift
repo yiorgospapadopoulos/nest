@@ -77,7 +77,7 @@ private struct CheckNestSheet: View {
     var body: some View {
         let store = shell.model.setup
         let checks = shell.setupChecks.map(SetupCheck.ranked)
-        SetupSheetFrame(title: "Check Nest") {
+        SetupSheetFrame(title: "Set up Nest") {
             if let checks {
                 ForEach(checks) { CheckRow(check: $0) }
             } else if !store.checking {

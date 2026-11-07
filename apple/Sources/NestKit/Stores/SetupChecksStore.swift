@@ -20,13 +20,29 @@ public final class SetupChecksStore {
 
     /// Asks again; only the latest question's answer counts. A failed one keeps what is known.
     public func refresh() async {
+        _ = await ask()
+    }
+
+    /// Whether a pairing code must wait for Nest to be shared on the tailnet, asked afresh:
+    /// before that the phone cannot reach Nest. Checks that cannot answer leave pairing as it
+    /// was.
+    public func pairingNeedsSharing() async -> Bool {
+        guard let tailscale = await ask()?.first(where: { $0.id == SetupStep.tailscale.id })
+        else { return false }
+        return !TailscaleStage(tailscale).reachable
+    }
+
+    /// This question's own answer, nil when it failed.
+    private func ask() async -> [SetupCheck]? {
         latest += 1
         let asked = latest
         checking = true
         let found = try? await api.setupChecks()
-        guard asked == latest else { return }
-        checks = found ?? checks
-        checking = false
+        if asked == latest {
+            checks = found ?? checks
+            checking = false
+        }
+        return found
     }
 
     /// `answers` are the app's own for the checks only it can make (`SystemAnswers`).

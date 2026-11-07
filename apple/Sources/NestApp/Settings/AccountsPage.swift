@@ -433,20 +433,29 @@ private struct AccountLimits: View {
 /// The engines past Claude and Codex (B107), one compact row each, as one section.
 private struct MoreEnginesSection: View {
     let setups: [EngineSetup]
-    @Environment(Shell.self) private var shell
 
     var body: some View {
         SettingsSection(title: "", bare: true) {
             AccountsHeader(title: "More engines") { AccountsSymbol(name: Icon.agent) }
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(setups, id: \.name) { setup in
-                    MoreEngineRow(setup: setup)
-                }
-            }
-            .overlay(alignment: .top) { Separator() }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("More engines")
+            MoreEngineRows(setups: setups)
         }
+    }
+}
+
+/// The rows themselves, as Settings > Accounts and the setup guide's Engine step show them.
+struct MoreEngineRows: View {
+    let setups: [EngineSetup]
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(setups, id: \.name) { setup in
+                MoreEngineRow(setup: setup)
+            }
+        }
+        .overlay(alignment: .top) { Separator() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("More engines")
         // A sign-in in Terminal sends no event, so the engines are asked again on the way back.
         .onReceive(
             NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)

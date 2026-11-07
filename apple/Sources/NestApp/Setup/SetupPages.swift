@@ -37,14 +37,18 @@ private struct GenericPage: View {
     }
 }
 
-/// Claude Code, Codex or local models, through the same actions as Settings > Accounts.
+/// Claude Code, Codex or local models, through the same actions as Settings > Accounts, and
+/// every other engine under More engines, opened here: the guide never leaves for Settings.
 private struct EnginePage: View {
     @Environment(Shell.self) private var shell
+    @State private var more = false
 
     var body: some View {
         let accounts = shell.model.accounts
         let local = shell.model.local
         let signedIn = accounts.accounts.filter { $0.signedIn == true }.count
+        let others = EngineSetup.others(shell.providers.providers)
+        let othersReady = others.filter(\.ready).count
         VStack(alignment: .leading, spacing: 8) {
             EngineRow(provider: ProviderInfo.claude, title: "Claude Code")
             EngineRow(provider: EngineMark.codex, title: "Codex")
@@ -62,6 +66,28 @@ private struct EnginePage: View {
                     .buttonStyle(.nest(.soft))
                 }
             }
+            if !others.isEmpty {
+                EngineCard(title: "More engines") {
+                    if othersReady > 0 {
+                        StepMark(mark: .ok)
+                    }
+                    Button {
+                        more.toggle()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(more ? "Hide" : "Show")
+                            Image(systemName: Icon.chevron)
+                                .font(.system(size: 8, weight: .semibold))
+                                .rotationEffect(.degrees(more ? 180 : 0))
+                        }
+                    }
+                    .buttonStyle(.nest(.soft))
+                    .accessibilityValue(more ? "Shown" : "Hidden")
+                }
+                if more {
+                    MoreEngineRows(setups: others).padding(.horizontal, 4)
+                }
+            }
             if shell.isRemote {
                 RemoteSignIn(provider: ProviderInfo.claude).padding(.top, 4)
                 RemoteSignIn(provider: EngineMark.codex).padding(.top, 4)
@@ -70,9 +96,11 @@ private struct EnginePage: View {
         .task {
             try? await accounts.load()
             await local.load()
+            await shell.providers.load()
         }
-        // A sign-in ends in the browser; the accounts' change makes the check worth asking.
+        // A sign-in ends in the browser or Terminal; the change makes the check worth asking.
         .onChange(of: signedIn) { if signedIn > 0 { shell.recheckSetup() } }
+        .onChange(of: othersReady) { if othersReady > 0 { shell.recheckSetup() } }
     }
 }
 
