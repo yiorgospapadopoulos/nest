@@ -36,6 +36,15 @@ pub struct Install {
     app_dir: Option<PathBuf>,
 }
 
+impl Install {
+    /// What starts the app: the unpacked copy's AppRun, else the image.
+    pub fn program(&self) -> PathBuf {
+        self.app_dir
+            .as_ref()
+            .map_or_else(|| self.image.clone(), |app_dir| app_dir.join("AppRun"))
+    }
+}
+
 /// The install this process runs from; None for a dev build.
 pub fn locate(env: Env, exe: &Path) -> Option<Install> {
     let image = match var(env, "APPIMAGE") {
@@ -129,21 +138,29 @@ fn unpack(image: &Path, app_dir: &Path) -> Result<PathBuf, String> {
     Ok(extracted)
 }
 
+/// Leaves out what the old app set for itself (`own`) and its AppImage's variables, which a
+/// new app works out again.
+pub fn scrub(command: &mut Command, own: &[String]) {
+    for name in own
+        .iter()
+        .map(String::as_str)
+        .chain(APPIMAGE_VARS.iter().copied())
+    {
+        command.env_remove(name);
+    }
+}
+
 fn relaunch(
     install: &Install,
     old: Option<&Path>,
     waiting_for: u32,
     scrub: &[String],
 ) -> Result<(), String> {
-    let program = install
-        .app_dir
-        .as_ref()
-        .map_or_else(|| install.image.clone(), |app_dir| app_dir.join("AppRun"));
     let mut command = Command::new("sh");
     command
         .args(["-c", RELAUNCH, "nest-swap"])
         .arg(waiting_for.to_string())
-        .arg(program)
+        .arg(install.program())
         .arg(old.unwrap_or_else(|| Path::new("")))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -151,17 +168,16 @@ fn relaunch(
     if let Some(folder) = install.image.parent() {
         command.current_dir(folder);
     }
-    for name in scrub
-        .iter()
-        .map(String::as_str)
-        .chain(APPIMAGE_VARS.iter().copied())
-    {
-        command.env_remove(name);
-    }
+    self::scrub(&mut command, scrub);
     command
         .spawn()
         .map(drop)
         .map_err(|error| failed("start the new app", error))
+}
+
+/// Leaves a waiting process to start the app as it is, once this process has ended.
+pub fn reopen(install: &Install, scrub: &[String]) -> Result<(), String> {
+    relaunch(install, None, std::process::id(), scrub)
 }
 
 /// Swaps to `file` and leaves a waiting process to start it; the caller then exits.

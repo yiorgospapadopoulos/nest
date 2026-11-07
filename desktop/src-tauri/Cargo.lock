@@ -2226,6 +2226,7 @@ dependencies = [
  "base64 0.23.1",
  "gdkx11",
  "gtk",
+ "libc",
  "portable-pty",
  "serde",
  "serde_json",

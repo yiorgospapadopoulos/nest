@@ -293,6 +293,25 @@ pub fn notify(
     notifier.send(title, body, sound, on_click)
 }
 
+/// The desktop's notification service by its name; None when nothing answers, so Nest's
+/// notifications would go nowhere.
+pub fn notification_server() -> Option<String> {
+    let connection = zbus::blocking::Connection::session().ok()?;
+    let (name, path, interface) = NOTIFICATIONS;
+    let reply = connection
+        .call_method(
+            Some(name),
+            path,
+            Some(interface),
+            "GetServerInformation",
+            &(),
+        )
+        .ok()?;
+    let (server, _vendor, _version, _spec): (String, String, String, String) =
+        reply.body().deserialize().ok()?;
+    Some(server)
+}
+
 /// One connection for every notification: GNOME closes a notification once the connection
 /// that sent it goes away, and some servers send its signals only to that connection.
 struct Notifier {
