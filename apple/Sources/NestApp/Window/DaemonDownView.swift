@@ -1,11 +1,30 @@
 import NestKit
 import SwiftUI
 
-/// The window while This Mac's daemon cannot be reached at launch (B130, screen Z): the line
-/// that repairs the install, and Try again.
+/// The window while This Mac's daemon cannot be reached at launch (B130, screen Z): an
+/// update's progress while one has the daemon down, else, once starting the service by itself
+/// did not help, the line that repairs the install, and Try again.
 struct DaemonDownView: View {
-    @Environment(AppController.self) private var controller
     @Environment(Shell.self) private var shell
+
+    var body: some View {
+        Group {
+            if case .updating(let update) = shell.daemonDown.screen {
+                UpdatingNestView(update: update)
+            } else {
+                RepairView()
+            }
+        }
+        .foregroundStyle(Palette.t1)
+        .frame(width: 520)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.windowOpaque)
+        .ignoresSafeArea()
+    }
+}
+
+private struct RepairView: View {
+    @Environment(AppController.self) private var controller
 
     var body: some View {
         let service = controller.service
@@ -39,10 +58,34 @@ struct DaemonDownView: View {
                 SettingsFailure(text: reason).padding(.top, 8)
             }
         }
-        .foregroundStyle(Palette.t1)
-        .frame(width: 520)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.windowOpaque)
-        .ignoresSafeArea()
+    }
+}
+
+/// While the daemon is down for an update: never the repair line, as Nest sees to it. Looks
+/// again every second, so the window moves on as soon as the daemon is back.
+private struct UpdatingNestView: View {
+    let update: UpdateUnderWay
+    @Environment(AppController.self) private var controller
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Updating Nest to \(update.toVersion)...")
+                    .font(.ui(24, .semibold))
+                    .padding(.bottom, 8)
+                    .accessibilityAddTraits(.isHeader)
+                if update.isSlow(at: context.date) {
+                    SetupLine(text: "Taking longer than usual").padding(.bottom, 8)
+                }
+                Fireflies().padding(.top, 8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                controller.followUpdate()
+            }
+        }
     }
 }

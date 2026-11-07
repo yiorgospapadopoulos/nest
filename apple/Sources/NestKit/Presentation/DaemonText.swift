@@ -20,23 +20,87 @@ extension ConnectionState {
     }
 }
 
-/// Whether the window shows that This Mac's daemon is down (B130, screen Z): after a second
-/// failed try at launch, so a daemon just starting shows no alarm, until it connects. A daemon
-/// lost later has the banner instead.
+/// What the window shows while This Mac's daemon cannot be reached at launch (B130, screen
+/// Z), from a second failed try on, so a daemon just starting shows no alarm, until it
+/// connects. A daemon lost later has the banner instead. While an update has the daemon down,
+/// its progress shows, never the repair line. Otherwise the app first starts the service
+/// once by itself, and only if the daemon is still down after that shows the line.
 public struct DaemonDownWatch: Sendable, Equatable {
-    public private(set) var isDown = false
+    public enum Screen: Sendable, Equatable {
+        case none
+        case updating(UpdateUnderWay)
+        case down
+    }
+
+    private enum Start: Sendable, Equatable {
+        case notYet, running, done
+    }
+
+    public private(set) var screen = Screen.none
     private var connected = false
+    /// A second try failed since launch, or since the app's own start of the service.
+    private var lost = false
+    private var update: UpdateUnderWay?
+    private var start = Start.notYet
 
     public init() {}
 
-    public mutating func note(_ connection: ConnectionState, remote: Bool) {
+    public var isDown: Bool { screen != .none }
+
+    /// True when the app should start the service now: once, and never during an update,
+    /// whose watcher is at work. `startFinished()` follows it.
+    public mutating func note(_ connection: ConnectionState, remote: Bool) -> Bool {
         if connection == .connected {
             connected = true
-            isDown = false
-        } else if !connected, !remote, case .reconnecting(let attempt, _) = connection,
-            attempt > 1
-        {
-            isDown = true
+            lost = false
+            screen = .none
+            return false
+        }
+        if !connected, !remote, case .reconnecting(let attempt, _) = connection, attempt > 1 {
+            lost = true
+        }
+        return settle()
+    }
+
+    /// The update under way as `update.json` says now, read again while the daemon is down.
+    public mutating func note(update: UpdateUnderWay?) -> Bool {
+        self.update = update
+        return settle()
+    }
+
+    /// The app's own start of the service is over; a second failed try after it shows the
+    /// line.
+    public mutating func startFinished() {
+        start = .done
+        lost = false
+    }
+
+    private mutating func settle() -> Bool {
+        guard !connected else { return false }
+        if let update {
+            if lost || screen != .none {
+                screen = .updating(update)
+            }
+            return false
+        }
+        if screen == .down {
+            return false
+        }
+        guard lost else {
+            screen = .none
+            return false
+        }
+        switch start {
+        case .notYet:
+            start = .running
+            screen = .none
+            return true
+        case .running:
+            screen = .none
+            return false
+        case .done:
+            screen = .down
+            return false
         }
     }
 }

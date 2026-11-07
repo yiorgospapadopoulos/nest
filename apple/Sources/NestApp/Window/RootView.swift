@@ -113,7 +113,7 @@ struct ShellView: View {
         // A project removed from the daemon drops its state, ending its tool panes.
         .onChange(of: Set(shell.app.projects.keys)) { shell.syncTools() }
         .onChange(of: shell.app.connection, initial: true) { _, connection in
-            shell.noteConnection(connection)
+            controller.noteConnection(connection)
             if connection == .connected {
                 controller.service.reset()
             }

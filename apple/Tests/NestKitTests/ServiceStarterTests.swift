@@ -127,7 +127,8 @@ final class FakeRunner: CommandRunner {
     }
 
     @Test func theLocalStarterUsesThisUsersDomainAndLaunchAgents() {
-        let starter = ServiceStarter.local(repoPath: nil)
+        let starter = ServiceStarter.local(
+            repoPath: nil, releaseURL: ReleasedInstall.defaultReleaseURL)
         let home = FileManager.default.homeDirectoryForCurrentUser.path
 
         #expect(starter.kickstart == ["kickstart", "-k", "gui/\(getuid())/com.nest.daemon"])
@@ -149,6 +150,15 @@ final class FakeRunner: CommandRunner {
             DaemonService.installCommand(repoPath: nil)
                 == "curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/"
                 + "download/install.sh | sh")
+    }
+
+    /// Regression: a test install, or one from any other address, got GitHub's line, which
+    /// 404s for it.
+    @Test func aReleaseFromAnotherAddressGetsItsOwnLine() {
+        #expect(
+            DaemonService.installCommand(repoPath: nil, releaseURL: "http://192.168.64.1:41051/")
+                == "curl -fsSL http://192.168.64.1:41051/install.sh"
+                + " | NEST_RELEASE_URL=http://192.168.64.1:41051 sh")
     }
 
     @Test func aReleaseHasNoCheckoutAndADeveloperBuildKeepsItsOwn() {
