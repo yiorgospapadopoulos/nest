@@ -22,6 +22,8 @@ _LINUX_PACKAGE_LINES = (
     ("zypper", "sudo zypper install {}"),
 )
 _THE_APP_ANSWERS = "The app checks this."
+_GH_RELEASES = "https://github.com/cli/cli/releases/latest"
+_GH_LINUX = "https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
 
 
 def _package_line(machine: Machine, package: str) -> str:
@@ -92,7 +94,7 @@ def check_github(machine: Machine) -> Check:
             title=title,
             state="missing",
             message="Pull requests need GitHub's gh command.",
-            fix=Fix(kind="link", value="https://cli.github.com"),
+            fix=_gh_install(machine),
         )
     if machine.command(program, "auth", "status").returncode == 0:
         return Check(id="github", title=title, state="ok", detail="Signed in")
@@ -103,6 +105,16 @@ def check_github(machine: Machine) -> Check:
         message="gh is installed but not signed in. Pull requests need it.",
         fix=Fix(kind="command", value="gh auth login"),
     )
+
+
+def _gh_install(machine: Machine) -> Fix:
+    """cli.github.com leads with Homebrew, which a clean Mac lacks: its releases page has a
+    plain installer. On Linux, the distribution's own package."""
+    if _is_mac(machine):
+        return Fix(kind="link", value=_GH_RELEASES)
+    if any(machine.which(manager) for manager, _ in _LINUX_PACKAGE_LINES):
+        return Fix(kind="command", value=_package_line(machine, "gh"))
+    return Fix(kind="link", value=_GH_LINUX)
 
 
 def check_service(machine: Machine) -> Check:
