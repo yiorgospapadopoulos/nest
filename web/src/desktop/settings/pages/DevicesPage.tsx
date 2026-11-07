@@ -9,10 +9,9 @@ import {
   canRevoke,
   deviceDetail,
   deviceTitle,
-  expiryText,
-  secondsLeft,
   shownDevices,
 } from "../parts3/devices.ts";
+import { PairingCodeView } from "../parts3/PairingCodeView.tsx";
 import { Note, SettingsListRow, SettingsSection } from "../rows.tsx";
 import "../parts3/parts3.css";
 
@@ -84,6 +83,7 @@ export function DevicesPage() {
       {code !== null ? (
         <PairingCodeView
           code={code}
+          hint="Open your tailnet address in Safari on the iPhone, then enter this code."
           onNewCode={() => void createCode()}
           onDone={() => {
             setCode(null);
@@ -108,41 +108,6 @@ export function DevicesPage() {
         />
       )}
     </SettingsSection>
-  );
-}
-
-/** The one-time code, large, with its countdown and where to enter it. */
-function PairingCodeView({
-  code,
-  onNewCode,
-  onDone,
-}: {
-  code: PairingCode;
-  onNewCode: () => void;
-  onDone: () => void;
-}) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 1000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, []);
-  const left = secondsLeft(code.expires_at, now);
-  return (
-    <div className="dks3-code">
-      <b aria-label="Pairing code">{code.code}</b>
-      <p className={left > 0 ? undefined : "gone"}>{expiryText(code.expires_at, now)}</p>
-      <p>Open your tailnet address in Safari on the iPhone, then enter this code.</p>
-      <div className="dks3-buttons">
-        <Button kind="plain" onClick={onNewCode}>
-          New code
-        </Button>
-        <Button onClick={onDone}>Done</Button>
-      </div>
-    </div>
   );
 }
 

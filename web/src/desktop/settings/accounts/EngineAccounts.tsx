@@ -13,7 +13,7 @@ import { useStore } from "../../../store/context.ts";
 import { engineTitle } from "../../../store/usageMeter.ts";
 import { Fireflies } from "../../../ui/Fireflies.tsx";
 import { Icon } from "../../../ui/Icon.tsx";
-import { useApi, useBridge } from "../../context.ts";
+import { useApi } from "../../context.ts";
 import { EngineMark } from "../../shell/frame/marks.tsx";
 import { Button } from "../../ui/controls.tsx";
 import { Menu } from "../../ui/Menu.tsx";
@@ -24,6 +24,7 @@ import { FoldChevron, StatusLabel } from "../config/parts.tsx";
 import { Confirm } from "../../sheets/Alert.tsx";
 import { useSettingsChange } from "../config/util.ts";
 import { EngineHeader, Meter, MoreGlyph } from "./parts.tsx";
+import { useSignIn } from "./signIn.ts";
 
 /**
  * An engine's accounts as a radio group (B98), as AccountsPage.swift's EngineAccounts: the
@@ -39,9 +40,7 @@ export function EngineAccounts({
   optional: boolean;
 }) {
   const { state } = useStore();
-  const api = useApi();
-  const bridge = useBridge();
-  const change = useSettingsChange();
+  const { add } = useSignIn();
   const engine = engineTitle(provider);
   const accounts = (state.settings.accounts ?? []).filter((a) => a.provider === provider);
 
@@ -59,10 +58,7 @@ export function EngineAccounts({
       <div className="dka-tools">
         <Button
           onClick={() => {
-            change(`Could not add a ${engine} account`, async () => {
-              const started = await api.addAccount(provider);
-              if (started.auth_url !== null) await bridge.openExternal(started.auth_url);
-            });
+            add(provider);
           }}
         >
           <Icon name="plus" />
@@ -187,8 +183,8 @@ function AccountControls({
   onRename: () => void;
 }) {
   const api = useApi();
-  const bridge = useBridge();
   const { actions } = useStore();
+  const { signIn } = useSignIn();
   const change = useSettingsChange();
   const [confirming, setConfirming] = useState<"signOut" | "remove" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -264,10 +260,7 @@ function AccountControls({
         <Button
           kind={optional ? "soft" : "primary"}
           onClick={() => {
-            change("Could not start signing in", async () => {
-              const started = await api.signInAccount(account.id);
-              if (started.auth_url !== null) await bridge.openExternal(started.auth_url);
-            });
+            signIn(account.id);
           }}
         >
           Sign in

@@ -1,0 +1,289 @@
+/* The setup guide (B130, design B): a 232 px rail on the sidebar's colour, then one page. */
+.su {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--bg);
+  color: var(--t1);
+}
+.su-rail {
+  flex: none;
+  width: 232px;
+  padding: 24px 8px;
+  overflow-y: auto;
+  background: var(--dk-side);
+  border-right: 1px solid var(--dk-line);
+}
+.su-rail h2 {
+  margin: 0;
+  padding: 0 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.su-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--t1);
+}
+.su-item:hover {
+  background: var(--mac-hover);
+}
+.su-item.on {
+  background: var(--sel);
+  font-weight: 500;
+}
+
+.su-mark {
+  flex: none;
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.su-mark svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.su-mark.ok {
+  background: var(--ok);
+}
+.su-mark.todo {
+  border: 1.5px solid var(--t2);
+  opacity: 0.6;
+}
+.su-mark.skipped {
+  border: 1.5px dashed var(--t2);
+  opacity: 0.7;
+}
+.su-mark.now {
+  border: 1.5px solid var(--wait);
+}
+.su-mark.now::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wait);
+}
+
+.su-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 48px 56px 24px;
+}
+.su-pane h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.su-sub {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--t2);
+}
+.su-body {
+  flex: 1;
+  min-height: 0;
+  max-width: 480px;
+  margin-top: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.su-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 16px;
+}
+.su-line {
+  margin: 0;
+  color: var(--t2);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.su-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.su-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.su-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 9px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+}
+.su-row b {
+  flex: 1;
+  font-weight: 500;
+}
+.su-cmd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 7px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+}
+.su-cmd code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.su-again {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.su-quiet {
+  color: var(--t2);
+}
+.su-fail {
+  color: var(--fail-t);
+}
+
+/* The pairing code in place, on the page rather than in a card. */
+.dks3-code.su-code {
+  align-items: flex-start;
+  margin: 0 0 0 22px;
+  padding: 0;
+  background: none;
+  text-align: left;
+}
+.dks3-code.su-code b {
+  font-size: 36px;
+}
+.dks3-code.su-code p {
+  font-size: 13px;
+  color: var(--t2);
+}
+
+/* The window while the daemon cannot be reached (screens Z). */
+.su-down {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--t1);
+}
+.su-down section {
+  width: min(520px, 100%);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.su-down h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.su-down p {
+  margin: 0 0 16px;
+  color: var(--t2);
+}
+.su-down code {
+  display: block;
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 7px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Check Nest and the bug report. */
+.su-checks {
+  display: flex;
+  flex-direction: column;
+}
+.su-check {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 4px 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--dk-line);
+  font-size: 12px;
+}
+.su-check:first-child {
+  border-top: 0;
+}
+.su-check .su-mark {
+  margin-top: 1px;
+}
+.su-check-head {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  font-weight: 500;
+}
+.su-check-head span {
+  min-width: 0;
+  font-weight: 400;
+  color: var(--t2);
+  overflow-wrap: anywhere;
+}
+.su-check-more {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.su-report {
+  margin: 8px 0 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 7px;
+  background: var(--soft);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}

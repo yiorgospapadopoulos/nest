@@ -20,6 +20,7 @@ import { Composer } from "./Composer.tsx";
 import { FileLinks } from "./FileLinks.tsx";
 import { Glyph } from "./glyphs.tsx";
 import { ChatHeaderParts, HeaderFrame, HeaderTitle } from "./PaneHeader.tsx";
+import type { DraftModel } from "../layout/project.ts";
 import type { NewChatChoice } from "./placePicker.ts";
 import { RunControlView } from "./RunControl.tsx";
 import { ReadOnlyRows, Transcript } from "./Transcript.tsx";
@@ -368,12 +369,15 @@ function WorkHeader({ title, running }: { title: string; running: boolean }) {
 export function DraftPane({
   repo,
   place,
+  model,
   chrome,
   onCreated,
 }: {
   repo: string;
   // Where it opened to start, for this one chat; null follows the selected place.
   place: NewChatChoice | null;
+  // The model it opened on; null is the new chat's default.
+  model: DraftModel | null;
   chrome: PaneChrome;
   onCreated: (session: Session) => void;
 }) {
@@ -389,7 +393,7 @@ export function DraftPane({
       }
     >
       <p className="dc-newph">New chat</p>
-      <Composer target={{ kind: "draft", repo, place, onCreated }} />
+      <Composer target={{ kind: "draft", repo, place, model, onCreated }} />
     </PaneFrame>
   );
 }
