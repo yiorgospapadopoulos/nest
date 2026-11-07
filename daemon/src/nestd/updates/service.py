@@ -22,8 +22,11 @@ from nestd.engine.acp_install import NpmRunner, remove_old, run_npm
 from nestd.errors import ConflictError
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.paths import AppPaths, is_packaged
+from nestd.platform import PlatformName
 from nestd.providers.acp_engines import ACP_ENGINES, BASE_ENGINES
 from nestd.providers.shell_env import ShellEnvSource
+from nestd.updates.app import AppFile, AppUpdate, AppUpdater
 from nestd.updates.boot import TrialWatch
 from nestd.updates.build import (
     EnvironmentBuilder,
@@ -40,6 +43,7 @@ from nestd.updates.engines import (
     Versions,
     changes,
     followed_engines,
+    npm_engines,
     running_versions,
 )
 from nestd.updates.environments import (
@@ -81,6 +85,10 @@ class EngineUpdates(BaseModel):
     state: Literal["none", "checking", "preparing", "ready"]
     # What Relaunch changes; only while `state` is ready.
     engines: list[EngineUpdate]
+    # A new Nest; only the Mac and Linux apps offer it.
+    app: AppUpdate | None = None
+    # The app of the daemon now running: an app of another version swaps to it.
+    app_file: AppFile | None = None
     # Chats a relaunch would interrupt right now.
     busy_chats: int
     can_undo: bool
@@ -110,25 +118,30 @@ class UpdateSetup:
     versions: Callable[[], Versions] = running_versions
     # This process's environment.
     prefix: Path = Path(sys.prefix)
+    # Whether this Nest came from a release, so it follows releases.
+    packaged: Callable[[], bool] = is_packaged
 
 
 class UpdateService:
     def __init__(
         self,
         *,
-        root: Path,
-        engines_dir: Path,
+        paths: AppPaths,
+        platform: PlatformName,
         bus: EventBus,
         shell_env: ShellEnvSource,
         busy_chats: Callable[[], int],
         port: Callable[[], int],
         setup: UpdateSetup,
     ) -> None:
-        """`root` is `<data_dir>/environments`, `busy_chats` counts the chats a relaunch
-        would interrupt and `port` is the one the daemon serves on.
+        """`busy_chats` counts the chats a relaunch would interrupt and `port` is the one
+        the daemon serves on.
         """
+        root = paths.environments_dir
+        engines_dir = paths.engines_dir
         self._root = root
         self._engines_dir = engines_dir
+        self._bin_dir = paths.bin_dir
         self._bus = bus
         self._busy_chats = busy_chats
         self._port = port
@@ -141,6 +154,15 @@ class UpdateService:
         self._shell_env = shell_env
         self._builder = EnvironmentBuilder(
             root, engines_dir, setup.uv, setup.npm, setup.selfcheck, self._env
+        )
+        self._app = AppUpdater(
+            paths=paths,
+            platform=platform,
+            packaged=setup.packaged(),
+            uv=setup.uv,
+            selfcheck=setup.selfcheck,
+            env=self._env,
+            transport=setup.transport,
         )
         # The running watch of a daemon in an environment, from the boot switch.
         self.watch: TrialWatch | None = None
@@ -170,16 +192,20 @@ class UpdateService:
 
     async def status(self) -> EngineUpdates:
         state, ready = await asyncio.to_thread(self._read)
+        app = await asyncio.to_thread(self._app.state)
         engines: list[EngineUpdate] = []
         if ready is not None:
             now = await asyncio.to_thread(self._setup.versions)
             engines = changes(now, ready.packages, ready.shown)
+        can_undo = state.previous is not None or await asyncio.to_thread(self._app.can_undo)
         return EngineUpdates(
-            state="ready" if ready is not None else self._phase or "none",
+            state="ready" if ready is not None or app.ready else self._phase or "none",
             engines=engines,
+            app=app.ready,
+            app_file=await asyncio.to_thread(self._app.app_file),
             busy_chats=self._busy_chats(),
-            can_undo=state.previous is not None,
-            notice=state.notice,
+            can_undo=can_undo,
+            notice=app.notice or state.notice,
         )
 
     async def check(self) -> EngineUpdates:
@@ -191,9 +217,18 @@ class UpdateService:
         return await self.status()
 
     async def relaunch(self) -> None:
-        """Make the ready environment the one to run; the caller then restarts the daemon."""
+        """Make the ready Nest or environment the one to run; the caller then restarts the
+        daemon. A new Nest goes first: environments are tied to the base they were made from,
+        so engines are prepared again on the new one.
+        """
         async with self._lock:
             state, ready = await asyncio.to_thread(self._read)
+            if (await asyncio.to_thread(self._app.state)).ready is not None:
+                await self._app.relaunch(self._port())
+                dropped = state.model_copy(update={"ready": None})
+                await asyncio.to_thread(self._files.save, dropped)
+                await self._announce()
+                return
             if ready is None:
                 raise NothingToRelaunchError
             await asyncio.to_thread(self._files.save, relaunched(state))
@@ -203,6 +238,10 @@ class UpdateService:
         """Make the previous environment the one to run; the caller then restarts the daemon."""
         async with self._lock:
             state = await asyncio.to_thread(self._files.load)
+            if await asyncio.to_thread(self._app.can_undo):
+                await self._app.undo()
+                await self._announce()
+                return
             if state.previous is None:
                 raise NothingToUndoError
             await asyncio.to_thread(self._files.save, undone(state))
@@ -214,6 +253,7 @@ class UpdateService:
             if state.notice is not None:
                 cleared = state.model_copy(update={"notice": None})
                 await asyncio.to_thread(self._files.save, cleared)
+            await asyncio.to_thread(self._app.dismiss)
         await self._announce()
         return await self.status()
 
@@ -224,7 +264,9 @@ class UpdateService:
         return state, usable(self._root, state.ready, state.base_fingerprint)
 
     async def _env(self) -> Mapping[str, str]:
-        return {**os.environ, **await self._shell_env()}
+        env = {**os.environ, **await self._shell_env()}
+        # Where the install script puts `uv` on a machine that had none.
+        return {**env, "PATH": os.pathsep.join((env.get("PATH", ""), str(self._bin_dir)))}
 
     async def _announce(self) -> None:
         status = await self.status()
@@ -233,7 +275,8 @@ class UpdateService:
     async def _check_and_prepare(self) -> None:
         try:
             await self._announce()
-            await self._prepare_what_is_new()
+            if not await self._app_ready():
+                await self._prepare_what_is_new()
         except UpdaterUnavailableError as error:
             logger.info("engine updates are not available here: %s", error)
         except (PrepareError, RegistryError, OSError) as error:
@@ -245,11 +288,34 @@ class UpdateService:
             self._task = None
         await self._announce()
 
+    async def _app_ready(self) -> bool:
+        """A new Nest makes any engine environment built now useless, so it goes first. One
+        that cannot be prepared is logged and does not stop engine updates.
+        """
+        if not self._app.packaged:
+            return False
+        self._phase = "preparing"
+        await self._announce()
+        try:
+            return await self._app.check_and_prepare()
+        except PrepareError as error:
+            logger.warning("could not prepare a Nest update: %s", error)
+            return False
+        finally:
+            self._phase = "checking"
+
+    def _in_use(self, engine: str) -> bool:
+        """An npm engine the user never installed is not followed."""
+        fetched = {found.id for found in npm_engines()}
+        return engine not in fetched or (self._engines_dir / engine).is_dir()
+
     async def _prepare_what_is_new(self) -> None:
         now = await asyncio.to_thread(self._setup.versions)
         latest = await self._latest()
         target = {
-            engine: latest[engine] if is_newer(latest.get(engine, ""), version) else version
+            engine: latest[engine]
+            if self._in_use(engine) and is_newer(latest.get(engine, ""), version)
+            else version
             for engine, version in now.packages.items()
         }
         if target == now.packages:
@@ -333,6 +399,7 @@ class UpdateService:
         keep = kept_folders(state) | ({running} if running is not None else set[str]())
         for name in remove_unused(self._root, keep):
             logger.info("removed environment %s", name)
+        self._app.clear_unused()
         running_engines = {engine.id: engine.version for engine in ACP_ENGINES}
         for engine in BASE_ENGINES:
             folder = self._engines_dir / engine.id

@@ -133,6 +133,8 @@ build_daemon() {
     wheel="$partial/$(field "$(entry wheel any)" name)"
     cp "$work/nestd.whl" "$wheel"
     "$uv" pip install --quiet --python "$partial/bin/python" --no-deps "$wheel"
+    # Kept for Undo update, and for an app that has to swap to this version's copy.
+    cp "$work/app" "$partial/app-file"
     "$partial/bin/python" -m nestd service --help >/dev/null ||
         stop "The downloaded daemon doesn't run on this computer."
     rm -rf "$folder.old"

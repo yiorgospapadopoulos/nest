@@ -35,6 +35,8 @@ class FakeService:
     def remove_legacy(self) -> bool:
         return False
 
+    def stop(self) -> None: ...
+
     def uninstall(self) -> None: ...
 
     def status(self) -> ServiceStatus:

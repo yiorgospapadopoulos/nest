@@ -868,8 +868,8 @@ class AppContext:
             )
         )
         updates = UpdateService(
-            root=paths.environments_dir,
-            engines_dir=paths.engines_dir,
+            paths=paths,
+            platform=system.name,
             bus=bus,
             shell_env=shell_env,
             busy_chats=sessions.busy_count,

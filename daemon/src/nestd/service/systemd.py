@@ -84,6 +84,9 @@ class SystemdService:
         """The service from before the rename only ever ran on macOS."""
         return False
 
+    def stop(self) -> None:
+        self._systemctl(["stop", UNIT_NAME])
+
     def uninstall(self) -> None:
         # Failure just means it was not enabled or running.
         self._systemctl(["disable", "--now", UNIT_NAME])

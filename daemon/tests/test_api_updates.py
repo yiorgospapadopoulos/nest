@@ -17,8 +17,8 @@ from tests.updates_support import FINGERPRINT, NOW, SAME, make_environment, regi
 async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
     async with running_api(tmp_path, clock, secrets) as running:
         running.ctx.updates = UpdateService(
-            root=running.ctx.paths.environments_dir,
-            engines_dir=running.ctx.paths.engines_dir,
+            paths=running.ctx.paths,
+            platform="macos",
             bus=running.ctx.bus,
             shell_env=no_shell_env,
             busy_chats=lambda: 2,
@@ -58,6 +58,8 @@ async def test_the_status_says_what_a_client_needs(api: Api) -> None:
     assert response.json() == {
         "state": "none",
         "engines": [],
+        "app": None,
+        "app_file": None,
         "busy_chats": 2,
         "can_undo": True,
         "notice": "It went back.",

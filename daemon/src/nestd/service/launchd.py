@@ -95,8 +95,11 @@ class LaunchdService:
         legacy.unlink()
         return True
 
-    def uninstall(self) -> None:
+    def stop(self) -> None:
         self.runner([LAUNCHCTL, "bootout", self._target])
+
+    def uninstall(self) -> None:
+        self.stop()
         self.plist_path.unlink(missing_ok=True)
 
     def status(self) -> ServiceStatus:
