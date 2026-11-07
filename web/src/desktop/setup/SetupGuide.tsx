@@ -18,6 +18,7 @@ import {
   canFinish,
   canSkip,
   checksById,
+  engineReady as isEngineReady,
   firstChatModel,
   markOf,
   type StepId,
@@ -41,13 +42,18 @@ const SUBTITLES: Record<StepId, string> = {
  * The setup guide over the whole window (B130, design B): the steps on the left, every one
  * can be clicked, and one page at a time. Skipped steps are remembered while it is open.
  */
-export function SetupGuide({ firstRun }: { firstRun: boolean }) {
+export function SetupGuide({ firstRun, start }: { firstRun: boolean; start: StepId }) {
   const { state, actions } = useStore();
   const api = useApi();
   const shell = useShell();
   const change = useSettingsChange();
   const { checks, checking, refresh } = useChecks();
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() =>
+    Math.max(
+      0,
+      STEPS.findIndex((s) => s.id === start),
+    ),
+  );
   const [skipped, setSkipped] = useState<ReadonlySet<StepId>>(new Set());
   const [notified, setNotified] = useState(false);
   const found = checksById(checks ?? []);
@@ -59,7 +65,7 @@ export function SetupGuide({ firstRun }: { firstRun: boolean }) {
   if (step === undefined) return null;
 
   const check = found.get(step.id);
-  const engineReady = found.get("engine")?.state === "ok";
+  const engineReady = isEngineReady(found.get("engine"), state.providers ?? []);
   const last = index === STEPS.length - 1;
   const finishable = canFinish(firstRun, engineReady);
   const finish = (then: () => void) => {
@@ -95,6 +101,7 @@ export function SetupGuide({ firstRun }: { firstRun: boolean }) {
             disabled={!finishable}
             onOpenChat={(chat) => {
               finish(() => {
+                shell.closeSettings();
                 shell.openGeneralChat(chat);
               });
             }}
@@ -117,7 +124,10 @@ export function SetupGuide({ firstRun }: { firstRun: boolean }) {
         <h2>Set up Nest</h2>
         {STEPS.map(({ id, rail }, at) => {
           const open = at === index;
-          const passed = id === "secret_service" || (id === "notifications" && notified);
+          const passed =
+            id === "secret_service" ||
+            (id === "notifications" && notified) ||
+            (id === "engine" && engineReady);
           return (
             <button
               key={id}

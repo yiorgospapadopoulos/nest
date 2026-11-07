@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { AccountProvider, EngineAccount, PairingCode, SetupCheck } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import type { DraftModel } from "../layout/project.ts";
+import { otherEngines } from "../settings/accounts/engineSetup.ts";
+import { MoreEngineRows } from "../settings/accounts/MoreEngines.tsx";
 import { useSignIn } from "../settings/accounts/signIn.ts";
+import { FoldChevron } from "../settings/config/parts.tsx";
 import { NtfySection } from "../settings/NtfySection.tsx";
 import { PairingCodeView } from "../settings/parts3/PairingCodeView.tsx";
 import { useApi } from "../context.ts";
@@ -45,10 +48,15 @@ function EngineRow({
   );
 }
 
-/** Claude Code, Codex or local models, through the same actions as Settings > Accounts. */
+/**
+ * Claude Code, Codex or local models, through the same actions as Settings > Accounts, and
+ * every other engine under More engines, opened here: the guide never leaves for Settings.
+ */
 export function EnginePage({ onChanged }: { onChanged: () => void }) {
   const { state, actions } = useStore();
   const api = useApi();
+  const [more, setMore] = useState(false);
+  const others = otherEngines(state.providers ?? []);
   const accounts = state.settings.accounts ?? [];
   const localOnly = state.local.list?.local_only === true;
   const signedIn = accounts.filter((account) => account.signed_in === true).length;
@@ -91,6 +99,22 @@ export function EnginePage({ onChanged }: { onChanged: () => void }) {
           </Button>
         )}
       </div>
+      {others.length > 0 && (
+        <div className="su-row">
+          <b>More engines</b>
+          {others.some((setup) => setup.ready) && <StepMark mark="ok" />}
+          <Button
+            aria-expanded={more}
+            onClick={() => {
+              setMore(!more);
+            }}
+          >
+            {more ? "Hide" : "Show"}
+            <FoldChevron open={more} />
+          </Button>
+        </div>
+      )}
+      {more && others.length > 0 && <MoreEngineRows setups={others} />}
     </div>
   );
 }

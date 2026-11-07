@@ -5,7 +5,7 @@ import type { SetupCheck } from "../../api/types.ts";
 import { engineAccount } from "../../test/accounts.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
-import { engineUpdates } from "../../test/fixtures.ts";
+import { acpProvider, claudeProvider, engineUpdates } from "../../test/fixtures.ts";
 import { memoryStorage } from "../../test/render.tsx";
 import { browserBridge, type Bridge } from "../bridge.ts";
 import { DesktopApp } from "../DesktopApp.tsx";
@@ -76,6 +76,29 @@ describe("the setup guide on a new install", () => {
     expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Open a chat" })).toBeDisabled();
     expect(api.finishSetup).not.toHaveBeenCalled();
+  });
+
+  it("opens the other engines in the step itself, and one ready there lets it go on", async () => {
+    const api = firstRun([check("engine")]);
+    const opencode = acpProvider({ signed_in: false });
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), opencode] });
+    const { user } = renderGuide(api);
+    await screen.findByRole("heading", { name: "Sign in to an engine" });
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+
+    await user.click(await screen.findByRole("button", { name: /Show/ }));
+    const more = screen.getByRole("group", { name: "More engines" });
+    expect(within(more).getByRole("button", { name: "Copy sign-in command" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Sign in to an engine" })).toBeInTheDocument();
+
+    // Signed in from its terminal: the engines are asked again on the way back.
+    api.providers.mockResolvedValue({
+      providers: [claudeProvider(), { ...opencode, signed_in: true }],
+    });
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+    });
   });
 
   it("re-reads the checks after Use local models only and stays in the guide", async () => {

@@ -1,6 +1,7 @@
 // The setup guide's steps and rules (B130), the same on the Linux and Mac apps. This is the
 // Linux list: Dictation is the Mac's, and the Secret Service has passed if the guide shows.
-import type { ModelOption, SetupCheck, SetupCheckState } from "../../api/types.ts";
+import type { ModelOption, ProviderInfo, SetupCheck, SetupCheckState } from "../../api/types.ts";
+import { otherEngines } from "../settings/accounts/engineSetup.ts";
 import { catalogFor } from "../../store/selectors.ts";
 import { localOptions } from "../../store/local.ts";
 import type { State } from "../../store/state.ts";
@@ -52,6 +53,13 @@ export function markOf(
  * The last step has nothing to skip to; Finish leaves it.
  */
 export const canSkip = (step: StepId) => step !== "engine" && step !== "first_chat";
+
+/**
+ * The engine step is done when the daemon's check is (Claude Code, Codex or local models),
+ * or when one of the other engines is ready, signed in under More engines.
+ */
+export const engineReady = (check: SetupCheck | undefined, providers: readonly ProviderInfo[]) =>
+  check?.state === "ok" || otherEngines(providers).some((setup) => setup.ready);
 
 /** Continue moves on whatever the state, except on the engine step. */
 export const canContinue = (step: StepId, engineReady: boolean) => step !== "engine" || engineReady;
