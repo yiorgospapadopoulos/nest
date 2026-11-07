@@ -9,11 +9,13 @@ public enum UpdateRestart: Sendable {
 /// What the update strip shows.
 public enum UpdateStrip: Sendable, Equatable {
     case notice(String)
-    case ready(engines: [EngineUpdate], relaunching: Bool)
+    case ready(app: AppUpdate?, engines: [EngineUpdate], relaunching: Bool)
 }
 
 /// An update that can be relaunched into, or is being.
 public struct ReadyUpdate: Sendable, Equatable {
+    /// A new Nest.
+    public let app: AppUpdate?
     public let engines: [EngineUpdate]
     public let relaunching: Bool
 }
@@ -43,9 +45,10 @@ public struct RestartQuestion: Sendable, Equatable {
     }
 }
 
-/// The engine updates (B121): one check when the app first connects, the state read on
-/// every connect and followed through `updates.changed`, and the restarts that apply or
-/// undo an update. The strip's views read it; the chat lists must not.
+/// The updates of the engines (B121) and of Nest (B130): one check when the app first
+/// connects, the state read on every connect and followed through `updates.changed`, and
+/// the restarts that apply or undo an update. The strip's views read it; the chat lists must
+/// not.
 @MainActor @Observable
 public final class UpdatesStore {
     /// Nil until the daemon first answers.
@@ -62,6 +65,9 @@ public final class UpdatesStore {
     /// Quits and reopens the app once the daemon accepted a restart. Set only for This
     /// Mac's daemon: on a remote one the app stays and reconnects.
     @ObservationIgnored public var reopen: (@MainActor () -> Void)?
+    /// Told the app that belongs to the daemon on every connect; `AppSwapper` keeps it to
+    /// once a launch. Set only for This Mac's daemon: a remote's file is on its machine.
+    @ObservationIgnored public var followApp: (@MainActor (AppFile) -> Void)?
 
     let api: any NestAPI
 
@@ -73,10 +79,14 @@ public final class UpdatesStore {
     public var ready: ReadyUpdate? {
         switch restarting {
         case .undo: return nil
-        case .relaunch: return ReadyUpdate(engines: status?.engines ?? [], relaunching: true)
+        case .relaunch:
+            return ReadyUpdate(
+                app: status?.app, engines: status?.engines ?? [], relaunching: true)
         case nil:
-            return status?.state == .ready
-                ? ReadyUpdate(engines: status?.engines ?? [], relaunching: false) : nil
+            guard let status, status.state == .ready,
+                status.app != nil || !status.engines.isEmpty
+            else { return nil }
+            return ReadyUpdate(app: status.app, engines: status.engines, relaunching: false)
         }
     }
 
@@ -86,7 +96,7 @@ public final class UpdatesStore {
             return .notice(notice)
         }
         guard !hidden, let ready else { return nil }
-        return .ready(engines: ready.engines, relaunching: ready.relaunching)
+        return .ready(app: ready.app, engines: ready.engines, relaunching: ready.relaunching)
     }
 
     /// Whether Settings offers Undo update.
@@ -104,6 +114,9 @@ public final class UpdatesStore {
     public func connected() async {
         await load()
         restarting = nil
+        if let file = status?.appFile {
+            followApp?(file)
+        }
         guard !checked else { return }
         checked = true
         if let status = try? await api.checkUpdates() {

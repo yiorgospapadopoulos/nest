@@ -56,6 +56,34 @@ public enum AppRelaunch {
         return ["-c", script.joined(separator: "; ")]
     }
 
+    /// For the swap to a release's app (B130), a zip made with `ditto`. Beside the app, so a
+    /// move is one step: unpacks it, moves the old app aside and the new one in, and opens it.
+    /// The old app stays until the new one has opened, and whatever fails puts it back and
+    /// opens it, so Nest always comes up. A test build keeps its daemon through `environment`.
+    public static func swapping(
+        appPath: String, zipPath: String, pid: Int32, environment: [String: String]
+    ) -> [String] {
+        let app = DaemonService.quoted(appPath)
+        let folder = (appPath as NSString).deletingLastPathComponent
+        let work = DaemonService.quoted("\(folder)/.nest-swap-\(pid)")
+        let opening = open(appPath: appPath, environment: environment)
+        let script = [
+            "while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done",
+            "app=\(app); work=\(work)",
+            "rm -rf \"$work\"",
+            "if mkdir \"$work\" && /usr/bin/ditto -x -k \(DaemonService.quoted(zipPath)) \"$work/new\""
+                + " && [ -x \"$work/new/Nest.app/Contents/MacOS/Nest\" ]"
+                + " && mv \"$app\" \"$work/old\"; then",
+            "if mv \"$work/new/Nest.app\" \"$app\" && \(opening); then rm -rf \"$work\"; exit 0; fi",
+            "rm -rf \"$app\"",
+            "mv \"$work/old\" \"$app\"",
+            "fi",
+            opening,
+            "rm -rf \"$work\"",
+        ]
+        return ["-c", script.joined(separator: "\n")]
+    }
+
     /// `open` starts the app through launchd, which does not pass this process's environment on.
     private static func open(appPath: String, environment: [String: String]) -> String {
         let kept = ["NEST_DAEMON_URL", "NEST_DATA_DIR"].compactMap { name in

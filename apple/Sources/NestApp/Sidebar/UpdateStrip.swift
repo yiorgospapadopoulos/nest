@@ -27,8 +27,8 @@ private struct UpdateStripView: View {
                 switch strip {
                 case .notice(let text):
                     NoticeStrip(text: text)
-                case .ready(let engines, let relaunching):
-                    ReadyStrip(engines: engines, relaunching: relaunching)
+                case .ready(let app, let engines, let relaunching):
+                    ReadyStrip(app: app, engines: engines, relaunching: relaunching)
                 }
             }
             .font(.ui(TypeSize.meta))
@@ -73,6 +73,7 @@ private struct NoticeStrip: View {
 }
 
 private struct ReadyStrip: View {
+    let app: AppUpdate?
     let engines: [EngineUpdate]
     let relaunching: Bool
     @Environment(Shell.self) private var shell
@@ -80,8 +81,16 @@ private struct ReadyStrip: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if open, !engines.isEmpty {
+            if open, app != nil || !engines.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
+                    if let app {
+                        Text(app.change).monospacedDigit()
+                        if !app.notes.isEmpty {
+                            Text(app.notes)
+                                .foregroundStyle(Palette.t2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     ForEach(engines) { engine in
                         Text(engine.change).monospacedDigit()
                     }
