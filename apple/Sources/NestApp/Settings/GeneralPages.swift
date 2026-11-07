@@ -20,6 +20,7 @@ struct GeneralPage: View {
             RestartRow()
             UpdateRow()
             UndoUpdateRow()
+            SetupRows()
         }
     }
 
@@ -278,6 +279,33 @@ private struct RestartRow: View {
     }
 }
 
+/// The setup guide again, every check, and a bug report to read first (B130).
+private struct SetupRows: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let store = shell.model.setup
+        SettingsRow(label: "Set up Nest") {
+            Button("Open") { shell.openGuide() }.buttonStyle(.nest(.soft))
+        }
+        SettingsRow(label: "Check Nest") {
+            Button("Check") { shell.setupSheet = .checks }.buttonStyle(.nest(.soft))
+        }
+        SettingsRow(label: "Make a bug report") {
+            if store.reporting {
+                Fireflies()
+            }
+            Button("Make") {
+                shell.settingsChange("Could not make the report") {
+                    shell.setupSheet = .report(try await store.makeReport())
+                }
+            }
+            .buttonStyle(.nest(.soft))
+            .disabled(store.reporting)
+        }
+    }
+}
+
 /// The strip's update and button, here whether or not the strip was hidden (B121).
 private struct UpdateRow: View {
     @Environment(Shell.self) private var shell
@@ -286,6 +314,9 @@ private struct UpdateRow: View {
         if let ready = shell.updates.ready {
             SettingsRow(label: "Update available") {
                 VStack(alignment: .trailing, spacing: 2) {
+                    if let app = ready.app {
+                        SettingsValue(text: app.change)
+                    }
                     ForEach(ready.engines) { SettingsValue(text: $0.change) }
                 }
                 Button(ready.relaunching ? "Relaunching..." : "Relaunch to update") {

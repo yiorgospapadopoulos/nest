@@ -47,17 +47,25 @@ struct ShellView: View {
             reduceTransparency: reduceTransparency || snapshot, fullScreen: fullScreen)
         ZStack(alignment: .top) {
             WindowBackground(backdrop: backdrop, image: shell.chatBackground?.image)
-            VStack(spacing: 0) {
-                // No line under the tabs: the project bar it divided off is gone (B73).
-                TabStrip(fullScreen: fullScreen)
-                    // A line in the chat background's colours where the top bar ends.
-                    .overlay(alignment: .bottom) {
-                        PhotoLineView(image: shell.chatBackground?.image)
-                    }
-                ProjectBody()
+            if shell.daemonDown.isDown {
+                DaemonDownView()
+            } else if let guide = shell.guide {
+                SetupGuideView(flow: guide)
+            } else {
+                VStack(spacing: 0) {
+                    // No line under the tabs: the project bar it divided off is gone (B73).
+                    TabStrip(fullScreen: fullScreen)
+                        // A line in the chat background's colours where the top bar ends.
+                        .overlay(alignment: .bottom) {
+                            PhotoLineView(image: shell.chatBackground?.image)
+                        }
+                    ProjectBody()
+                }
             }
             VStack(spacing: 8) {
-                ConnectionBanner()
+                if !shell.daemonDown.isDown {
+                    ConnectionBanner()
+                }
                 UsageWarningBanner()
                 if let toast = shell.toast {
                     ToastView(toast: toast)
@@ -104,11 +112,13 @@ struct ShellView: View {
         .onDisappear { shell.stopWatchingDrags() }
         // A project removed from the daemon drops its state, ending its tool panes.
         .onChange(of: Set(shell.app.projects.keys)) { shell.syncTools() }
-        .onChange(of: shell.app.connection) { _, connection in
+        .onChange(of: shell.app.connection, initial: true) { _, connection in
+            shell.noteConnection(connection)
             if connection == .connected {
                 controller.service.reset()
             }
         }
+        .onChange(of: shell.model.local.isFirstRun, initial: true) { shell.startGuideIfFirstRun() }
         // What needs the user, and the pixies' unread reports that need action (B42).
         .onChange(
             of: [shell.sessions.attention(), shell.reports.unreadActions()], initial: true
@@ -137,10 +147,7 @@ private struct ProjectBody: View {
 
     var body: some View {
         Group {
-            if shell.model.local.isFirstRun {
-                // Nothing signed in or added yet: the welcome (B106).
-                FirstRunView()
-            } else if shell.pixiesOpen {
+            if shell.pixiesOpen {
                 VStack(spacing: 0) {
                     PixiesView()
                     StatusBar()

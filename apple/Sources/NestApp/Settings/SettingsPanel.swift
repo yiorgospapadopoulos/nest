@@ -56,6 +56,7 @@ struct SettingsSheets: View {
             ConfigurationModals()
             PairDaemonModal()
             AddLocalModal()
+            SetupSheets()
         }
     }
 }

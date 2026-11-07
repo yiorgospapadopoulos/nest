@@ -291,9 +291,9 @@ public struct LocalUsage: Codable, Sendable, Hashable {
     }
 }
 
-/// `GET /api/setup`: whether the app shows the first-run welcome.
+/// `GET /api/setup`: whether the app shows the setup guide.
 public struct SetupState: Codable, Sendable, Hashable {
-    /// No engine signed in, no local model and the welcome never answered.
+    /// No engine signed in, no local model and the guide never finished.
     public var firstRun: Bool
     public var localOnly: Bool
 

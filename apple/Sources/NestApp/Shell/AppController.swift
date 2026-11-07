@@ -29,9 +29,12 @@ final class AppController {
     @ObservationIgnored private var starting = false
     @ObservationIgnored private var notifier: Notifier?
     @ObservationIgnored private var visibility: VisibilityMonitor?
+    /// Once a launch, whichever window model asks.
+    @ObservationIgnored private lazy var swapper = AppSwapper.local(
+        dataFolder: daemons.local.dataFolder)
 
     init() {
-        service = .local(repoPath: Self.repositoryPath)
+        service = .local(repoPath: AppBuild.checkout)
         daemons = DaemonList(
             local: DaemonLocation(environment: ProcessInfo.processInfo.environment))
     }
@@ -46,17 +49,6 @@ final class AppController {
                 local: DaemonLocation(environment: [:]),
                 defaults: UserDefaults(suiteName: "local.nest.snapshots") ?? .standard)
         phase = .ready
-    }
-
-    /// The Nest checkout this app was built from, for the service install command;
-    /// nil once it has moved.
-    static var repositoryPath: String? {
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0..<5 {
-            url.deleteLastPathComponent()
-        }
-        let daemon = url.appending(path: "daemon/pyproject.toml").path
-        return FileManager.default.fileExists(atPath: daemon) ? url.path : nil
     }
 
     func start() {
@@ -97,6 +89,7 @@ final class AppController {
             model.updates.reopen = { [daemon = daemons.local.baseURL] in
                 Self.reopen(daemon: daemon)
             }
+            model.updates.followApp = { [weak self] file in self?.follow(file) }
             return model
         case .remote(let daemon):
             let model = try await AppModel.remote(daemon, tokens: daemons.tokens(for: daemon))
@@ -115,6 +108,16 @@ final class AppController {
             environment: ProcessInfo.processInfo.environment)
         guard (try? DetachedSpawner().spawn(AppRelaunch.shell, arguments)) != nil else { return }
         NSApp.terminate(nil)
+    }
+
+    /// Swaps to the app that belongs to This Mac's daemon, quitting for it.
+    private func follow(_ file: AppFile) {
+        switch swapper.follow(file) {
+        case .none: break
+        case .swapping: NSApp.terminate(nil)
+        case .failed(let version):
+            shell?.show("Nest could not update its app to \(version)", kind: .failed)
+        }
     }
 
     /// The model for This Mac's daemon: the default one, or the test daemon the
@@ -141,6 +144,7 @@ final class AppController {
             shell.keepSettings(of: old)
         }
         self.shell = shell
+        shell.island = { [weak self] in self?.island?.trusted == true }
         notifier = Notifier(shell: shell)
         notifier?.start()
         visibility = VisibilityMonitor(reporter: model.visibility)
@@ -211,8 +215,16 @@ final class AppController {
 
     /// Starts or restarts the daemon's service, then connects again once it is up.
     func startService() {
+        // A test daemon is not the service: launchd would restart the real one.
+        guard daemons.local.baseURL == APIClient.defaultBaseURL else {
+            connect()
+            return
+        }
         Task {
-            guard await service.start() else { return }
+            guard await service.start() else {
+                connect()
+                return
+            }
             // launchd returns before the daemon listens; give it a moment.
             try? await Task.sleep(for: .seconds(1.5))
             connect()

@@ -36,6 +36,7 @@ struct NotificationsPage: View {
             }
         }
         .task { try? await devices.loadPushStatus() }
+        NtfySection()
     }
 }
 

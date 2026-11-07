@@ -42,7 +42,8 @@ struct NestCommands: Commands {
 
     /// A command that shows something in the window leaves Settings for it.
     private func inWindow(_ action: (Shell) -> Void) {
-        guard let shell else { return }
+        // The guide is the whole window: nothing acts behind it.
+        guard let shell, shell.guide == nil else { return }
         shell.closeSettings()
         action(shell)
     }

@@ -203,33 +203,6 @@ public enum LocalModelText {
             "Chats on a local model run on \(engineName(engine)); to use \(engineName(other)), change Local chats run on in a model menu. No limits apply, so Usage shows token counts only."
     }
 
-    // MARK: First run
-
-    /// One way into Nest on the first-run welcome.
-    public struct FirstRunChoice: Sendable, Equatable, Identifiable {
-        public enum Kind: Sendable, Equatable {
-            case claude, codex, local
-        }
-
-        public let id: Kind
-        public let title: String
-        public let detail: String
-    }
-
-    public static let welcomeTitle = "Welcome to Nest"
-    public static let welcomeBody =
-        "Chats run on your own Claude or ChatGPT plan, or free on models running on this Mac. You can add the others later in Settings › Accounts."
-    public static let firstRunChoices = [
-        FirstRunChoice(
-            id: .claude, title: "Sign in to Claude", detail: "Your Claude plan, through Claude Code"
-        ),
-        FirstRunChoice(
-            id: .codex, title: "Sign in to Codex", detail: "Your ChatGPT plan, through Codex"),
-        FirstRunChoice(
-            id: .local, title: "Use local models only",
-            detail: "Free and offline. Opens Find on this Mac"),
-    ]
-
     /// A local chat's header line after its Local label: "qwen3-coder-30b · Claude Code".
     public static func header(_ model: LocalModel, engine: String) -> String {
         "\(model.name) · \(engineName(engine))"

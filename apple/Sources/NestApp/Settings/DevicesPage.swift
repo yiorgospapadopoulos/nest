@@ -26,7 +26,11 @@ struct DevicesPage: View {
             }
             .overlay(alignment: .top) { Separator() }
             if let code = devices.pairingCode {
-                PairingCodeView(code: code)
+                PairingCodeView(code: code, done: { devices.clearPairingCode() })
+                    .frame(maxWidth: .infinity)
+                    .padding(14)
+                    .softFill(radius: 8)
+                    .padding(.top, 12)
             } else {
                 Button {
                     shell.settingsChange("Could not create a pairing code") {
@@ -217,18 +221,21 @@ private struct PairDaemonSheet: View {
     }
 }
 
-/// The one-time code, large, with its countdown and where to enter it.
-private struct PairingCodeView: View {
+/// The one-time code, large, with its countdown; Settings adds where to enter it and Done.
+struct PairingCodeView: View {
     let code: PairingCode
+    /// Settings' card; the guide's step has the code in place, with no Done.
+    var done: (() -> Void)?
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let devices = shell.model.devices
-        VStack(spacing: 8) {
+        VStack(alignment: done == nil ? .leading : .center, spacing: 8) {
             Text(code.code)
-                .font(.mono(24, .semibold))
+                .font(.mono(done == nil ? 36 : 24, .semibold))
                 .tracking(6)
                 .textSelection(.enabled)
+                .accessibilityLabel("Pairing code \(code.code)")
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(devices.expiryText(at: context.date))
                     .font(.ui(TypeSize.meta))
@@ -237,23 +244,22 @@ private struct PairingCodeView: View {
                         devices.secondsLeft(at: context.date) > 0
                             ? Palette.t3 : StatusTone.failed.color)
             }
-            Text("Open your tailnet address in Safari on the iPhone, then enter this code.")
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .multilineTextAlignment(.center)
+            if done != nil {
+                Text("Open your tailnet address in Safari on the iPhone, then enter this code.")
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .multilineTextAlignment(.center)
+            }
             HStack(spacing: 6) {
                 Button("New code") {
                     Task { try? await devices.createPairingCode() }
                 }
-                .buttonStyle(.nest(.plain))
-                Button("Done") { devices.clearPairingCode() }
-                    .buttonStyle(.nest(.soft))
+                .buttonStyle(.nest(done == nil ? .soft : .plain))
+                if let done {
+                    Button("Done", action: done).buttonStyle(.nest(.soft))
+                }
             }
             .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity)
-        .padding(14)
-        .softFill(radius: 8)
-        .padding(.top, 12)
     }
 }

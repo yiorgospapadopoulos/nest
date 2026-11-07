@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The local models (B106): the ones added, the engine local chats run on, today's tokens,
-/// the first-run welcome, the weak-at-tools warnings this device dismissed, and the chats
+/// whether this is a first run, the weak-at-tools warnings this device dismissed, and the chats
 /// whose server did not answer.
 @MainActor @Observable
 public final class LocalModelsStore {

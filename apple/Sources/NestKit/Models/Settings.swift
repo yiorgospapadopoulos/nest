@@ -189,7 +189,50 @@ public struct NotificationRules: Codable, Sendable, Hashable {
         set { fields[Self.levelKey] = .string(newValue.rawValue) }
     }
 
+    /// The ntfy channel (B130).
+    public var ntfy: NtfySettings {
+        get { NtfySettings(fields[Self.ntfyKey]) }
+        set { fields[Self.ntfyKey] = newValue.json }
+    }
+
     private static let levelKey = "pixie_report_level"
+    private static let ntfyKey = "ntfy"
+}
+
+/// `[notifications.ntfy]`: anyone who knows a public topic can read it.
+public struct NtfySettings: Sendable, Hashable {
+    public var enabled: Bool
+    public var server: String
+    public var topic: String?
+    /// The address a tapped notification opens Nest at.
+    public var clickBaseURL: String?
+
+    public init(
+        enabled: Bool = false, server: String = "https://ntfy.sh", topic: String? = nil,
+        clickBaseURL: String? = nil
+    ) {
+        self.enabled = enabled
+        self.server = server
+        self.topic = topic
+        self.clickBaseURL = clickBaseURL
+    }
+
+    init(_ json: JSONValue?) {
+        self.init(
+            enabled: json?["enabled"]?.boolValue ?? false,
+            server: json?["server"]?.stringValue ?? "https://ntfy.sh",
+            topic: json?["topic"]?.stringValue,
+            clickBaseURL: json?["click_base_url"]?.stringValue)
+    }
+
+    var json: JSONValue {
+        .object([
+            "enabled": .bool(enabled),
+            "server": .string(server),
+            "topic": topic.map(JSONValue.string) ?? .null,
+            "click_base_url": clickBaseURL.map(JSONValue.string) ?? .null,
+        ])
+    }
 }
 
 public enum GitHubLoginState: String, UnknownSafeEnum {

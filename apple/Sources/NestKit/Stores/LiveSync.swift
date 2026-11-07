@@ -225,6 +225,8 @@ public final class AppModel {
     public let pixieSettings: PixieSettingsStore
     public let limitSettings: LimitSettingsStore
     public let notificationRules: NotificationRulesStore
+    /// The setup checks and the bug report (B130).
+    public let setup: SetupChecksStore
     public let accounts: AccountsStore
     public let extensions: ExtensionsStore
     /// Settings > Configuration (B97).
@@ -299,6 +301,7 @@ public final class AppModel {
         pixieSettings = PixieSettingsStore(api: api)
         limitSettings = LimitSettingsStore(api: api)
         notificationRules = NotificationRulesStore(api: api)
+        setup = SetupChecksStore(api: api)
         accounts = AccountsStore(api: api)
         extensions = ExtensionsStore(api: api)
         configuration = ConfigurationStore(api: api)
