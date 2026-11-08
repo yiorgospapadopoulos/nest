@@ -2267,7 +2267,7 @@ button.dc-line:disabled {
   box-shadow: none;
 }
 .dc-branchf::placeholder {
-  color: color-mix(in srgb, var(--t1) 40%, transparent);
+  color: var(--t3);
 }
 .dc-placepop {
   width: 300px;

@@ -12,7 +12,7 @@
   height: 100%;
 }
 
-/* The usage chip: text at 55 percent, full over a 10 percent fill while hovered. */
+/* The usage chip: secondary text, full over a 10 percent fill while hovered. */
 .fr-uchip {
   display: flex;
   align-items: center;
@@ -22,7 +22,7 @@
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--t1) 55%, transparent);
+  color: var(--t2);
   font: inherit;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -1071,15 +1071,18 @@
 .fr-row > .dk-hacts {
   right: 3px;
 }
+/* A 24 px target (WCAG 2.5.8) drawn as the 20 px chip: the fill stops 2 px in and the
+   margin gives the 2 px back, so nothing around it moves (B147). */
 .fr-more {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
+  margin: -2px;
   display: grid;
   place-items: center;
-  padding: 0;
+  padding: 2px;
   border: 0;
-  border-radius: var(--radius-mac-button);
-  background: var(--mac-soft);
+  border-radius: calc(var(--radius-mac-button) + 2px);
+  background: var(--mac-soft) content-box;
   color: var(--t2);
 }
 .fr-more .ic {
@@ -1108,7 +1111,17 @@
   white-space: nowrap;
   font-family: var(--mono);
   font-size: 11px;
+  /* The lane's hue, darkened in light mode to read at 4.5:1 on the rows (B147); the lane
+     colors themselves are for the branch map's lines. */
+  color: color-mix(in srgb, var(--lane) 74%, var(--t1));
+}
+:root[data-theme="dark"] .fr-place > span {
   color: var(--lane);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .fr-place > span {
+    color: var(--lane);
+  }
 }
 .fr-row .dk-rb {
   color: var(--t3);
@@ -1805,7 +1818,7 @@ html.desk .ewl {
   box-shadow: 0 0 0 2px var(--dk-side);
 }
 
-/* The status bar (StatusBar): 20 px footer buttons at 55 percent, the views centred. */
+/* The status bar (StatusBar): 20 px footer buttons in secondary text, the views centred. */
 .fr-status {
   position: relative;
   gap: 6px;
@@ -1824,7 +1837,7 @@ html.desk .ewl {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--t1) 55%, transparent);
+  color: var(--t2);
   font: inherit;
   white-space: nowrap;
 }

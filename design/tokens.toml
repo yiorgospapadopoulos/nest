@@ -72,17 +72,18 @@ hover = { light = "rgba(28,28,29,0.05)", dark = "rgba(235,235,235,0.07)" }
 raised = { light = "rgba(28,28,29,0.06)", dark = "rgba(235,235,235,0.1)" }
 divider = { light = "rgba(28,28,29,0.07)", dark = "rgba(235,235,235,0.07)" }
 scanline = { light = "rgba(0,0,0,0.03)", dark = "rgba(255,255,255,0.022)" }
-# Content, then the content at 55 and 52 percent over the base: icons, meta lines and tool
-# lines read about as bright as secondary text (raised from 40 percent, B39).
+# Content, then the dimmer text of icons, meta lines and tool lines, about as bright as
+# secondary text. Secondary, tertiary, links and the status colors read at 4.5:1 on the
+# window, sidebar, panes and sheets and on the faint fills over them (B147).
 text_primary = { light = "#1c1c1d", dark = "#ebebeb" }
-text_secondary = { light = "#7f7f7f", dark = "#8c8c8c" }
-text_tertiary = { light = "#868585", dark = "#858585" }
-link = { light = "#0a6fd6", dark = "#4ea7ff" }
+text_secondary = { light = "#676767", dark = "#929292" }
+text_tertiary = { light = "#696868", dark = "#909090" }
+link = { light = "#0967c7", dark = "#4ea7ff" }
 # Status: needs you, running, done well, failed.
-wait = { light = "#b06d06", dark = "#e7a23e" }
+wait = { light = "#945c05", dark = "#e7a23e" }
 run = { light = "#4b59d6", dark = "#7f8cff" }
-ok = { light = "#23843c", dark = "#4fc76f" }
-bad = { light = "#cf3b30", dark = "#ff6b5f" }
+ok = { light = "#207837", dark = "#4fc76f" }
+bad = { light = "#bf372c", dark = "#ff6b5f" }
 # The primary button with the default (graphite) accent; other accents color it instead.
 button = { light = "#1c1c1d", dark = "rgba(255,255,255,0.88)" }
 button_text = { light = "#ffffff", dark = "#1b1b1c" }

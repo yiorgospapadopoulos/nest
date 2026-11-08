@@ -60,6 +60,33 @@ describe("tertiary text", () => {
   });
 });
 
+describe("Mac palette text", () => {
+  // Every layout but the classic phone theme draws its dim text and status words in the
+  // Mac palette, over the window, the sidebar, a chat pane or a sheet, bare or on a faint
+  // fill (B147). Selected rows use the stronger title colors, so the row fills are left out.
+  const TEXT = ["text-secondary", "text-tertiary", "link", "wait", "run", "ok", "bad"];
+
+  it.each([
+    ["light", ":root"],
+    ["dark", DARK],
+  ])("reads at 4.5:1 on every ground in %s", (_name, root) => {
+    const window = color(root, "mac-window-opaque");
+    const bases = ["mac-side", "mac-chat-pane", "mac-sheet"].map((name) =>
+      over(color(root, name), window),
+    );
+    const grounds = [window, ...bases].flatMap((base) => [
+      base,
+      ...["mac-soft", "mac-hover", "mac-composer"].map((fill) => over(color(root, fill), base)),
+    ]);
+    for (const name of TEXT) {
+      const ink = color(root, `mac-${name}`);
+      for (const ground of grounds) {
+        expect(contrast(ink, ground), name).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+});
+
 describe("code colours", () => {
   const KINDS = ["comment", "string", "keyword", "number", "added", "removed"];
 
