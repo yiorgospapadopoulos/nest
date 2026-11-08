@@ -126,6 +126,11 @@ class AppPaths:
         return self.data_dir / "names"
 
     @property
+    def guides_dir(self) -> Path:
+        """The empty folder of the calls that write review guides (B149)."""
+        return self.data_dir / "guides"
+
+    @property
     def ask_dir(self) -> Path:
         """The empty working directory of the Claude calls artifact pages make (B88)."""
         return self.data_dir / "ask"
