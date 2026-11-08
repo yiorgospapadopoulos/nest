@@ -1,9 +1,9 @@
 import type { Element, ElementContent } from "hast";
 import { memo, use, useEffect, useMemo, useState, type ReactNode } from "react";
-import ReactMarkdown, { defaultUrlTransform, type Components, type Options } from "react-markdown";
+import ReactMarkdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { FILE_SCHEME, fromFileUrl, remarkChatText } from "./chatText.ts";
+import { remarkChatText } from "./chatText.ts";
 import { codeTokens } from "./codeColors.ts";
 import { codeRef, lineIn, linkRef } from "./fileRefs.ts";
 import { hasMath, useMath } from "./math.ts";
@@ -179,13 +179,19 @@ function components(open: OpenFile | null, read: ReadFile | null): Components {
     h4: ({ children }) => <h6>{children}</h6>,
     h5: ({ children }) => <h6>{children}</h6>,
     h6: ({ children }) => <h6>{children}</h6>,
-    a: ({ href = "", children }) => {
-      if (href.startsWith(FILE_SCHEME)) {
-        const { path, line } = fromFileUrl(href);
+    a: ({ node, href = "", children }) => {
+      const named = node?.properties.dataNestPath;
+      if (typeof named === "string") {
+        const line = node?.properties.dataNestLine;
         return open === null ? (
           children
         ) : (
-          <FileLink path={path} line={line} open={open} children={children} />
+          <FileLink
+            path={named}
+            line={typeof line === "number" ? line : null}
+            open={open}
+            children={children}
+          />
         );
       }
       if (SAFE_URL.test(href)) {
@@ -247,10 +253,6 @@ function components(open: OpenFile | null, read: ReadFile | null): Components {
   };
 }
 
-function keep(url: string): string {
-  return url.startsWith(FILE_SCHEME) ? url : defaultUrlTransform(url);
-}
-
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const open = use(OpenFileContext);
   const read = use(ReadFileContext);
@@ -266,7 +268,6 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
         remarkPlugins={remark}
         rehypePlugins={katex === null ? [] : [katex]}
         components={shown}
-        urlTransform={keep}
       >
         {text}
       </ReactMarkdown>

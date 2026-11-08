@@ -295,6 +295,21 @@ describe("Markdown safety", () => {
 
     expect(screen.queryAllByRole("link")).toEqual([]);
   });
+
+  it("opens no file from an address an agent wrote, and a broken one breaks nothing", () => {
+    const open = vi.fn();
+    const box = render(
+      <OpenFileContext value={open}>
+        <Markdown text="[a](nest-file:%E0%A4%A) [b](nest-file:%2Fetc%2Fpasswd) and `src/a.ts:3`" />
+      </OpenFileContext>,
+    ).container;
+
+    const links = [...box.querySelectorAll("a.md-file")];
+    expect(links.map((a) => a.textContent)).toEqual(["src/a.ts:3"]);
+    expect(box.textContent).toContain("a b and");
+    for (const a of links) (a as HTMLElement).click();
+    expect(open.mock.calls).toEqual([["src/a.ts", 3]]);
+  });
 });
 
 describe("Markdown math", () => {

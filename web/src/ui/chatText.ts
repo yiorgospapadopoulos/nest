@@ -1,17 +1,11 @@
 import type { Nodes, Parent, Root, RootContent } from "mdast";
 import { fileRefsIn, lineIn } from "./fileRefs.ts";
 
-// A link to a file the text names, made here and opened by whoever shows the message:
-// `nest-file:<path>`, then `#<line>` with a line.
-export const FILE_SCHEME = "nest-file:";
-
-export function fileUrl(path: string, line: number | null): string {
-  return FILE_SCHEME + encodeURIComponent(path) + (line === null ? "" : `#${String(line)}`);
-}
-
-export function fromFileUrl(url: string): { path: string; line: number | null } {
-  const [path = "", line] = url.slice(FILE_SCHEME.length).split("#");
-  return { path: decodeURIComponent(path), line: line === undefined ? null : Number(line) };
+// A link to a file the text names carries the file on the element it becomes, never in an
+// address: an agent can write any address, so only the links made here open a file.
+export interface FileLinkData {
+  dataNestPath: string;
+  dataNestLine?: number;
 }
 
 // Where a paragraph can stand, so raw HTML there becomes one.
@@ -52,9 +46,15 @@ function split(value: string, files: boolean): RootContent[] {
   for (const ref of fileRefsIn(value)) {
     if (ref.start > last) out.push({ type: "text", value: value.slice(last, ref.start) });
     const shown = value.slice(ref.start, ref.end);
+    const line = lineIn(shown);
+    const file: FileLinkData = {
+      dataNestPath: ref.path,
+      ...(line === null ? {} : { dataNestLine: line }),
+    };
     out.push({
       type: "link",
-      url: fileUrl(ref.path, lineIn(shown)),
+      url: "",
+      data: { hProperties: { ...file } },
       children: [{ type: "text", value: shown }],
     });
     last = ref.end;
