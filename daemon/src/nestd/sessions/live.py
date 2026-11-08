@@ -55,6 +55,9 @@ class LiveSession:
     run_autopilot: bool = False
     # Whether agents could push when the run opened: its git guard and prompts follow.
     run_can_push: bool = False
+    # The names of the Nest tools the run opened with; another set, as when computer use
+    # goes on or off (B150), needs a new run.
+    run_nest_tools: frozenset[str] = frozenset()
     # The agent called a tool since Autopilot last asked.
     worked: bool = False
     # The model and permission mode the run has now, to bring it to the saved ones (D048).

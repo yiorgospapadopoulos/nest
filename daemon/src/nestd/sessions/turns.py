@@ -850,7 +850,13 @@ class TurnRunner:
         agents = await self.chat_agents(session)
         engine = self._engines.of(session)
         while (run := live.run) is None or not _fits(
-            live, session, dirs, agents, _account(engine, session), self._can_push()
+            live,
+            session,
+            dirs,
+            agents,
+            _account(engine, session),
+            self._can_push(),
+            self._nest_tool_names(session),
         ):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
@@ -929,6 +935,7 @@ class TurnRunner:
             live.run_bypass = mode == BYPASS
             live.run_autopilot = session.autopilot is not None
             live.run_can_push = can_push
+            live.run_nest_tools = self._nest_tool_names(session)
             live.run_model = session.model
             live.run_mode = mode
             live.run_agents = agents
@@ -983,6 +990,14 @@ class TurnRunner:
             await self.chat_agents(session),
             _account(engine, session),
             self._can_push(),
+            self._nest_tool_names(session),
+        )
+
+    def _nest_tool_names(self, session: Session) -> frozenset[str]:
+        return (
+            frozenset(t.name for t in self._nest_tools(session))
+            if self._nest_tools
+            else frozenset()
         )
 
     async def chat_agents(self, session: NewSession) -> ChatAgents:
@@ -1091,12 +1106,14 @@ def _fits(
     agents: ChatAgents,
     account: str | None,
     can_push: bool,
+    nest_tools: frozenset[str],
 ) -> bool:
     """Whether the live run can take the session's next message as it is."""
     # A new attachment folder, a new effort or size to compact at (B146), another set of
     # subagents (B40), another active account (B98), a change to whether agents may push
-    # (D160), or bypass for a run that did not open in it needs a new run (D046), but waits
-    # while background tasks run: closing would stop them. Until then the agent asks before
+    # (D160) or to the Nest tools it gets, as computer use going on or off (B150), or
+    # bypass for a run that did not open in it needs a new run (D046), but waits while
+    # background tasks run: closing would stop them. Until then the agent asks before
     # reading a new folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = (
@@ -1109,6 +1126,7 @@ def _fits(
         and live.run_account == account
         and live.run_autopilot == (session.autopilot is not None)
         and live.run_can_push == can_push
+        and live.run_nest_tools == nest_tools
     )
     return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 
