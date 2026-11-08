@@ -478,6 +478,9 @@ class _Tools:
             raise ToolRefusedError(msg)
         message = _optional_text(args, "message")
         approval = await self._own_approval(pixie, args, ApprovalKind.PERMISSION)
+        if "computer" in approval.payload:
+            msg = "Only the user answers computer use cards (B150)."
+            raise ToolRefusedError(msg)
         await self._h.approvals.resolve(
             approval.id,
             {"behavior": "allow" if allow else "deny", "message": message, "always": False},

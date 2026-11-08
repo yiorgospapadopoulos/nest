@@ -15,6 +15,7 @@ the same way.
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from nestd.computer.models import TOOL_NAMES as COMPUTER_TOOL_NAMES
 from nestd.pixies.errors import PixieNotFoundError
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.models import DEFAULT_PROVIDER, Pixie, PixieTeam
@@ -22,6 +23,7 @@ from nestd.pixies.prompt import call_prompt
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.providers.base import CALL_PIXIE_TOOL, CallRules, Subagent
+from nestd.providers.claude_tools import NEST_SERVER
 from nestd.sessions.models import NewSession
 from nestd.sessions.subagents import ChatAgents, OfferedPixie, TeamCall
 from nestd.sessions.worktree_tool import WORKTREE_RULE
@@ -30,6 +32,8 @@ from nestd.sessions.worktree_tool import WORKTREE_RULE
 DEFAULT_MODEL = "default"
 # What a pixie with read access never gets in a project.
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit", WORKTREE_RULE)
+# Claude Code's names for the computer-use tools, which pixies get only when allowed (B150).
+COMPUTER_TOOLS = tuple(f"mcp__{NEST_SERVER}__{name}" for name in COMPUTER_TOOL_NAMES)
 TEAM_CALL = (
     "\n\n(The user called the team @{handle}, a team of pixies set up in Nest. Hand the"
     " whole request to its leader, {leader} and wait for"
@@ -113,11 +117,14 @@ class PixieAgents:
         teams: TeamStore,
         inline: InlineEngines = native_subagents,
         can_push: Callable[[], bool] = lambda: False,
+        computer: Callable[[], bool] = lambda: False,
     ) -> None:
         """`inline` says which engines run Nest-defined subagents of their own; `can_push`
-        whether the user lets agents push, which their prompts follow.
+        whether the user lets agents push, which their prompts follow; `computer` whether
+        pixies may use computer use (B150).
         """
         self._can_push = can_push
+        self._computer = computer
         self._pixies = pixies
         self._files = files
         self._teams = teams
@@ -155,6 +162,7 @@ class PixieAgents:
                 _note(offered[item.pixie.slug]),
                 self._team_section(led.get(item.pixie.id), available),
                 can_push=self._can_push(),
+                computer=self._computer(),
             )
             for item in available
         }
@@ -191,7 +199,10 @@ class PixieAgents:
         """The pixie calls every other pixie, and those it calls call none."""
         available = [item for item in await self._available() if item.pixie.id != pixie_id]
         can_push = self._can_push()
-        subagents = {item.pixie.slug: _subagent(item, can_push=can_push) for item in available}
+        subagents = {
+            item.pixie.slug: _subagent(item, can_push=can_push, computer=self._computer())
+            for item in available
+        }
         everyone = frozenset(subagents)
         return ChatAgents(
             subagents,
@@ -209,7 +220,12 @@ class PixieAgents:
         members = _members(team, await self._available())
         slugs = frozenset(item.pixie.slug for item in members)
         return ChatAgents(
-            {item.pixie.slug: _subagent(item, can_push=self._can_push()) for item in members},
+            {
+                item.pixie.slug: _subagent(
+                    item, can_push=self._can_push(), computer=self._computer()
+                )
+                for item in members
+            },
             pixies={
                 item.pixie.slug: OfferedPixie(
                     item.pixie.id, item.pixie.slug, item.pixie.name, team.id, team.handle
@@ -319,11 +335,13 @@ def _model(model: str | None) -> str | None:
 
 
 def _subagent(
-    item: _Available, note: str = "", team: str | None = None, *, can_push: bool
+    item: _Available, note: str = "", team: str | None = None, *, can_push: bool, computer: bool
 ) -> Subagent:
     """`note` ends its description; `team` is a leader's team section."""
     pixie = item.pixie
     denied = EDIT_TOOLS if pixie.project_access == "read" else ()
+    if not computer:
+        denied += COMPUTER_TOOLS
     return Subagent(
         description=item.description + note,
         prompt=call_prompt(pixie, item.soul, item.memory, team, can_push=can_push),

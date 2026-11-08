@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from nestd.context import AppContext
-from nestd.pixies.agents import EDIT_TOOLS, PixieAgents
+from nestd.pixies.agents import COMPUTER_TOOLS, EDIT_TOOLS, PixieAgents
 from nestd.pixies.errors import PixieNotFoundError
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.models import (
@@ -123,14 +123,29 @@ async def test_a_definition_carries_the_pixie(ctx: AppContext, agents: PixieAgen
     assert "## Your team" not in sub.prompt
     assert (sub.model, sub.effort, sub.permission_mode) == ("opus", "high", "acceptEdits")
     assert sub.skills == ("review",)
-    assert sub.disallowed_tools == EDIT_TOOLS
+    assert sub.disallowed_tools == EDIT_TOOLS + COMPUTER_TOOLS
     assert plain.description == "Plain"
     assert (plain.model, plain.effort, plain.skills, plain.disallowed_tools) == (
         None,
         None,
         (),
-        (),
+        COMPUTER_TOOLS,
     )
+
+
+async def test_pixies_get_computer_use_only_when_allowed(ctx: AppContext, clock: FakeClock) -> None:
+    await ctx.pixies.create(CreatePixie(name="Plain"))
+    allowed = PixieAgents(
+        PixieStore(ctx.db, clock),
+        PixieFiles(ctx.paths.pixies_dir),
+        TeamStore(ctx.db, clock),
+        computer=lambda: True,
+    )
+
+    offered = await allowed.for_session(chat())
+
+    assert offered.subagents["plain"].disallowed_tools == ()
+    assert "mcp__nest__computer_act" in COMPUTER_TOOLS
 
 
 async def test_a_leader_leads_its_available_members(ctx: AppContext, agents: PixieAgents) -> None:

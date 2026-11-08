@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta, tzinfo
 from functools import partial
@@ -44,6 +44,10 @@ from nestd.clock import Clock
 from nestd.codex_chats.catalog import CodexChats
 from nestd.composer.memory_files import memory_files
 from nestd.composer.service import ComposerActions
+from nestd.computer.backends.base import Backend
+from nestd.computer.service import ComputerService
+from nestd.computer.setup import computer_service
+from nestd.computer.tools import computer_tools
 from nestd.config.errors import ConfigError
 from nestd.config.loader import (
     load_settings,
@@ -51,7 +55,12 @@ from nestd.config.loader import (
     save_configuration,
     save_pixie_defaults,
 )
-from nestd.config.models import AgentChoices, ArtifactSettings, ConfigurationSettings, Settings
+from nestd.config.models import (
+    AgentChoices,
+    ArtifactSettings,
+    ConfigurationSettings,
+    Settings,
+)
 from nestd.configuration.backups import Backups
 from nestd.configuration.codex import CodexSetup
 from nestd.configuration.engines import CodexLocations
@@ -242,6 +251,8 @@ class AppContext:
     accounts: Accounts
     extensions: Extensions
     artifacts: Artifacts
+    # Chats that see and use apps, simulators, emulators and the shared browser (B150).
+    computer: ComputerService
     # Settings > Configuration (B97).
     configuration: Configuration
     project_setup: ProjectSetup
@@ -313,6 +324,7 @@ class AppContext:
         perf_client: ContextClientFactory = ClaudeSDKClient,
         platform: Platform | None = None,
         update_setup: UpdateSetup | None = None,
+        computer_backends: Sequence[Backend] | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -562,7 +574,19 @@ class AppContext:
                 else native_subagents(provider)
             ),
             can_push=can_push,
+            computer=lambda: context.settings.computer_use.pixies,
         )
+        computer = computer_service(
+            data_dir=paths.data_dir,
+            env=os.environ,
+            settings=lambda: context.settings.computer_use,
+            store=store,
+            bus=bus,
+            ask=lambda session_id, payload, notice: sessions.choose(session_id, payload, notice),
+            interrupt=lambda session_id: sessions.interrupt(session_id),
+            backends=computer_backends,
+        )
+        followers.append(computer)
         issues = IssueService(
             repo=repos.get, run=runner, clock=clock, cwd=paths.data_dir, chats=store.issue_chats
         )
@@ -612,7 +636,10 @@ class AppContext:
             agents=pixie_agents.for_session,
             issues=issues.fetch,
             calls=pixie_calls,
-            nest_tools=lambda session: artifact_tools(artifacts, session),
+            nest_tools=lambda session: (
+                *artifact_tools(artifacts, session),
+                *computer_tools(computer, session),
+            ),
             call_tools=lambda session, agents: call_runs.tools(session, agents),
             engines=[
                 Engine(
@@ -987,6 +1014,7 @@ class AppContext:
             accounts=accounts,
             extensions=extensions,
             artifacts=artifacts,
+            computer=computer,
             configuration=configuration,
             project_setup=ProjectSetup(backups),
             codex_plugins=CodexPluginSetup(codex_setup),
@@ -1064,6 +1092,9 @@ class AppContext:
         return timedelta(minutes=minutes) if minutes else None
 
     async def close(self) -> None:
+        # First, so the browser and emulators it started stop even if a slow step after it
+        # is cut short.
+        await self.computer.close()
         await self.local.close()
         await self.accounts.stop()
         for service in self.acp.values():
