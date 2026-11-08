@@ -51,6 +51,7 @@ from nestd.api.routes import (
     setup,
     storage,
     stuck,
+    triggers,
     updates,
     usage,
     worktrees,
@@ -97,6 +98,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
                 await ctx.habit_scheduler.start()
             await ctx.habit_triggers.start()
             if loops:
+                await ctx.github_triggers.start()
                 await ctx.sessions.start()
                 await ctx.archiver.start()
             await ctx.usage_warnings.start()
@@ -116,6 +118,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             await ctx.archiver.stop()
             await ctx.usage_warnings.stop()
             # Before the agents stop: the runs they cut off count as restarted (B42).
+            await ctx.github_triggers.stop()
             await ctx.habit_triggers.stop()
             await ctx.habit_scheduler.stop()
             await ctx.report_back.stop()
@@ -198,6 +201,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         configuration,
         features,
         perf,
+        triggers,
     ):
         app.include_router(module.router)
     # The engines reach local models' servers through it (B106); not under device auth.

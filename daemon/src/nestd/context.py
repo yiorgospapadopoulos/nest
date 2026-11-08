@@ -161,6 +161,10 @@ from nestd.storage.archiver import ChatArchiver
 from nestd.storage.db import Database
 from nestd.stuck.watcher import StuckWatcher
 from nestd.tracking.service import Tracking
+from nestd.triggers.chats import TriggeredChats
+from nestd.triggers.poller import GitHubPoller
+from nestd.triggers.service import ChatTriggerService
+from nestd.triggers.store import TriggerStore
 from nestd.updates.service import UpdateService, UpdateSetup
 from nestd.usage.probe import ProbeClientFactory, UsageProbe
 from nestd.usage.refresher import UsageRefresher
@@ -232,6 +236,9 @@ class AppContext:
     habits: HabitService
     habit_scheduler: HabitScheduler
     habit_triggers: HabitTriggers
+    # GitHub events that start habits and project chats (B148).
+    chat_triggers: ChatTriggerService
+    github_triggers: GitHubPoller
     reports: Reports
     composer: ComposerActions
     archiver: ChatArchiver
@@ -887,6 +894,32 @@ class AppContext:
             setup=update_setup or UpdateSetup(),
             engines_wait=local.engine_updates_wait,
         )
+        github = GithubAccount(runner, paths.data_dir, clock)
+
+        async def github_login() -> str | None:
+            return (await github.status()).login
+
+        trigger_store = TriggerStore(db, clock)
+        github_triggers = GitHubPoller(
+            repos=repos.list_repos,
+            habits=habit_store,
+            scheduler=scheduler,
+            chats=TriggeredChats(
+                start=lambda request, ref: sessions.create(request, started_by_trigger=ref),
+                store=trigger_store,
+                usage=usage,
+                clock=clock,
+                # Read for each event, so edits through the API apply at once.
+                pixie_settings=lambda: context.settings.pixies,
+                can_push=can_push,
+            ),
+            store=trigger_store,
+            bus=bus,
+            run=runner,
+            cwd=paths.data_dir,
+            clock=clock,
+            login=github_login,
+        )
         context = cls(
             paths=paths,
             platform=system,
@@ -982,7 +1015,9 @@ class AppContext:
                 settings=lambda: context.settings.usage,
                 push=notifications.push,
             ),
-            github=GithubAccount(runner, paths.data_dir, clock),
+            github=github,
+            chat_triggers=ChatTriggerService(repos, trigger_store),
+            github_triggers=github_triggers,
             claude_code=claude_code,
             accounts=accounts,
             extensions=extensions,

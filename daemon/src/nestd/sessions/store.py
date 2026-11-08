@@ -398,6 +398,7 @@ _JSON_COLUMNS = (
     "stuck",
     "limit_pause",
     "issue",
+    "started_by_trigger",
     "review",
     "pending_worktree",
     "autopilot",

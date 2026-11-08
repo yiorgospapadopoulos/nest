@@ -29,9 +29,9 @@ FALLBACK_BRANCH = "main"
 BRANCH_REF = "refs/heads/"
 REMOTE_REF = "refs/remotes/"
 # Project settings outside `[worktree]` that `edit` sets.
-_TOP_LEVEL_KEYS = frozenset({"icon", "icon_color", "default_branch", "remote_url"})
-# Settings only a git repository has (D104).
-_GIT_KEYS = frozenset({"default_branch", "remote_url"})
+_TOP_LEVEL_KEYS = frozenset({"icon", "icon_color", "default_branch", "remote_url", "triggers"})
+# Settings only a git repository has (D104, B148).
+_GIT_KEYS = frozenset({"default_branch", "remote_url", "triggers"})
 # General's chats have no project (B110): a built-in plain folder Nest owns, never saved
 # as a repo config or listed with the projects.
 GENERAL = "general"

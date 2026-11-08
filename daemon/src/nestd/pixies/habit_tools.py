@@ -28,6 +28,7 @@ from nestd.pixies.schedule import describe
 from nestd.providers.base import AgentTool, ToolRefusedError
 from nestd.sessions.models import Session
 from nestd.tracking.steps import one_line
+from nestd.triggers.models import GITHUB_EVENTS
 
 REPORT_TOOL_NAMES = ("report", "habit_list", "habit_create", "habit_update", "habit_pause")
 SUMMARY_CHARS = 120
@@ -53,6 +54,25 @@ TRIGGER_LIST: dict[str, JsonValue] = {
     " failed, is ready for review, or its pull request's checks failed. Events are"
     " batched; it runs at most once in 5 minutes.",
 }
+GITHUB_LIST: dict[str, JsonValue] = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "events": {"type": "array", "items": {"type": "string", "enum": list(GITHUB_EVENTS)}},
+            "projects": {"type": "array", "items": {"type": "string"}},
+            "labels": {"type": "array", "items": {"type": "string"}},
+            "branches": {"type": "array", "items": {"type": "string"}},
+            "authors": {"type": "string", "enum": ["humans", "others", "everyone"]},
+        },
+        "required": ["events"],
+    },
+    "description": "Events on GitHub that run it, checked every minute: each item has its"
+    " events and optional filters: projects (none is every project on GitHub), labels (any"
+    " of them), branches (names or patterns such as release/*, for CI runs and the branch a"
+    " pull request goes into) and authors (humans, the default, skips bots; others also"
+    " skips the user's own; everyone).",
+}
 HABIT_FIELDS: dict[str, JsonValue] = {
     "name": {"type": "string", "description": "A short name, at most 60 characters."},
     "prompt": {
@@ -61,6 +81,7 @@ HABIT_FIELDS: dict[str, JsonValue] = {
     },
     "schedule": schedule_field("Mac"),
     "triggers": TRIGGER_LIST,
+    "github": GITHUB_LIST,
     "max_minutes": {
         "type": "integer",
         "description": "How long a run may take, 1 to 120 minutes (default 20).",
@@ -242,7 +263,10 @@ class _Tools:
 
 def _line(habit: Habit) -> str:
     schedule = "no schedule" if habit.schedule is None else describe(habit.schedule)
-    triggers = ", ".join(habit.triggers) or "none"
+    triggers = ", ".join(
+        [*habit.triggers, *(f"github {e}" for w in habit.github for e in w.events)]
+    )
+    triggers = triggers or "none"
     state = "on" if habit.enabled else "paused"
     last = habit.last_run
     ran = "never run" if last is None else f"last run {last.outcome}"

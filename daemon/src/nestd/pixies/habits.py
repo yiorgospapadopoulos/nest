@@ -53,7 +53,8 @@ class HabitService:
         if "schedule" in request.model_fields_set:
             changes["schedule"] = request.schedule
         schedule = changes.get("schedule", before.schedule)
-        if schedule is None and not changes.get("triggers", before.triggers):
+        github = changes.get("github", before.github)
+        if schedule is None and not changes.get("triggers", before.triggers) and not github:
             raise InvalidInputError(NEEDS_A_START)
         if "triggers" in changes:
             changes["triggers"] = list(dict.fromkeys(changes["triggers"]))
