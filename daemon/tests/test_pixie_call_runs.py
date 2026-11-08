@@ -408,6 +408,8 @@ async def test_a_called_pixie_stopped_on_its_own_ends_the_call(api: Api, how: st
     await until(running)
     [called] = await _call_sessions(api, coder)
     if how == "interrupted":
+        # Its turn has begun: a stop while it still opens cancels the opening instead.
+        await until(lambda: bool(api.codex.requests("turn/start")))
         await api.http.post(f"/api/sessions/{called['id']}/interrupt")
         await until(lambda: bool(api.codex.requests("turn/interrupt")))
         stopped = turn_completed(status="interrupted")
