@@ -204,7 +204,9 @@ async def test_a_new_worktree_sets_up_with_its_ports_and_its_run_goes_with_it(
     api: Api, sent: Sent, tmp_path: Path
 ) -> None:
     await in_place_chat(api)
-    configure(api, SERVE, after_setup=True, setup=['echo "$NEST_PORT" > setup-port'])
+    # Written outside the worktree: an untracked file in it would keep it (B141).
+    setup = ['echo "$NEST_PORT" > "$(dirname "$NEST_PID_FILE")/setup-port"']
+    configure(api, SERVE, after_setup=True, setup=setup)
     api.provider.script(reply("Done"))
     session = await create(api)
     session_id = str(session["id"])
@@ -215,7 +217,7 @@ async def test_a_new_worktree_sets_up_with_its_ports_and_its_run_goes_with_it(
     await until(lambda: (tmp_path / "pid").exists())
     pid = int((tmp_path / "pid").read_text(encoding="utf-8"))
     status = (await api.http.get(f"/api/sessions/{session_id}/run")).json()
-    setup_port = (worktree / "setup-port").read_text(encoding="utf-8")
+    setup_port = (tmp_path / "setup-port").read_text(encoding="utf-8")
 
     closed = await api.http.delete(f"/api/sessions/{session_id}", params={"remove_worktree": True})
 
