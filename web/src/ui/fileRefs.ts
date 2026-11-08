@@ -95,6 +95,12 @@ export function fileRefsIn(text: string): FileRef[] {
   return refs;
 }
 
+/** The line a reference ends with: 42 for `a.ts:42`, `a.ts:42:7` or `a.ts:42-50`. */
+export function lineIn(text: string): number | null {
+  const found = /:(\d+)(?:[:-]\d+)?$/.exec(text.trim());
+  return found === null ? null : Number(found[1]);
+}
+
 /** The file a whole code span names, if it is one path with an optional line. */
 export function codeRef(code: string): string | null {
   const path = code.trim().replace(LINE_SUFFIX, "");

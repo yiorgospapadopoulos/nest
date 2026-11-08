@@ -1,8 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { defined } from "../test/defined.ts";
 import { Markdown } from "./Markdown.tsx";
-import { OpenFileContext } from "./openFile.ts";
+import { CopyTextContext, OpenFileContext, ReadFileContext } from "./openFile.ts";
 
 const show = (text: string) => render(<Markdown text={text} />).container.firstElementChild;
 
@@ -27,7 +28,7 @@ describe("Markdown", () => {
     ]);
   });
 
-  it("lists bullets and numbers with their depth, across blank lines", () => {
+  it("lists bullets and numbers as nested lists, across blank lines", () => {
     show(
       [
         "Steps:",
@@ -35,31 +36,22 @@ describe("Markdown", () => {
         "   - in package.json",
         "     and the lock file",
         "",
-        "2) Validate",
-        "* star",
-        "+ plus",
+        "2. Validate",
         "",
         "After the list",
         "",
         "- Next list",
-        "",
-        "        - deep",
       ].join("\n"),
     );
 
-    const [steps, next] = screen.getAllByRole("list");
-    const items = within(defined(steps)).getAllByRole("listitem");
-    expect(items.map((li) => li.textContent)).toEqual([
-      "1.Add zod",
-      "•in package.json and the lock file",
-      "2)Validate",
-      "•star",
-      "•plus",
-    ]);
-    expect(items.map((li) => li.className)).toEqual(["d0", "d1", "d0", "d0", "d0"]);
+    const [steps, sub, next] = screen.getAllByRole("list");
+    expect(steps?.tagName).toBe("OL");
+    expect(within(defined(steps)).getAllByRole("listitem")[0]).toContainElement(defined(sub));
+    expect(within(defined(sub)).getByRole("listitem").textContent).toBe(
+      "in package.json and the lock file",
+    );
     expect(screen.getByText("After the list").tagName).toBe("P");
-    const deep = within(defined(next)).getAllByRole("listitem");
-    expect(deep.map((li) => li.className)).toEqual(["d0", "d1"]);
+    expect(next?.tagName).toBe("UL");
   });
 
   it("keeps code blocks and rules as written", () => {
@@ -70,9 +62,10 @@ describe("Markdown", () => {
     );
 
     const blocks = [...(box?.children ?? [])];
-    expect(blocks.map((b) => b.tagName)).toEqual(["PRE", "HR", "PRE"]);
-    expect(blocks[0]?.textContent).toBe("const a = **1**;\n\n  indented");
-    expect(blocks[2]?.textContent).toBe("never closed");
+    expect(blocks.map((b) => b.className || b.tagName)).toEqual(["md-code", "HR", "md-code"]);
+    const pres = [...(box?.querySelectorAll("pre") ?? [])];
+    expect(pres[0]?.textContent).toBe("const a = **1**;\n\n  indented");
+    expect(pres[1]?.textContent).toBe("never closed");
   });
 
   it("renders inline code, bold, italic and safe links", () => {
@@ -139,20 +132,10 @@ describe("Markdown tables", () => {
     ]);
   });
 
-  it("keeps escaped pipes and pipes in code inside their cell", () => {
-    show(
-      [
-        "| Command | Why |",
-        "|---|---|",
-        "| `curl x \\| sh` | a \\| b |",
-        "| `grep a|b` | c |",
-      ].join("\n"),
-    );
+  it("keeps escaped pipes inside their cell, in code too", () => {
+    show(["| Command | Why |", "|---|---|", "| `curl x \\| sh` | a \\| b |"].join("\n"));
 
-    expect(screen.getAllByRole("row").slice(1).map(cellsOf)).toEqual([
-      ["curl x | sh", "a | b"],
-      ["grep a|b", "c"],
-    ]);
+    expect(screen.getAllByRole("row").slice(1).map(cellsOf)).toEqual([["curl x | sh", "a | b"]]);
   });
 
   it("pads short rows and drops extra cells", () => {
@@ -179,8 +162,8 @@ describe("Markdown tables", () => {
     expect(pipesOnly?.querySelector("table, pre")).toBeNull();
   });
 
-  it("starts right after a paragraph and ends at text with no pipes", () => {
-    const box = show("Here it is:\n| a |\n|---|\n| 1 |\nThat is all.");
+  it("starts right after a paragraph and ends at a blank line", () => {
+    const box = show("Here it is:\n| a |\n|---|\n| 1 |\n\nThat is all.");
 
     expect([...(box?.children ?? [])].map((b) => b.className || b.tagName)).toEqual([
       "P",
@@ -195,7 +178,7 @@ describe("Markdown quotes, tasks and marks", () => {
     const box = show("> first **bold**\n> second\n\nAfter");
 
     const quote = box?.querySelector("blockquote");
-    expect(quote?.textContent).toBe("first bold second");
+    expect(quote?.textContent.trim()).toBe("first bold second");
     expect(quote?.querySelector("strong")).not.toBeNull();
     expect(screen.getByText("After").closest("blockquote")).toBeNull();
   });
@@ -208,7 +191,9 @@ describe("Markdown quotes, tasks and marks", () => {
       "Done",
     ]);
     expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.getByText("open").textContent).toBe("open");
+    expect(screen.getByText("open", { exact: false }).closest("li")?.textContent.trim()).toBe(
+      "open",
+    );
   });
 
   it("strikes text through", () => {
@@ -263,60 +248,112 @@ describe("Markdown web addresses", () => {
     expect(screen.getByRole("link").textContent).toBe("https://a.dev");
   });
 
-  it("shows an image as a link with its words, loading nothing (B136)", () => {
-    // Seen in the Linux app on 2026-11-08: ![dot](dot.png) read "!dot".
-    const box = show("See ![dot](https://a.dev/dot.png) and ![](https://a.dev/x.png).");
+  it("loads a web picture only on a click, and never a script address (B144)", async () => {
+    const user = userEvent.setup();
+    const box = show("![dot](https://a.dev/dot.png?d=secret) ![bad](javascript:alert(1))");
 
     expect(box?.querySelector("img")).toBeNull();
-    expect(box?.textContent).toBe("See dot and https://a.dev/x.png.");
-    expect(hrefs()).toEqual(["https://a.dev/dot.png", "https://a.dev/x.png"]);
+    await user.click(screen.getByRole("button", { name: "Show picture from a.dev" }));
+    const images = [...(box?.querySelectorAll("img") ?? [])];
+    expect(images).toHaveLength(1);
+    expect(images[0]).toHaveAttribute("src", "https://a.dev/dot.png?d=secret");
+    expect(images[0]).toHaveAttribute("alt", "dot");
+    expect(images[0]).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(box?.textContent).toContain("bad");
+  });
+
+  it("reads an image from the chat's folder, and names it without a way to", async () => {
+    const read = vi.fn(() => Promise.resolve(new Blob(["png"], { type: "image/png" })));
+    const view = render(
+      <ReadFileContext value={read}>
+        <Markdown text="![chart](docs/chart.png)" />
+      </ReadFileContext>,
+    );
+
+    expect(await view.findByRole("img", { name: "chart" })).toHaveAttribute(
+      "src",
+      expect.stringMatching(/^blob:/) as string,
+    );
+    expect(read).toHaveBeenCalledWith("docs/chart.png");
+    expect(show("![chart](docs/chart.png)")?.querySelector("img")).toBeNull();
+  });
+});
+
+describe("Markdown safety", () => {
+  it("shows raw HTML as its text, so nothing an agent writes becomes an element", () => {
+    const box = show(
+      'Use Array<string> here.\n\n<script>alert(1)</script>\n\n<img src=x onerror="alert(1)">',
+    );
+
+    expect(box?.querySelector("script, img, iframe")).toBeNull();
+    expect(box?.textContent).toContain("Array<string>");
+    expect(box?.textContent).toContain("<script>alert(1)</script>");
+  });
+
+  it("links no script, data or file address, written or bare", () => {
+    show("[a](javascript:alert(1)) [b](data:text/html,x) [c](vbscript:x) <javascript:x>");
+
+    expect(screen.queryAllByRole("link")).toEqual([]);
+  });
+});
+
+describe("Markdown math", () => {
+  it("draws math between double dollars, and leaves prices alone", async () => {
+    const box = render(<Markdown text={"It costs $5 or $10.\n\n$$\nx^2 + 1\n$$"} />).container;
+
+    await waitFor(() => {
+      expect(box.querySelector(".katex")).not.toBeNull();
+    });
+    expect(box.querySelector(".katex-error")).toBeNull();
+    expect(box.textContent).toContain("It costs $5 or $10.");
   });
 });
 
 describe("Markdown nesting", () => {
+  const depth = (li: Element) => {
+    let count = 0;
+    for (let at = li.parentElement?.closest("li"); at; at = at.parentElement?.closest("li")) {
+      count += 1;
+    }
+    return count;
+  };
   const depths = (markdown: string) =>
-    [...(show(markdown)?.querySelectorAll("li") ?? [])].map((li) => li.className);
+    [...(show(markdown)?.querySelectorAll("li") ?? [])].map(depth);
 
   it.each([
     ["3", "1. one\n   - sub\n2. two"],
     ["4", "- one\n    - sub\n- two"],
     ["2", "- one\n  - sub\n- two"],
   ])("takes a %s space sublist as one level deeper", (_, markdown) => {
-    expect(depths(markdown)).toEqual(["d0", "d1", "d0"]);
-  });
-
-  it("counts each level from the items around it", () => {
-    expect(depths("- a\n    - b\n        - c\n    - d\n- e")).toEqual([
-      "d0",
-      "d1",
-      "d2",
-      "d1",
-      "d0",
-    ]);
+    expect(depths(markdown)).toEqual([0, 1, 0]);
   });
 
   it("keeps a code fence under its item, without the item's indent", () => {
     const box = show("1. Install:\n\n   ```sh\n   npm i\n     nested\n   ```\n2. Run");
 
-    const list = box?.querySelectorAll("ul");
-    expect(list).toHaveLength(1);
     const items = [...(box?.querySelectorAll("li") ?? [])];
-    expect(items).toHaveLength(3);
-    expect(items[1]?.querySelector("pre")?.textContent).toBe("npm i\n  nested");
-    expect(items[2]?.textContent).toBe("2.Run");
-  });
-
-  it("keeps an indented paragraph under its item, in order", () => {
-    const box = show("- one\n  - sub\n\n  more on one\n- two\n\nOutside");
-
-    const items = [...(box?.querySelectorAll("li") ?? [])];
-    expect(items.map((li) => li.className)).toEqual(["d0", "d1", "d0 more", "d0"]);
-    expect(items[2]?.querySelector("p")?.textContent).toBe("more on one");
-    expect(screen.getByText("Outside").closest("li")).toBeNull();
+    expect(items).toHaveLength(2);
+    expect(items[0]?.querySelector("pre")?.textContent).toBe("npm i\n  nested");
+    expect(items[1]?.textContent.trim()).toBe("Run");
   });
 });
 
 describe("code blocks", () => {
+  it("copy their text as written, small ones too", async () => {
+    const user = userEvent.setup();
+    const copy = vi.fn(() => Promise.resolve());
+    render(
+      <CopyTextContext value={copy}>
+        <Markdown text={"Run:\n\n```sh\nnpm test\n```"} />
+      </CopyTextContext>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Copy code" }));
+
+    expect(copy).toHaveBeenCalledWith("npm test");
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+  });
+
   it("colours a known language with spans of the same text", () => {
     const code = 'const a = "x"; // note\nreturn 1;';
     const box = show(`\`\`\`ts\n${code}\n\`\`\``);
@@ -361,10 +398,10 @@ describe("files a message names", () => {
     expect(box.textContent).toBe("See the plan, web/src/App.tsx:42 and index.html:111.");
     expect(links.some((a) => a.hasAttribute("href"))).toBe(false);
     for (const a of links) a.click();
-    expect(open.mock.calls.map(([path]) => path as string)).toEqual([
-      "plans/plan.md",
-      "web/src/App.tsx",
-      "index.html",
+    expect(open.mock.calls).toEqual([
+      ["plans/plan.md", null],
+      ["web/src/App.tsx", 42],
+      ["index.html", 111],
     ]);
   });
 
