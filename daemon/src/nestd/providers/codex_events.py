@@ -97,6 +97,10 @@ class TurnTokens:
         )
 
 
+# How a steered message read inside a turn is marked as its checkpoint (B145).
+STEERED = "steered:"
+
+
 class CodexStream:
     def __init__(self, sink: ProviderEventSink, agents: CodexAgents | None = None) -> None:
         self._sink = sink
@@ -104,6 +108,14 @@ class CodexStream:
         self._thread_id: str | None = None
         # The turn in progress, from its start until its end.
         self.turn_id: str | None = None
+        # The thread's latest turn ("" before its first), and the one before the turn in
+        # progress: a cut before that turn's message keeps the thread through it (B145).
+        self.last_turn = ""
+        self._cut_before = ""
+        # The plan Codex proposed in the turn, in its plan mode; the run's `on_plan` takes
+        # it at the turn's end and reports the result itself when it returns True (B145).
+        self._proposed: str | None = None
+        self.on_plan: Callable[[str, ResultInfo], Awaitable[bool]] | None = None
         # Messages written into the turn by their Nest id, until Codex reads them (B59).
         self.steered: set[str] = set()
         # File change items by id, of every thread, for their approval requests.
@@ -168,6 +180,9 @@ class CodexStream:
         self.turn_id = text(obj(params.get("turn")).get("id")) or None
         self._tokens.start()
         self._limit = None
+        self._cut_before, self.last_turn = self.last_turn, self.turn_id or self.last_turn
+        # The checkpoint of the message Nest started the turn with, if it did (B145).
+        await self._sink.checkpoint(self._cut_before)
 
     async def _item_started(self, params: JsonObject) -> None:
         item = obj(params.get("item"))
@@ -180,7 +195,9 @@ class CodexStream:
             client_id = text(item.get("clientId"))
             if client_id in self.steered:
                 self.steered.discard(client_id)
-                await self._sink.message_taken(client_id, item_id)
+                # Codex reads it inside the turn and cuts its thread only between turns,
+                # so there is no point to cut to before it (B145).
+                await self._sink.message_taken(client_id, f"{STEERED}{item_id}")
         elif kind == COLLAB_ITEM:
             await self.agents.collab_started(item)
         elif kind in TOOL_ITEMS:
@@ -195,6 +212,8 @@ class CodexStream:
             await self._sink.thinking(False)
         elif kind == "contextCompaction":
             await self._sink.notice("compacted", COMPACTED)
+        elif kind == "plan":
+            self._proposed = text(item.get("text")) or None
         else:
             await self._item_done(item, None)
 
@@ -298,6 +317,13 @@ class CodexStream:
         # The agents it did not wait for go on in the background, as Claude's do.
         if self.thread_id is not None:
             await self.agents.caller_went_on(self.thread_id)
+        plan, self._proposed = self._proposed, None
+        on_plan = self.on_plan
+        if plan and status == "completed" and on_plan is not None and await on_plan(plan, info):
+            return
+        await self.end_turn(info)
+
+    async def end_turn(self, info: ResultInfo) -> None:
         await self._sink.result(info)
         self.steered.clear()
 

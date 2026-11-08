@@ -6,6 +6,7 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel
 
 from nestd.api.deps import Context, RequireDevice
+from nestd.composer.memory_files import CLAUDE_MD, memory_name
 from nestd.engine.acp import AcpEngineService
 from nestd.engine.acp_install import EngineNotInstallableError, EngineState
 from nestd.engine.models import ModelList
@@ -42,6 +43,8 @@ class ProviderInfo(BaseModel):
     account: AccountInfo | None = None
     # What its chats cannot do, which clients hide; refused with `unsupported_feature`.
     unsupported: list[ProviderFeature]
+    # The project file it reads its instructions from, where a `#` memory goes (B145).
+    memory_file: str = CLAUDE_MD
     # The installed engine's version (B107); None for Claude and Codex, or when not known.
     version: str | None = None
     # False: Nest has not tried it live, shown as "untested".
@@ -129,6 +132,7 @@ async def _info(ctx: Context, engine: Engine, refresh: bool) -> ProviderInfo:
         display_name=_DISPLAY_NAMES.get(engine.name, engine.name.capitalize()),
         signed_in=None,
         unsupported=sorted(engine.unsupported),
+        memory_file=memory_name(engine.name),
     )
     service = ctx.acp.get(engine.name)
     if engine.name == CODEX:

@@ -14,6 +14,9 @@ from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create, reach
 
+# Claude Code's own file checkpoints, as in a folder without git (B145).
+pytestmark = pytest.mark.usefixtures("engine_checkpoints_only")
+
 
 @pytest.fixture
 async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
@@ -83,7 +86,7 @@ async def test_a_message_without_a_checkpoint(api: Api) -> None:
     assert preview.json()["can_rewind"] is False
     assert restored.status_code == 409
     assert restored.json()["code"] == "cannot_rewind"
-    assert "no file checkpoint" in restored.json()["detail"]
+    assert "no checkpoint" in restored.json()["detail"]
 
 
 async def test_restoring_while_the_agent_works_is_refused(api: Api) -> None:

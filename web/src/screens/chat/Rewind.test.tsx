@@ -375,7 +375,8 @@ describe("message actions", () => {
 
   it("are not offered on an engine that can neither rewind nor fork (B91, B107)", async () => {
     const api = fakeApi();
-    api.providers.mockResolvedValue({ providers: [claudeProvider(), acpProvider()] });
+    const engine = acpProvider({ unsupported: ["rewind", "fork", "withdraw"] });
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), engine] });
     await openChat(session({ provider: "opencode" }), undefined, api);
 
     await waitFor(() => {

@@ -38,7 +38,7 @@ public enum ProviderFeature: String, UnknownSafeEnum {
         case .nestTools: "use Nest's tools"
         case .taskList: "keep a task list"
         case .pixies: "call pixies"
-        case .memory: "save a memory to CLAUDE.md"
+        case .memory: "save a memory"
         case .pixieSkills: "keep a pixie's own skill list"
         case .unknown: "do that"
         }

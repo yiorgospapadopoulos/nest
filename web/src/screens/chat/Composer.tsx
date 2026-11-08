@@ -29,6 +29,7 @@ import {
   catalogFor,
   chatModel,
   memberCall,
+  memoryFile,
   newChatDefaults,
   signInHint,
 } from "../../store/selectors.ts";
@@ -528,7 +529,7 @@ export function Composer({
         )}
         {mode === "memory" && (
           <p className="cmode">
-            <b>Memory</b> Saved to CLAUDE.md, not sent
+            <b>Memory</b> Saved to {memoryFile(state, live?.provider)}, not sent
           </p>
         )}
         {/* Always there, as VoiceOver often misses a live region inserted with its text. */}
@@ -701,11 +702,11 @@ export function Composer({
               onClick={() => void remember(live.id, "project")}
             >
               Project memory
-              <small>CLAUDE.md in this project</small>
+              <small>{memoryFile(state, live.provider)} in this project</small>
             </button>
             <button className="asi" role="menuitem" onClick={() => void remember(live.id, "user")}>
               User memory
-              <small>Your CLAUDE.md, for all projects</small>
+              <small>Your {memoryFile(state, live.provider)}, for all projects</small>
             </button>
           </ActionSheet>
         )}

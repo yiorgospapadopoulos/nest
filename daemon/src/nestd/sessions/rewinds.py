@@ -1,12 +1,14 @@
 """Rewinding a chat to before one of the user's messages, and forking a chat from one, as
 in Claude Code (IMP-02, B59).
 
-A rewind restores the files the agent changed since the message (code), the conversation
-(that message and everything after it leave the chat, and the next message continues from
-before it), or both. The conversation is cut in Claude Code by resuming its session only
-up to the entry before the message, into a new session (a fork), so the old transcript
-stays whole and Claude Code chats, as kept by Claude Code, are never rewritten. The run is
-opened cut at once, so Claude Code loads the cut, or refuses it, before Nest drops the
+A rewind restores the files changed since the message (code), the conversation (that
+message and everything after it leave the chat, and the next message continues from
+before it), or both. Files come back from Nest's git snapshot of the message, on every
+engine and whatever changed them (B145, D174). The conversation is cut by the engine:
+Claude Code resumes its session only up to the entry before the message, Codex forks its
+thread through the turn before, both into a new engine session, so the old transcript stays
+whole; an ACP engine starts a new session given the kept part of the chat (D174). The run
+is opened cut at once, so the engine loads the cut, or refuses it, before Nest drops the
 message and what followed from its own transcript. A fork is a new chat whose first run
 resumes the original the same way; the original goes on untouched.
 """
@@ -23,6 +25,7 @@ from nestd.events.models import Event
 from nestd.providers.base import ForkPoint, RewindResult
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated
+from nestd.sessions.checkpoints import FileCheckpoints
 from nestd.sessions.engines import Engines
 from nestd.sessions.errors import CannotRewindError
 from nestd.sessions.hooks import SessionHooks
@@ -42,12 +45,12 @@ from nestd.sessions.turns import TurnRunner
 from nestd.worktrees.manager import InvalidBranchError, WorktreeManager
 
 NO_CHECKPOINT = (
-    "Nest has no file checkpoint for this message: it was sent before checkpoints were "
-    "kept, in Claude Code, or as a command"
+    "Nest has no checkpoint for this message: it was sent before checkpoints were kept, "
+    "outside Nest, or as a command"
 )
 NO_RUN_TO_PREVIEW = (
-    "Claude Code is not running for this chat, so the files to restore cannot be listed. "
-    "Send a message to start it again, then try again."
+    "Claude Code is not running for this chat, and its folder has no git, so the files to "
+    "restore cannot be listed. Send a message to start it again, then try again."
 )
 NO_PIXIE_RESTORE = (
     "A pixie's chat cannot be rewound: each of its runs starts fresh, so the earlier "
@@ -58,8 +61,8 @@ NO_FILES_ACROSS_MOVE = (
     "here. The conversation can still be rewound."
 )
 NO_CONVERSATION_POINT = (
-    "Claude Code's transcript of this chat does not have this message, so the "
-    "conversation cannot be rewound to before it"
+    "The agent's transcript of this chat does not have this message as the start of a "
+    "turn, so the conversation cannot be rewound to before it"
 )
 
 # The transcript a fork copies; the rest belongs to the original chat's run and work.
@@ -95,6 +98,7 @@ class Rewinds:
     ) -> None:
         self._attachments = attachments
         self._store = store
+        self._checkpoints = FileCheckpoints(store)
         self._bus = bus
         self._engines = engines
         self._turns = turns
@@ -112,20 +116,22 @@ class Rewinds:
         live: LiveSession,
         session: Session,
         message: Event,
-        checkpoint: str,
+        checkpoint: str | None,
         restore: Restore,
     ) -> RewindReply:
-        """What the rewind would do; never starts Claude Code (BUG-94)."""
+        """What the rewind would do; never starts the engine (BUG-94). `checkpoint` is the
+        engine's id for the message, which a conversation rewind needs.
+        """
         reply = _reply(RewindResult(can_rewind=True), restore, message)
-        if restore != "code" and await self._point(session, checkpoint) is None:
+        if restore != "code" and (
+            checkpoint is None or await self._point(session, checkpoint) is None
+        ):
             return RewindReply(can_rewind=False, error=NO_CONVERSATION_POINT, restore=restore)
         if restore == "conversation":
             return reply
         if _before_the_move(session, message):
             return RewindReply(can_rewind=False, error=NO_FILES_ACROSS_MOVE, restore=restore)
-        if live.run is None:
-            return RewindReply(can_rewind=False, error=NO_RUN_TO_PREVIEW, restore=restore)
-        files = _named_from(await self._turns.rewind(live, checkpoint, True), session)
+        files = await self._files(live, session, message, checkpoint, dry_run=True)
         return _reply(files, restore, message) if files.can_rewind else _refused(files, restore)
 
     async def rewind(
@@ -133,29 +139,28 @@ class Rewinds:
         live: LiveSession,
         session: Session,
         message: Event,
-        checkpoint: str,
+        checkpoint: str | None,
         restore: Restore,
     ) -> RewindReply:
-        """Rewind; CannotRewindError when Claude Code cannot, with nothing changed (unless
+        """Rewind; CannotRewindError when the engine cannot, with nothing changed (unless
         the files were restored and only the conversation then failed, which it says).
         """
         if restore != "conversation" and _before_the_move(session, message):
             raise CannotRewindError(NO_FILES_ACROSS_MOVE)
         point: ForkPoint | None = None
         if restore != "code":
-            point = await self._point(session, checkpoint)
-            if point is None:
+            point = None if checkpoint is None else await self._point(session, checkpoint)
+            if point is None or checkpoint is None:
                 raise CannotRewindError(NO_CONVERSATION_POINT)
         files: RewindResult | None = None
         try:
             # A message sent meanwhile waits, so no new turn lands among what is dropped.
             async with live.hold():
                 if restore != "conversation":
-                    run = await self._turns.open_run(live)
-                    files = _named_from(await run.rewind_files(checkpoint, False), session)
+                    files = await self._files(live, session, message, checkpoint, dry_run=False)
                     if not files.can_rewind:
                         raise CannotRewindError(files.error or "the files could not be restored")
-                if point is not None:
+                if point is not None and checkpoint is not None:
                     await self._cut(live, session, message, checkpoint, point, files is not None)
                 if files is not None:
                     await self._bus.publish(
@@ -270,6 +275,34 @@ class Rewinds:
             session.id,
         )
 
+    async def _files(
+        self,
+        live: LiveSession,
+        session: Session,
+        message: Event,
+        checkpoint: str | None,
+        *,
+        dry_run: bool,
+    ) -> RewindResult:
+        """The files' part from Nest's snapshot of the message (B145); a chat in a folder
+        without git has only the engine's own checkpoint, which only Claude Code keeps. The
+        caller holds the session when it restores.
+        """
+        assert message.id is not None  # noqa: S101 (a stored event)
+        if await self._checkpoints.has(session.id, message.id):
+            folder = require_cwd(session)
+            return _named_from(
+                await self._checkpoints.restore(session.id, message.id, folder, dry_run), session
+            )
+        if checkpoint is None:
+            return RewindResult(can_rewind=False, error=NO_CHECKPOINT)
+        if dry_run:
+            if live.run is None:
+                return RewindResult(can_rewind=False, error=NO_RUN_TO_PREVIEW)
+            return _named_from(await self._turns.rewind(live, checkpoint, True), session)
+        run = await self._turns.open_run(live)
+        return _named_from(await run.rewind_files(checkpoint, False), session)
+
     async def _point(self, session: Session, checkpoint: str) -> ForkPoint | None:
         if session.provider_session_id is None:
             return None
@@ -339,6 +372,7 @@ class Rewinds:
             checkpoint = await self._store.checkpoint(source_id, original.id)
             if checkpoint is not None:
                 await self._store.save_checkpoint(session_id, copy.id, checkpoint)
+            await self._checkpoints.copy(source_id, original.id, session_id, copy.id)
 
 
 _NO_FORK: dict[str, object] = {"fork_from": None, "fork_at": None, "fork_drops": None}

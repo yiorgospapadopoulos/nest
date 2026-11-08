@@ -37,6 +37,7 @@ from nestd.providers.base import AgentProvider, AgentTask, ApprovalHandler, Mess
 from nestd.prs.untrusted import one_line
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
 from nestd.sessions.bookkeeping import isolated
+from nestd.sessions.checkpoints import FileCheckpoints
 from nestd.sessions.engines import AccountSource, DefaultModel, Engine, Engines, ModelLookup
 from nestd.sessions.errors import (
     CannotRewindError,
@@ -1022,7 +1023,11 @@ class SessionManager:
         require_open(session)
         checkpoint = await self._store.checkpoint(session_id, event_id)
         message = await self._rewinds.user_message(session_id, event_id)
-        if checkpoint is None or message is None:
+        # Files come back from Nest's own snapshot; the conversation needs the engine's id.
+        files_only = (
+            restore == "code" and await self._store.snapshot(session_id, event_id) is not None
+        )
+        if message is None or (checkpoint is None and not files_only):
             if dry_run:
                 return RewindReply(can_rewind=False, error=NO_CHECKPOINT, restore=restore)
             raise CannotRewindError(NO_CHECKPOINT)
@@ -1129,6 +1134,8 @@ class SessionManager:
                     if not await self._holds_work(repo, worktree):
                         await self._remove_worktree(repo, session, worktree, along_with)
             await self._attachments.delete_files(session_id)
+            with suppress(RepoNotFoundError):
+                await FileCheckpoints.forget(session_id, self._repos.get(session.repo).path)
             await self._store.delete(session_id)
         await self._hooks.purged(session_id)
         # Not a session event: the session's events are gone with it.

@@ -1097,6 +1097,7 @@ export function claudeProvider(overrides: Partial<ProviderInfo> = {}): ProviderI
     sign_in_hint: null,
     account: account(),
     unsupported: [],
+    memory_file: "CLAUDE.md",
     ...browserEngine,
     ...overrides,
   };
@@ -1126,7 +1127,8 @@ export function codexProvider(overrides: Partial<ProviderInfo> = {}): ProviderIn
       plan: "ChatGPT Plus",
       organization: null,
     },
-    unsupported: ["rewind", "fork", "slash_commands", "withdraw", "plan_review", "memory"],
+    unsupported: ["slash_commands", "withdraw"],
+    memory_file: "AGENTS.md",
     ...browserEngine,
     ...overrides,
   };
@@ -1140,7 +1142,8 @@ export function acpProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo
     signed_in: true,
     sign_in_hint: null,
     account: null,
-    unsupported: ["rewind", "fork", "withdraw", "plan_review", "memory"],
+    unsupported: ["withdraw"],
+    memory_file: "AGENTS.md",
     version: "1.19.4",
     tested: true,
     git_guard: true,

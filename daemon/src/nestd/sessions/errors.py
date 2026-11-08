@@ -94,7 +94,7 @@ _FEATURE_WORDS: dict[str, str] = {
     "rewind": "be rewound",
     "fork": "be forked",
     "stop_task": "stop a single background task",
-    "memory": "save a memory to CLAUDE.md",
+    "memory": "save a memory",
     # B107: an engine whose git commands Nest cannot block.
     "pixies": "run pixies, habits or the chats a pixie starts, since Nest cannot block its"
     " git commands",

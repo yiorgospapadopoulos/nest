@@ -22,6 +22,7 @@ from nestd.events.models import Event
 from nestd.local.models import is_local
 from nestd.local.run import LocalRun
 from nestd.providers.base import (
+    HISTORY_CUT,
     AgentRun,
     AgentTool,
     ApprovalHandler,
@@ -32,9 +33,11 @@ from nestd.providers.base import (
 )
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated, isolated_or
+from nestd.sessions.checkpoints import FileCheckpoints
 from nestd.sessions.engines import Engine, Engines
 from nestd.sessions.errors import NoWorkspaceError, SessionNotFoundError
 from nestd.sessions.extras import NestToolsSource, RunExtras, RunExtrasSource
+from nestd.sessions.history import kept_history
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.limits import LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
@@ -221,6 +224,7 @@ class TurnRunner:
         self._queue = queue
         self._clock = clock
         self._store = store
+        self._checkpoints = FileCheckpoints(store)
         self._bus = bus
         self._states = states
         self._hooks = hooks
@@ -363,7 +367,11 @@ class TurnRunner:
         await isolated("the turn start hooks", live.session_id, self._hooks.turn_starting(session))
         run = await self._ensure_run(live, session, cwd)
         live.turn_active = True
-        await run.send(user_input(await self.agent_text(live, text, sender), attachments))
+        await self._checkpoint_files(session, live.user_event, cwd)
+        given = await self.agent_text(live, text, sender)
+        if session.fork_at == HISTORY_CUT:
+            given = await self._with_history(live, given)
+        await run.send(user_input(given, attachments))
         self._namer.message_sent(live, session)
 
     async def agent_text(self, live: LiveSession, text: str, sender: Sender = USER) -> str:
@@ -538,11 +546,33 @@ class TurnRunner:
         event = await self._show(live, queued.text, attachments, queued.sender)
         assert event.id is not None  # noqa: S101 (a stored event)
         await self._store.save_checkpoint(live.session_id, event.id, checkpoint_id)
+        session = await self._store.get(live.session_id)
+        await self._checkpoint_files(session, event.id, require_cwd(session))
         if new_turn:
             session = await self._start_turn(live)
             await isolated(
                 "the turn start hooks", live.session_id, self._hooks.turn_starting(session)
             )
+
+    async def _with_history(self, live: LiveSession, text: str) -> str:
+        """The message after the chat's kept part, for a new session of an engine that
+        cannot cut its own conversation (D174). The engine reports the new session only
+        once it has this message, so a run closed before it opens the cut again.
+        """
+        before = live.user_event
+        events = await self._bus.session_events(live.session_id)
+        kept = kept_history([e for e in events if before is None or (e.id or 0) < before])
+        return text if kept is None else f"{kept}\n\n{text}"
+
+    async def _checkpoint_files(self, session: Session, event_id: int | None, cwd: Path) -> None:
+        """Snapshot the chat's files before the agent has the message (B145). A pixie's
+        chat is never rewound, so it keeps none.
+        """
+        if event_id is None or session.pixie_id is not None:
+            return
+        await isolated(
+            "the file checkpoint", session.id, self._checkpoints.take(session.id, event_id, cwd)
+        )
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         # The run already closed itself; the next message opens a new one and resumes.
