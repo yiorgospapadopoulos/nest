@@ -14,12 +14,12 @@ from claude_agent_sdk.types import (
 from nestd.providers.git_guard import (
     DENY_REASON,
     GIT_WRITE_RULES,
-    NO_PUSH_ENV,
     block_git_writes,
     block_subagent_git_writes,
     is_git_write,
     tool_writes,
 )
+from nestd.providers.push_block import NO_PUSH_ENV
 
 BLOCKED = [
     "cd x && git push origin main",

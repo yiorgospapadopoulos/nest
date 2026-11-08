@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -54,11 +55,11 @@ from nestd.providers.claude_questions import QUESTION_TIMEOUT_SECONDS
 from nestd.providers.git_guard import (
     GIT_WORKTREE_RULES,
     GIT_WRITE_RULES,
-    NO_PUSH_ENV,
     block_git_writes,
     block_subagent_git_writes,
     block_worktree_removal,
 )
+from nestd.providers.push_block import NO_PUSH_ENV, helpers
 from tests.async_support import until
 from tests.fake_sdk import FakeSdkClient
 from tests.recording_sink import RecordingSink
@@ -168,6 +169,8 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
     assert git_matcher.hooks == [block_git_writes]
     assert question_matcher.matcher == "AskUserQuestion"
     assert question_matcher.timeout == QUESTION_TIMEOUT_SECONDS
+    # The run's own programs get Nest's gh first (D160).
+    assert options.env.pop("PATH") == f"{helpers()}{os.pathsep}{os.environ['PATH']}"
     assert options.env == {
         **NO_PUSH_ENV,
         # As the Claude app runs Claude Code (D047): answer without waiting for slow MCP

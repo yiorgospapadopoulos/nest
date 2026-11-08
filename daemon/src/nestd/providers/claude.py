@@ -3,6 +3,7 @@ for the runs that keep them (B58)."""
 
 import asyncio
 import logging
+import os
 from collections import deque
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from contextlib import suppress
@@ -80,12 +81,12 @@ from nestd.providers.claude_tools import (
 from nestd.providers.git_guard import (
     GIT_WORKTREE_RULES,
     GIT_WRITE_RULES,
-    NO_PUSH_ENV,
     block_autopilot_git,
     block_git_writes,
     block_subagent_git_writes,
     block_worktree_removal,
 )
+from nestd.providers.push_block import NO_PUSH_ENV, PushBlock, push_block
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
@@ -182,13 +183,27 @@ def _git_hook(spec: SessionSpec) -> HookCallback | None:
     return block_subagent_git_writes if spec.guard_subagents else None
 
 
+def _push_env(
+    spec: SessionSpec, shell_env: Mapping[str, str] | None, block: PushBlock | None
+) -> Mapping[str, str]:
+    if not spec.guard_git:
+        return {}
+    if block is None:
+        return NO_PUSH_ENV
+    return block.env((shell_env or {}).get("PATH") or os.environ.get("PATH"))
+
+
 def build_options(
     spec: SessionSpec,
     handler: ApprovalHandler,
     stderr: Callable[[str], None] | None = None,
     shell_env: Mapping[str, str] | None = None,
+    block: PushBlock | None = None,
 ) -> ClaudeAgentOptions:
-    """`shell_env` is the user's login shell environment (B59); Nest's own entries win."""
+    """`shell_env` is the user's login shell environment (B59); Nest's own entries win.
+    `block` is a guarded run's push block for its own programs (`push_block`); without it
+    a guarded run gets the git-level block for every URL alone.
+    """
     questions = QuestionBridge(handler)
     own_tools = own_tool_names(spec.tools)
     every_run_tools = nest_tool_names(spec.nest_tools)
@@ -285,7 +300,7 @@ def build_options(
         hooks={"PreToolUse": pre_tool_use},
         env={
             **(shell_env or {}),
-            **(NO_PUSH_ENV if spec.guard_git else {}),
+            **_push_env(spec, shell_env, block),
             **CLAUDE_APP_ENV,
             # Such as the folder's ports (B108).
             **spec.env,
@@ -448,7 +463,8 @@ class ClaudeProvider:
     ) -> ClaudeRun:
         stderr = StderrTail(spec.cwd)
         env = await self._shell_env()
-        client = self._client_factory(build_options(spec, handler, stderr.add, env))
+        block = await push_block((spec.cwd, *spec.extra_dirs)) if spec.guard_git else None
+        client = self._client_factory(build_options(spec, handler, stderr.add, env, block))
         try:
             await client.connect()
             info = await client.get_server_info()

@@ -1,5 +1,6 @@
 """The ACP provider against recorded OpenCode and Gemini sessions (B107)."""
 
+import os
 from pathlib import Path
 from typing import cast
 
@@ -25,7 +26,8 @@ from nestd.providers.base import (
     ToolUseBlock,
     UserInput,
 )
-from nestd.providers.git_guard import DENY_REASON, NO_PUSH_ENV, WORKTREE_DENY_REASON
+from nestd.providers.git_guard import DENY_REASON, WORKTREE_DENY_REASON
+from nestd.providers.push_block import NO_PUSH_ENV, helpers
 from tests.acp_support import FakeAgent, Step, load
 from tests.async_support import until
 from tests.recording_sink import RecordingSink
@@ -269,6 +271,7 @@ async def test_a_guarded_runs_push_is_rejected_without_asking(tmp_path: Path, mo
     assert (result.content, result.is_error) == (DENY_REASON, True)
     env = agent.transport.launch.env
     assert env["GIT_CONFIG_KEY_0"] == NO_PUSH_ENV["GIT_CONFIG_KEY_0"]
+    assert env["PATH"].split(os.pathsep)[0] == str(helpers())
     # OpenCode's own agent settings cannot loosen a guarded run's rules.
     assert env["OPENCODE_CONFIG_CONTENT"] == OPENCODE.guarded_env["OPENCODE_CONFIG_CONTENT"]
     assert env["PORT"] == "4100"
