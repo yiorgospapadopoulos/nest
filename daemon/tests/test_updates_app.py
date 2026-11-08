@@ -25,6 +25,7 @@ from nestd.updates.app import (
     back_up_database,
     database_version,
     note_start,
+    platform_key,
     point_current,
     read_state,
     save_state,
@@ -94,7 +95,7 @@ class Rig:
         self.watchers: list[tuple[str, str]] = []
 
     def _latest(self) -> dict[str, object]:
-        kinds = (("wheel", "any"), ("requirements", "any"), ("app", "macos-arm64"))
+        kinds = (("wheel", "any"), ("requirements", "any"), ("app", platform_key("macos")))
         return {
             "version": self.version,
             "notes": "New things",

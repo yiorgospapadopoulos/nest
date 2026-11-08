@@ -113,6 +113,7 @@ describe("usage numbers", () => {
     expect(probesLine({ count: 1, tokens: 400 })).toBe(
       "1 usage check, 400 tokens, not counted above",
     );
+    expect(probesLine({ count: 340, tokens: 0 })).toBe("340 usage checks, free");
     expect(probesLine({ count: 0, tokens: 0 })).toBeNull();
   });
 });

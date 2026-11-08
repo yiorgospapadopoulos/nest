@@ -132,9 +132,13 @@ export function projectRows(projects: ProjectUsage[]): { name: string; tokens: n
   return [...top, { name: `Others (${String(rest.length)})`, tokens: others }];
 }
 
-/** "12 usage checks, 5k tokens, not counted above", or null when there were none. */
+/**
+ * "12 usage checks, 5k tokens, not counted above", "12 usage checks, free" when Claude Code
+ * answered them without a turn (B142), or null when there were none.
+ */
 export function probesLine(probes: UsagePeriod["probes"]): string | null {
   if (probes.count === 0) return null;
   const checks = `${String(probes.count)} usage check${probes.count === 1 ? "" : "s"}`;
+  if (probes.tokens === 0) return `${checks}, free`;
   return `${checks}, ${tokens(probes.tokens)} tokens, not counted above`;
 }

@@ -37,7 +37,8 @@ async function renderDesktop() {
       storage={() => storage}
     />,
   );
-  await screen.findByRole("button", { name: "Settings" });
+  // The whole desktop app's first render can pass the default 1 s on a busy machine.
+  await screen.findByRole("button", { name: "Settings" }, { timeout: 5000 });
 }
 
 const escapeOnTheWindow = () => {
