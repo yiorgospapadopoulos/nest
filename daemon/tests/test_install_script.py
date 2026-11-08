@@ -37,7 +37,7 @@ class Machine:
         )
 
 
-def _machine(tmp_path: Path, *, uv: str = "exit 0") -> Machine:
+def _machine(tmp_path: Path, *, uv: str = "exit 0", app: bytes = b"app") -> Machine:
     """A Linux computer with a good release on disk, reached through `file://`."""
     home = tmp_path / "home"
     shims = tmp_path / "shims"
@@ -48,7 +48,7 @@ def _machine(tmp_path: Path, *, uv: str = "exit 0") -> Machine:
     _write_program(shims / "systemctl", "exit 0")
     _write_program(shims / "uv", uv)
     files = {
-        "Nest-1.0.0-linux-x86_64.AppImage": ("app", "linux-x86_64", b"app"),
+        "Nest-1.0.0-linux-x86_64.AppImage": ("app", "linux-x86_64", app),
         "nestd-1.0.0-py3-none-any.whl": ("wheel", "any", b"wheel"),
         "nestd-1.0.0-requirements.txt": ("requirements", "any", b"requirements"),
     }
@@ -123,3 +123,21 @@ def test_a_daemon_that_cannot_be_built_leaves_no_half_made_folder(tmp_path: Path
     assert list((machine.data / "daemon").iterdir()) == []
     assert not (machine.data / "app").exists()
     assert not (machine.home / ".local").exists()
+
+
+# A uv that makes a venv whose python answers everything, and an AppImage that unpacks.
+_BUILDING_UV = 'case "$1" in venv) for last; do :; done; mkdir -p "$last/bin"; ' + (
+    'printf \'#!/bin/sh\\nexit 0\\n\' > "$last/bin/python"; chmod +x "$last/bin/python" ;; esac'
+)
+_UNPACKING_APP = b"#!/bin/sh\nmkdir -p squashfs-root/usr/share/icons/hicolor\n"
+
+
+def test_a_secret_service_that_never_answers_says_so(tmp_path: Path) -> None:
+    # On 2026-11-08 a new keyring's password window made this stop with only "Fix that".
+    machine = _machine(tmp_path, uv=_BUILDING_UV, app=_UNPACKING_APP)
+    _write_program(Path(machine.env["PATH"].split(os.pathsep)[0]) / "timeout", "exit 124")
+
+    result = machine.run()
+
+    assert result.returncode == 1
+    assert "The Secret Service didn't answer" in result.stderr

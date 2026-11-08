@@ -212,8 +212,13 @@ link_command() {
 # daemon, so this says why instead of leaving a window that never connects.
 check_secret_service() {
     [ "$system" = linux ] || return 0
-    timeout 30 "$python" -m nestd service check-secrets ||
-        stop "Fix that, then run this line again."
+    # A locked or new keyring opens a password window and waits for it.
+    status=0
+    timeout 120 "$python" -m nestd service check-secrets || status=$?
+    [ "$status" -eq 0 ] && return 0
+    [ "$status" -eq 124 ] &&
+        stop "The Secret Service didn't answer. If a keyring password window is open, fill it in. Otherwise unlock the login keyring (Passwords and Keys), then run this line again."
+    stop "Fix that, then run this line again."
 }
 
 start_service() {
