@@ -108,6 +108,21 @@ public enum NotificationPolicy {
             sessionID: notice.sessionID, project: notice.repo, playsSound: preferences.sound)
     }
 
+    /// What VoiceOver says for a switched-on notice about a chat on screen, which posts no
+    /// notification because the user is looking at it; nil when the notification speaks
+    /// for it, or the kind is off.
+    public static func announcement(
+        for notice: Notice, preferences: NotificationPreferences, visibleChats: Set<String>
+    ) -> String? {
+        guard preferences.wants(notice.kind), visibleChats.contains(notice.sessionID) else {
+            return nil
+        }
+        if notice.kind == .pixieReport {
+            return "\(notice.pixieName ?? "Pixie"): \(notice.title)"
+        }
+        return "\(notice.title): \(notice.text)"
+    }
+
     /// A usage warning as a notification, when its setting is on (B81); it opens no chat.
     public static func content(
         forWarning text: String, notify: Bool, preferences: NotificationPreferences

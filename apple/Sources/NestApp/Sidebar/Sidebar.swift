@@ -88,6 +88,7 @@ private struct SidebarFull: View {
                 .contentShape(Rectangle())
             }
             .sidebarActionRow()
+            .modifier(SidebarFocusTarget())
             .padding(.top, 2)
             .help("New chat (\(shell.shortcuts.shortcut(for: .newChat).display))")
 
@@ -140,9 +141,12 @@ private struct GroupSection: View {
             .buttonStyle(.plain)
             .pointerStyle(.link)
             .accessibilityLabel("Archived, \(group.entries.count)")
+            .accessibilityValue(open ? "Open" : "Closed")
             ArchivedRows(open: open) { rows }
         } else if group.showsTitle {
             header { EmptyView() }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
             rows
         } else {
             // The only list, untitled while nothing is pinned (B77).
@@ -177,6 +181,28 @@ private struct GroupSection: View {
                 trailing: SidebarRowMetrics.inset)
         )
         .contentShape(Rectangle())
+    }
+}
+
+/// The sidebar's first control, which Focus sidebar gives the keyboard once it shows.
+struct SidebarFocusTarget: ViewModifier {
+    var active = true
+    @Environment(Shell.self) private var shell
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focused($focused)
+            .task(id: shell.sidebarFocusPending) {
+                guard active, shell.sidebarFocusPending else { return }
+                shell.sidebarFocusPending = false
+                // Buttons take the keyboard only with Keyboard navigation on in System
+                // Settings; without it the keyboard stays where it was, not nowhere (B147).
+                guard NSApp.isFullKeyboardAccessEnabled else { return }
+                // Once the control is in the window, as the composer's focus waits.
+                await Task.yield()
+                focused = true
+            }
     }
 }
 

@@ -924,6 +924,9 @@ html.desk button {
   background: var(--bg);
   outline: none;
 }
+.dk-run:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 65%, transparent);
+}
 .dk-pmenu {
   display: flex;
   align-items: center;
@@ -955,6 +958,10 @@ html.desk button {
   padding: 0 4px 0 10px;
   border-radius: var(--radius-mac-card);
   background: var(--fill);
+}
+.dk-url:focus-within,
+.dk-sfield:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent);
 }
 .dk-url input {
   flex: 1;

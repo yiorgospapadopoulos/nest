@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { createPortal } from "react-dom";
 import type { SearchHitKind } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { draftKey } from "../../store/state.ts";
 import { chatStatus, needsCount, pendingFor, type Tone } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon, type IconName } from "../../ui/Icon.tsx";
@@ -11,14 +12,18 @@ import {
   palette,
   search,
   searchesMessages,
+  sections,
   selected,
   showMessages,
   visible,
   type PaletteAction,
   type PaletteItem,
 } from "../layout/palette.ts";
+import { focusComposer } from "../chat/composerFocus.ts";
 import { useShell } from "./context.ts";
 import { claudePane } from "./panes.ts";
+
+const optionId = (index: number) => `dk-palette-${String(index)}`;
 
 // Matched words come wrapped in [[ and ]]; the palette shows them in bold, as the Mac's.
 const plain = (snippet: string) => snippet.replaceAll("[[", "").replaceAll("]]", "");
@@ -195,10 +200,14 @@ export function Palette() {
 
   const run = (action: PaletteAction) => {
     shell.setPalette(false);
-    if ("openChat" in action) shell.openChat(action.openChat);
-    else if ("openMessage" in action) {
+    // A chat opened from here takes the keyboard, as one opened from its row has it there.
+    if ("openChat" in action) {
+      shell.openChat(action.openChat);
+      focusComposer(draftKey({ session: action.openChat }));
+    } else if ("openMessage" in action) {
       if (action.event === null) shell.openPane(action.openMessage);
       else shell.openChat(action.openMessage, action.event);
+      focusComposer(draftKey({ session: action.openMessage }));
     } else if ("newChat" in action) shell.newChat();
     else if ("newTerminal" in action) shell.newTerminal();
     else if ("newBrowser" in action) shell.newBrowser();
@@ -253,6 +262,8 @@ export function Palette() {
             role="combobox"
             aria-expanded="true"
             aria-controls="dk-palette-list"
+            // Focus stays in the field; a screen reader follows the highlighted row.
+            aria-activedescendant={selected(p) === null ? undefined : optionId(p.selection)}
             value={p.query}
             onChange={(event) => {
               setP(search(p, event.target.value));
@@ -260,53 +271,64 @@ export function Palette() {
             onKeyDown={onKeyDown}
           />
         </label>
-        <div className="dk-plist" id="dk-palette-list" role="listbox" ref={list}>
+        <div
+          className="dk-plist"
+          id="dk-palette-list"
+          // A listbox holds options only; "No matches" is a plain note in its place.
+          role={shown.length === 0 ? undefined : "listbox"}
+          ref={list}
+        >
           {shown.length === 0 && <p className="dk-empty">No matches</p>}
-          {shown.map((item, index) => {
-            const key = JSON.stringify(item.action);
-            const hit = hits.get(key);
-            const session =
-              "openChat" in item.action ? state.sessions[item.action.openChat] : undefined;
-            const tone =
-              session === undefined
-                ? null
-                : chatStatus(session, pendingFor(state, session.id)).tone;
-            return (
-              <div key={key}>
-                {(index === 0 || shown[index - 1]?.group !== item.group) && (
-                  <h3 className="dk-pg">{item.group}</h3>
-                )}
-                <button
-                  role="option"
-                  aria-selected={index === p.selection}
-                  className={index === p.selection ? "dk-pi on" : "dk-pi"}
-                  onMouseMove={() => {
-                    if (p.selection !== index) setP({ ...p, selection: index });
-                  }}
-                  onClick={() => {
-                    run(item.action);
-                  }}
-                >
-                  <span className="dk-pglyph">
-                    <ItemGlyph item={item} tone={tone} {...(hit === undefined ? {} : { hit })} />
-                  </span>
-                  {hit === undefined ? (
-                    <>
-                      <span className="dk-pt">{item.title}</span>
-                      <span className="dk-ps">{item.subtitle}</span>
-                    </>
-                  ) : (
-                    <span className="dk-phit">
-                      <span className="dk-psnip">
-                        <Snippet text={hit.snippet} />
-                      </span>
-                      <span className="dk-ps">{`${hit.title} · ${hit.repo}`}</span>
+          {sections(shown).map((section) => (
+            <div key={section.start} role="group" aria-label={section.group}>
+              <h3 className="dk-pg" aria-hidden="true">
+                {section.group}
+              </h3>
+              {section.items.map((item, at) => {
+                const index = section.start + at;
+                const key = JSON.stringify(item.action);
+                const hit = hits.get(key);
+                const session =
+                  "openChat" in item.action ? state.sessions[item.action.openChat] : undefined;
+                const tone =
+                  session === undefined
+                    ? null
+                    : chatStatus(session, pendingFor(state, session.id)).tone;
+                return (
+                  <button
+                    key={key}
+                    id={optionId(index)}
+                    role="option"
+                    aria-selected={index === p.selection}
+                    className={index === p.selection ? "dk-pi on" : "dk-pi"}
+                    onMouseMove={() => {
+                      if (p.selection !== index) setP({ ...p, selection: index });
+                    }}
+                    onClick={() => {
+                      run(item.action);
+                    }}
+                  >
+                    <span className="dk-pglyph">
+                      <ItemGlyph item={item} tone={tone} {...(hit === undefined ? {} : { hit })} />
                     </span>
-                  )}
-                </button>
-              </div>
-            );
-          })}
+                    {hit === undefined ? (
+                      <>
+                        <span className="dk-pt">{item.title}</span>
+                        <span className="dk-ps">{item.subtitle}</span>
+                      </>
+                    ) : (
+                      <span className="dk-phit">
+                        <span className="dk-psnip">
+                          <Snippet text={hit.snippet} />
+                        </span>
+                        <span className="dk-ps">{`${hit.title} · ${hit.repo}`}</span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
     </div>,

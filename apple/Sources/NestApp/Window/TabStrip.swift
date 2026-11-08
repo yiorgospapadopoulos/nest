@@ -193,6 +193,11 @@ private struct TabStatus: View {
     let tone: StatusTone?
     let running: Bool
 
+    /// What VoiceOver hears for a tab: its name and what its dot shows.
+    static func label(_ title: String, running: Bool, attention: Int) -> String {
+        "\(title)\(running ? ", running" : "")\(attention > 0 ? ", \(attention) need you" : "")"
+    }
+
     var body: some View {
         if running {
             Fireflies(height: 9)
@@ -229,6 +234,7 @@ private struct ProjectTab: View {
     let move: ((Int) -> Void)?
     @Environment(Shell.self) private var shell
     @State private var hovering = false
+    @FocusState private var focus: RowFocus?
 
     var body: some View {
         let isCurrent = shell.project == name && !shell.pixiesOpen
@@ -237,7 +243,7 @@ private struct ProjectTab: View {
             $0.state == .running || $0.state == .starting
         }
         let canClose = shell.app.openProjects.count > 1
-        let closesOnHover = canClose && hovering && !isCurrent
+        let closesOnHover = canClose && (hovering || focus != nil) && !isCurrent
         let title = shell.app.repo(name)?.title ?? name
 
         HStack(spacing: 7) {
@@ -264,16 +270,19 @@ private struct ProjectTab: View {
         .overlay(alignment: .trailing) {
             if closesOnHover {
                 TabCloseButton(name: title) { shell.app.closeProject(name) }
+                    .focused($focus, equals: .control)
                     .padding(.trailing, 4)
             }
         }
         .onTapGesture { shell.selectProject(name) }
+        .keyboardActivatable { shell.selectProject(name) }
+        .focused($focus, equals: .row)
         .onHover { hovering = $0 }
         .help(attention > 0 ? "\(title), \(attention) need you" : title)
         // Ignored, not combined: a combined tab passed its press on to the close button.
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
-        .accessibilityLabel(attention > 0 ? "\(title), \(attention) need you" : title)
+        .accessibilityLabel(TabStatus.label(title, running: running, attention: attention))
         .accessibilityAction { shell.selectProject(name) }
         .accessibilityAction(named: "Close") {
             if canClose { shell.app.closeProject(name) }
@@ -329,6 +338,7 @@ private struct PixiesTab: View {
         .fixedSize()
         .modifier(TabBackground(isCurrent: isCurrent, hovering: hovering, padding: 12))
         .onTapGesture { shell.openPixies() }
+        .keyboardActivatable { shell.openPixies() }
         .onHover { hovering = $0 }
         .help(
             attention > 0
@@ -336,7 +346,7 @@ private struct PixiesTab: View {
         )
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
-        .accessibilityLabel(attention > 0 ? "Pixies, \(attention) need you" : "Pixies")
+        .accessibilityLabel(TabStatus.label("Pixies", running: running, attention: attention))
         .accessibilityAction { shell.openPixies() }
     }
 }

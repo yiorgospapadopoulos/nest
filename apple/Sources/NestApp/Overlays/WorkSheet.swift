@@ -13,21 +13,18 @@ struct WorkSheet: View {
                 Text(title)
                     .font(.ui(TypeSize.body, .semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    shell.close()
-                } label: {
-                    Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
-                }
-                .buttonStyle(.nest(.plain, iconOnly: true))
-                .foregroundStyle(Palette.t3)
-                .accessibilityLabel("Close \(title.lowercased())")
+                SheetCloseButton(label: "Close \(title.lowercased())") { shell.close() }
+                    .foregroundStyle(Palette.t3)
             }
             .padding(.leading, 18)
             .padding(.trailing, 10)
             .frame(height: 42)
             .overlay(alignment: .bottom) { Separator() }
-            WebPage(target: .work(target), transient: true, label: "this work")
-                .id(target)
+            WebPage(
+                target: .work(target), transient: true, label: "this work",
+                name: "Work of \(title)"
+            )
+            .id(target)
         }
         .foregroundStyle(Palette.t1)
         .frame(width: 700, height: 720)

@@ -25,7 +25,7 @@ struct PixieList: View {
             .frame(height: 30)
 
             HStack(spacing: 0) {
-                NewButton(title: "New pixie", icon: Icon.plus) {
+                NewButton(title: "New pixie", icon: Icon.plus, takesSidebarFocus: true) {
                     shell.createPixie(CreatePixieRequest(name: "New pixie"), details: true)
                 }
                 NewButton(title: "New team", icon: "person.2") { shell.ask(.newTeam) }
@@ -73,6 +73,7 @@ struct PixieList: View {
 private struct NewButton: View {
     let title: String
     let icon: String
+    var takesSidebarFocus = false
     let action: () -> Void
 
     var body: some View {
@@ -90,6 +91,7 @@ private struct NewButton: View {
             .contentShape(Rectangle())
         }
         .sidebarActionRow()
+        .modifier(SidebarFocusTarget(active: takesSidebarFocus))
     }
 }
 
@@ -132,6 +134,7 @@ private struct TeamHeader: View {
     @Environment(\.revealsHoverControls) private var reveal
     @State private var hovering = false
     @State private var targeted = false
+    @FocusState private var focus: RowFocus?
 
     var body: some View {
         let team = section.team
@@ -149,8 +152,9 @@ private struct TeamHeader: View {
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t3)
             Spacer(minLength: 4)
-            if hovering || reveal {
+            if hovering || reveal || focus != nil {
                 RowActionsMenu(title: team.name) { TeamActions(section: section) }
+                    .focused($focus, equals: .control)
             }
         }
         .lineLimit(1)
@@ -164,6 +168,8 @@ private struct TeamHeader: View {
         .pointerStyle(.link)
         .onHover { hovering = $0 }
         .onTapGesture { shell.toggleTeamFold(team.id) }
+        .keyboardActivatable { shell.toggleTeamFold(team.id) }
+        .focused($focus, equals: .row)
         .onDrop(of: [.nestChat], isTargeted: $targeted) { _ in
             guard let dragged = draggedPixie else { return false }
             shell.setPixieTeam(dragged, team.id)
@@ -244,6 +250,7 @@ private struct PixieRow: View {
     @State private var hovering = false
     /// Another pixie is dragged over this one.
     @State private var targeted = false
+    @FocusState private var focus: RowFocus?
 
     var body: some View {
         let state = shell.app.pixieState
@@ -254,7 +261,7 @@ private struct PixieRow: View {
         let waiting =
             shell.approvals.pending.count { $0.repo == "\(Pixie.repoPrefix)\(pixie.id)" }
             + shell.reports.unreadActions(of: pixie.id)
-        let showsMenu = hovering || (reveal && selected)
+        let showsMenu = hovering || (reveal && selected) || focus != nil
         HStack(spacing: 8) {
             SpriteView(
                 mascot: pixie.mascot, color: pixie.color, size: 16, working: running,
@@ -273,6 +280,7 @@ private struct PixieRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if showsMenu {
                 RowActionsMenu(title: pixie.name) { PixieActions(pixie: pixie, listed: listed) }
+                    .focused($focus, equals: .control)
             } else if waiting > 0 {
                 CountBadge(count: waiting, urgent: true)
             } else if running {
@@ -297,6 +305,8 @@ private struct PixieRow: View {
         .pointerStyle(.link)
         .onHover { hovering = $0 }
         .onTapGesture { shell.openPixie(pixie.id) }
+        .keyboardActivatable { shell.openPixie(pixie.id) }
+        .focused($focus, equals: .row)
         // The same drag as a sidebar chat's, so the workspace takes it like one.
         .onDrag {
             shell.dragging = .chat(pixie.id)

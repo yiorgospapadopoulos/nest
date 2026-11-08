@@ -82,11 +82,20 @@ struct PaletteView: View {
         }
         .frame(width: 620)
         .sheetSurface()
-        .onAppear { focused = true }
+        .task {
+            // Once the field is in the window: set on appearing, the keyboard stayed in the
+            // composer underneath (B147).
+            await Task.yield()
+            focused = true
+        }
     }
 
     private func move(_ step: Int) -> KeyPress.Result {
         shell.palette.move(by: step)
+        // The field keeps the keyboard, so VoiceOver hears the highlight only here.
+        if let item = shell.palette.selected {
+            VoiceOver.announce("\(item.title), \(item.subtitle)")
+        }
         return .handled
     }
 }

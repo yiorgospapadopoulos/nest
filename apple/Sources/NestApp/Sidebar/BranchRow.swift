@@ -26,10 +26,11 @@ struct BranchRow: View {
     let add: () -> Void
     @Environment(Shell.self) private var shell
     @State private var hovering = false
+    @FocusState private var focus: RowFocus?
 
     var body: some View {
         let hovered = hovering || showsHover
-        let adds = hovered && addWord != nil
+        let adds = (hovered || focus != nil) && addWord != nil
         let ink = color(row.lane(selected: selected, chat: chat))
         HStack(spacing: 0) {
             Button(action: pick) {
@@ -63,10 +64,12 @@ struct BranchRow: View {
             }
             .buttonStyle(.plain)
             .pointerStyle(.link)
+            .focused($focus, equals: .row)
             // On a wide row the name takes its whole width before the filler has any.
             .layoutPriority(wide ? 1 : 0)
             if adds, let addWord {
                 AddWorktreeChip(branch: row.branch.name, word: addWord, add: add)
+                    .focused($focus, equals: .control)
                     .padding(.trailing, 8)
             }
             if wide {

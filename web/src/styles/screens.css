@@ -1419,6 +1419,9 @@ a.csign {
   border-radius: var(--r-ctl-lg);
   color: var(--t3);
 }
+.sfield:focus-within {
+  box-shadow: 0 0 0 2px var(--accent);
+}
 .flat .sfield {
   margin: 8px 16px 4px;
   background: var(--soft);

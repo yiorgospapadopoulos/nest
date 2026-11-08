@@ -22,12 +22,16 @@ public enum ComposerKeyAction: Sendable, Hashable {
     case recall
     /// Esc Esc while no turn runs: rewind to before one of the user's messages (B59).
     case rewind
+    /// Tab moves the keyboard on to the next control, as in a text field; Option-Tab still
+    /// types a tab.
+    case leave
     /// The text field handles the key as usual.
     case ignore
 
     /// An open suggestion list takes the arrows, Tab, Return and Esc; otherwise Return
     /// sends (Shift-Return adds a line), Esc interrupts a running turn, a `repeated` Esc
-    /// (`EscapeRepeat`) rewinds and Up arrow in an empty field recalls the last message.
+    /// (`EscapeRepeat`) rewinds, Up arrow in an empty field recalls the last message and Tab
+    /// leaves the field.
     public static func of(
         _ key: ComposerKey, suggesting: Bool, isEmpty: Bool, working: Bool,
         repeated: Bool = false
@@ -46,6 +50,7 @@ public enum ComposerKeyAction: Sendable, Hashable {
         case .escape where working: return .interrupt
         case .escape where repeated: return .rewind
         case .up where isEmpty: return .recall
+        case .tab: return .leave
         default: return .ignore
         }
     }

@@ -113,7 +113,8 @@ export function Shell() {
   };
 
   return (
-    <>
+    // The page's one main landmark; it adds no box, as every part is placed on the app.
+    <main>
       <div
         className={tab === "settings" ? "view" : "view flat"}
         id={`view-${tab}`}
@@ -195,7 +196,7 @@ export function Shell() {
           onOpenWork={openWork}
         />
       )}
-    </>
+    </main>
   );
 }
 

@@ -84,6 +84,8 @@ private struct SetupRail: View {
 private struct SetupPane: View {
     let flow: SetupFlow
     @Environment(Shell.self) private var shell
+    /// VoiceOver goes to each step's title as the step opens.
+    @AccessibilityFocusState private var titleFocused: Bool
 
     var body: some View {
         let step = flow.step
@@ -95,6 +97,7 @@ private struct SetupPane: View {
                         .font(.ui(24, .semibold))
                         .padding(.bottom, step.subtitle == nil ? 24 : 8)
                         .accessibilityAddTraits(.isHeader)
+                        .accessibilityFocused($titleFocused)
                     if let subtitle = step.subtitle {
                         SetupLine(text: subtitle).padding(.bottom, 24)
                     }
@@ -120,14 +123,17 @@ private struct SetupPane: View {
                     Button("Finish") { shell.finishGuide() }
                         .buttonStyle(.nest(.primary, height: 30))
                         .disabled(!flow.canFinish(engineReady: engineReady))
+                        .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Continue") { flow.moveOn(engineReady: engineReady) }
                         .buttonStyle(.nest(.primary, height: 30))
                         .disabled(!flow.canContinue(engineReady: engineReady))
+                        .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(.horizontal, 56)
             .padding(.bottom, 24)
         }
+        .onChange(of: step, initial: true) { titleFocused = true }
     }
 }

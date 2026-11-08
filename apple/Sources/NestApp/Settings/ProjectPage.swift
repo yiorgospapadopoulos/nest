@@ -472,7 +472,7 @@ private struct ColorSwatch: View {
         .buttonStyle(.plain)
         .pointerStyle(.link)
         .help(color)
-        .accessibilityLabel("Colour \(color)")
+        .accessibilityLabel("Colour \(PixieColor.name(of: color))")
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }

@@ -123,13 +123,15 @@ private struct CardView: View {
                 // The whole bar is one target: the name, the count, the gap and the chevron
                 // all fold the card, wherever the click lands.
                 .contentShape(Rectangle())
-                .onTapGesture { shell.update { $0.toggleCard(card) } }
+                .onTapGesture(perform: toggle)
                 .pointerStyle(.link)
             }
+            .keyboardActivatable(perform: toggle)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(card.title), \(counts.count(card))")
-            .accessibilityAddTraits(open ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction { shell.update { $0.toggleCard(card) } }
+            .accessibilityValue(open ? "Open" : "Closed")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { toggle() }
             if open {
                 ScrollView {
                     Group {
@@ -147,6 +149,10 @@ private struct CardView: View {
             }
         }
         .frame(maxHeight: open ? .infinity : Metrics.headerHeight, alignment: .top)
+    }
+
+    private func toggle() {
+        shell.update { $0.toggleCard(card) }
     }
 }
 

@@ -92,6 +92,13 @@ struct NestCommands: Commands {
             Button("Artifacts") { inWindow { $0.showView(.artifacts) } }
                 .shortcut(.artifacts, shell)
             Divider()
+            Button("Focus Sidebar") { inWindow { $0.focusSidebar() } }
+                .shortcut(.focusSidebar, shell)
+            Button("Next Pane") { inWindow { $0.focusPane(by: 1) } }
+                .shortcut(.nextPane, shell)
+            Button("Previous Pane") { inWindow { $0.focusPane(by: -1) } }
+                .shortcut(.previousPane, shell)
+            Divider()
         }
         CommandMenu("Projects") {
             Button("Previous Project") { inWindow { $0.selectProject(offset: -1) } }

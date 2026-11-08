@@ -424,6 +424,7 @@ private struct IslandSection: View {
         SettingsSection(title: "Island settings") {
             SettingsRow(label: "Show the island") {
                 Switch(isOn: island.shown) { island.shown.toggle() }
+                    .accessibilityLabel("Show the island")
             }
             SettingsRow(label: "Order") {
                 Segmented(

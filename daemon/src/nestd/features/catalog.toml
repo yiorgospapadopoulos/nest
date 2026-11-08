@@ -747,3 +747,16 @@ text = "Pick how full a chat gets before it compacts by itself: Auto, or 100k to
 where = "Settings > Agents > Compact at, or the context percentage next to the composer"
 added = 2026-11-08
 block = "B146"
+
+[[features]]
+id = "voiceover-keyboard"
+group = "around"
+name = "VoiceOver and keyboard only"
+text = "Every control, row and status is named for VoiceOver, sheets act as sheets, and toasts are spoken. The keyboard reaches everything: Option-Cmd-[ and ] move between panes, Cmd-Shift-E goes to the sidebar, and focus comes back where it was when a sheet closes."
+where = "Everywhere; on the Mac, turn on Keyboard navigation in System Settings > Keyboard"
+added = 2026-11-08
+block = "B147"
+
+[features.linux]
+text = "Every control, row and status is named for screen readers, and the keyboard reaches everything: Ctrl+K searches and opens a chat with the keyboard in its composer, and focus comes back where it was when a sheet closes."
+where = "Everywhere"

@@ -515,14 +515,8 @@ struct HabitRunSheet: View {
                 Text("Read-only")
                     .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
-                Button {
-                    shell.close()
-                } label: {
-                    Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
-                }
-                .buttonStyle(.nest(.plain, iconOnly: true))
-                .foregroundStyle(Palette.t3)
-                .accessibilityLabel("Close the habit run")
+                SheetCloseButton(label: "Close the habit run") { shell.close() }
+                    .foregroundStyle(Palette.t3)
             }
             .padding(.leading, 18)
             .padding(.trailing, 10)

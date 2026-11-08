@@ -58,6 +58,7 @@ struct ArtifactWebView: NSViewRepresentable {
         view.uiDelegate = context.coordinator
         view.appearance = Self.appearance(context.environment.colorScheme)
         view.allowsMagnification = false
+        view.setAccessibilityLabel("Artifact")
         container.show(view)
         context.coordinator.webView = view
         handle.webView = view

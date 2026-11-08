@@ -73,8 +73,9 @@ private struct TopBarSection: View {
                 .accessibilityAddTraits(entry.shown ? [.isButton, .isSelected] : .isButton)
                 .accessibilityLabel("Show \(entry.name) in the top bar")
                 .accessibilityHint("Alt and the arrow keys move it")
-                .focusable()
-                .focusEffectDisabled()
+                .keyboardActivatable {
+                    settings.setUsageMeter(entry.id, shown: !entry.shown, entries: entries)
+                }
                 .onKeyPress(keys: [.upArrow, .downArrow]) { press in
                     guard press.modifiers.contains(.option) else { return .ignored }
                     let offset = press.key == .upArrow ? -1 : 1

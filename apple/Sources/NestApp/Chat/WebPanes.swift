@@ -448,12 +448,16 @@ struct ChatTranscript: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        WebPage(target: .pane(chat), transient: transient, label: "this chat")
-            .task(id: chat) {
-                if !shell.isClaudeChatPane(chat) {
-                    try? await shell.activity.load(session: chat)
-                }
+        let title = shell.sessions.session(chat)?.title ?? shell.claudeChat(inPane: chat)?.title
+        WebPage(
+            target: .pane(chat), transient: transient, label: "this chat",
+            name: title.map { "Transcript of \($0)" } ?? "Transcript"
+        )
+        .task(id: chat) {
+            if !shell.isClaudeChatPane(chat) {
+                try? await shell.activity.load(session: chat)
             }
+        }
     }
 }
 
@@ -463,13 +467,15 @@ struct WebPage: View {
     var transient = false
     /// What the failure line calls it.
     let label: String
+    /// What VoiceOver calls the page; every page's own title is "Nest".
+    let name: String
     @Environment(Shell.self) private var shell
 
     var body: some View {
         if shell.webPanes.shows(target) {
             WebPaneView(
                 target: target, transient: transient, accent: shell.settings.accent.rawValue,
-                bash: shell.bash.rows(chat: target.chat))
+                bash: shell.bash.rows(chat: target.chat), name: name)
         } else {
             PageFailure(target: target, label: label)
         }
@@ -505,6 +511,7 @@ private struct WebPaneView: NSViewRepresentable {
     let transient: Bool
     let accent: String
     let bash: [BashStore.Row]
+    let name: String
     @Environment(Shell.self) private var shell
 
     final class Coordinator {
@@ -534,6 +541,9 @@ private struct WebPaneView: NSViewRepresentable {
             page = panes.page(for: target, transient: transient)
         }
         container.isHidden = context.environment.paneHidden
+        if page.accessibilityLabel() != name {
+            page.setAccessibilityLabel(name)
+        }
         let dark = context.environment.colorScheme == .dark
         page.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         page.send(.dimmed(context.environment.paneDimmed))

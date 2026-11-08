@@ -87,13 +87,7 @@ struct DiffSheet: View {
             Segmented(
                 options: [(Layout.split, "Side by side"), (.unified, "Unified")], selection: layout
             ) { layout = $0 }
-            Button {
-                shell.close()
-            } label: {
-                Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
-            }
-            .buttonStyle(.nest(.plain, iconOnly: true))
-            .accessibilityLabel("Close changes")
+            SheetCloseButton(label: "Close changes") { shell.close() }
         }
         .padding(EdgeInsets(top: 9, leading: 18, bottom: 9, trailing: 10))
         .overlay(alignment: .bottom) { Separator() }

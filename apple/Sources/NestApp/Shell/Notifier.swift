@@ -65,10 +65,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func post(_ notice: Notice) {
+        let preferences = shell.settings.notifications
+        let visible = visibleChats
+        if let spoken = NotificationPolicy.announcement(
+            for: notice, preferences: preferences, visibleChats: visible)
+        {
+            VoiceOver.announce(spoken, urgent: true)
+        }
         guard
             let content = NotificationPolicy.content(
-                for: notice, preferences: shell.settings.notifications,
-                visibleChats: visibleChats, pixies: shell.model.pixies.pixies)
+                for: notice, preferences: preferences, visibleChats: visible,
+                pixies: shell.model.pixies.pixies)
         else { return }
         deliver(content)
     }

@@ -428,6 +428,14 @@ import Testing
         #expect(shortcuts.check(Shortcut("n"), for: .newChat) == .saved)
     }
 
+    /// A default that macOS reserves or another command already has would never fire.
+    @Test func everyDefaultIsFreeToUse() {
+        let shortcuts = store
+        for action in ShortcutAction.allCases {
+            #expect(shortcuts.check(action.defaultShortcut, for: action) == .saved, "\(action)")
+        }
+    }
+
     @Test func refusalMessages() {
         let keys = Shortcut("k")
         #expect(ShortcutChange.saved.message(for: keys) == nil)

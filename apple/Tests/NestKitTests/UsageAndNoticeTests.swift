@@ -132,6 +132,23 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
                 for: notice(.failed), preferences: preferences, visibleChats: []) == nil)
     }
 
+    /// A chat on screen posts no notification, so VoiceOver must say it instead, and only
+    /// then: an off-screen chat's notification already speaks.
+    @Test func onlyAChatOnScreenIsAnnounced() {
+        var preferences = NotificationPreferences()
+        #expect(
+            NotificationPolicy.announcement(
+                for: notice(.finished), preferences: preferences, visibleChats: ["s1"])
+                == "Dark mode: Done")
+        #expect(
+            NotificationPolicy.announcement(
+                for: notice(.finished), preferences: preferences, visibleChats: ["other"]) == nil)
+        preferences.finished = false
+        #expect(
+            NotificationPolicy.announcement(
+                for: notice(.finished), preferences: preferences, visibleChats: ["s1"]) == nil)
+    }
+
     @Test func pixieChatsNotifyUnderThePixiesName() {
         var pixie = notice(.needsApproval)
         pixie.repo = "pixie:p1"

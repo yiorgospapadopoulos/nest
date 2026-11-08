@@ -5,6 +5,7 @@ import SwiftUI
 /// or the usage popover under its button. Esc or a click outside closes them.
 struct OverlayLayer: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
         if let overlay = shell.overlay {
@@ -17,14 +18,17 @@ struct OverlayLayer: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.trailing, UsagePopover.trailingInset)
                         .padding(.top, Metrics.stripHeight + 8)
-                        .transition(.opacity.combined(with: .offset(y: -6)))
+                        .modal(Self.name(of: overlay))
+                        .transition(slide(-6))
                 } else {
                     Palette.scrim
                         .ignoresSafeArea()
                         .onTapGesture { shell.close() }
                         .transition(.opacity)
+                        .accessibilityHidden(true)
                     sheet(overlay)
-                        .transition(.opacity.combined(with: .offset(y: -8)))
+                        .modal(Self.name(of: overlay))
+                        .transition(slide(-8))
                 }
                 // Esc closes whatever is open, wherever the focus is.
                 Button("Close") { shell.close() }
@@ -33,6 +37,25 @@ struct OverlayLayer: View {
                     .frame(width: 0, height: 0)
                     .accessibilityHidden(true)
             }
+        }
+    }
+
+    private func slide(_ offset: Double) -> AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .offset(y: offset))
+    }
+
+    /// What VoiceOver calls the open sheet.
+    static func name(of overlay: Overlay) -> String {
+        switch overlay {
+        case .palette: "Search"
+        case .usage: "Usage"
+        case .diff: "Changes"
+        case .publish: "Approve"
+        case .rewind: "Rewind"
+        case .habitRun: "Habit run"
+        case .image: "Image"
+        case .work: "Work"
+        case .branchTree: "Branch map"
         }
     }
 
@@ -80,14 +103,9 @@ struct SheetFrame<Content: View>: View {
                 Text(title)
                     .font(.ui(TypeSize.body, .semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    shell.close()
-                } label: {
-                    Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
-                }
-                .buttonStyle(.nest(.plain, iconOnly: true))
-                .foregroundStyle(Palette.t3)
-                .accessibilityLabel("Close \(title.lowercased())")
+                    .accessibilityAddTraits(.isHeader)
+                SheetCloseButton(label: "Close \(title.lowercased())") { shell.close() }
+                    .foregroundStyle(Palette.t3)
             }
             .padding(.leading, 18)
             .padding(.trailing, 10)
@@ -119,6 +137,40 @@ struct SheetFrame<Content: View>: View {
         .frame(maxHeight: maxHeight)
         .fixedSize(horizontal: false, vertical: scrolls)
         .sheetSurface()
+    }
+}
+
+/// A sheet's x. It takes the keyboard as the sheet opens, so Tab starts inside the sheet
+/// rather than in the window under it.
+struct SheetCloseButton: View {
+    let label: String
+    var kind = NestButtonStyle.Kind.plain
+    let close: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Button(action: close) {
+            Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
+        }
+        .buttonStyle(.nest(kind, iconOnly: true))
+        .accessibilityLabel(label)
+        .focused($focused)
+        .task {
+            // Once the button is in the window, as the composer's focus waits.
+            await Task.yield()
+            focused = true
+        }
+    }
+}
+
+extension View {
+    /// A sheet or popover over the window, as VoiceOver should see it: one named group, the
+    /// window under it hidden (`ShellView`), so VoiceOver lands and stays in it. Moving
+    /// VoiceOver's focus here as well took the keyboard from the palette's field (B147).
+    func modal(_ name: String) -> some View {
+        accessibilityElement(children: .contain)
+            .accessibilityAddTraits(.isModal)
+            .accessibilityLabel(name)
     }
 }
 
