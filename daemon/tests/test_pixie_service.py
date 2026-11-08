@@ -102,6 +102,29 @@ async def test_updating_controls_reaches_the_open_chat(
     assert session.permission_mode == "acceptEdits"
 
 
+async def test_a_pixies_size_to_compact_at_is_its_chats_own(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    """B146: the pixie's chat compacts at the pixie's size, not the agent defaults', and a
+    new one, or Auto, applies from its next run.
+    """
+    provider.script(reply("hi"), reply("again"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester", compact_at=700_000))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+
+    updated = await ctx.pixies.update(pixie.id, UpdatePixie(compact_at="auto"))
+    session = await ctx.sessions.get(chat.id)
+    await ctx.pixies.send(pixie.id, "more", [])
+    await until(lambda: len(provider.runs) == 2)
+
+    assert chat.compact_at == 700_000
+    assert provider.runs[0].spec.compact_at == 700_000
+    assert updated.compact_at is None
+    assert session.compact_at is None
+    assert provider.runs[1].spec.compact_at is None
+
+
 async def test_reset_archives_the_chat_and_keeps_soul_and_memory(
     ctx: AppContext, provider: FakeProvider
 ) -> None:

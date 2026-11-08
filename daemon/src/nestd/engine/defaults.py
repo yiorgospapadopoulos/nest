@@ -90,5 +90,6 @@ class ChatDefaults:
             effort=effort,
             permission_mode=default_mode(option, agents.permission_mode),
             mode=mode,
+            compact_at=agents.compact_at,
         )
         return Resolved(choices, complete=option is not None)

@@ -16,6 +16,8 @@ from nestd.worktrees.manager import Worktree
 def session_changes(session: Session, request: UpdateSession, now: datetime) -> dict[str, object]:
     """The fields `request` actually changes, as session columns."""
     wanted: dict[str, object] = request.model_dump(exclude_none=True, exclude={"archived"})
+    if request.compact_at == "auto":
+        wanted["compact_at"] = None
     if request.archived is not None and request.archived != (session.archived_at is not None):
         wanted["archived_at"] = now if request.archived else None
     changes = {name: value for name, value in wanted.items() if getattr(session, name) != value}

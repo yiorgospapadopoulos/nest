@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, model_validator
 
 from nestd.autopilot.models import Autopilot, SetAutopilot
-from nestd.config.models import Effort, ModelChoice, PermissionMode, SessionMode
+from nestd.config.models import CompactAt, Effort, ModelChoice, PermissionMode, SessionMode
 from nestd.issues.models import IssueRef
 from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
 from nestd.prs.models import PrReview, PrStatus
@@ -87,6 +87,8 @@ class NewSession(BaseModel):
     model: str | None
     effort: Effort | None
     permission_mode: PermissionMode
+    # Where the engine compacts the chat by itself; None: the engine's own (B146).
+    compact_at: CompactAt | None = None
     # True while the mode is Claude Code's own (its `defaultMode`) and the engine has not
     # reported it yet: `permission_mode` holds "default" until then and runs open without
     # a mode (IMP-06).
@@ -338,6 +340,9 @@ class UpdateSession(BaseModel):
     permission_mode: PermissionMode | None = None
     # Applies when the agent run next opens: the next message reopens an idle run (I-006).
     effort: Effort | None = None
+    # Applies when the agent run next opens, as the effort does; "auto" is the engine's own
+    # (B146).
+    compact_at: CompactAt | Literal["auto"] | None = None
     title: Annotated[Text, StringConstraints(max_length=120)] | None = None
     pinned: bool | None = None
     # True archives the session and closes its agent run; false restores it.
