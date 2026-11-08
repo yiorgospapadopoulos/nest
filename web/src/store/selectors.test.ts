@@ -864,10 +864,11 @@ describe("engines (B102 items 22, 25, 27, 28, as NestKit ProvidersStore)", () =>
   });
 
   it("knows what an engine's chats cannot do, offering everything when not listed", () => {
-    expect(supportsFeature(engines(), "rewind", "codex")).toBe(false);
-    expect(supportsFeature(engines(), "rewind", "claude")).toBe(true);
-    expect(supportsFeature(engines(), "rewind", null)).toBe(true);
-    expect(supportsFeature(initialState, "rewind", "codex")).toBe(true);
+    expect(supportsFeature(engines(), "slash_commands", "codex")).toBe(false);
+    expect(supportsFeature(engines(), "rewind", "codex")).toBe(true);
+    expect(supportsFeature(engines(), "slash_commands", "claude")).toBe(true);
+    expect(supportsFeature(engines(), "slash_commands", null)).toBe(true);
+    expect(supportsFeature(initialState, "slash_commands", "codex")).toBe(true);
   });
 
   it("gives the sign-in hint only for an engine that said it is signed out", () => {

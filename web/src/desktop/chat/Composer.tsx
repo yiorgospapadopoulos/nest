@@ -52,6 +52,7 @@ import {
   catalogFor,
   chatModel,
   memberCall,
+  memoryFile,
   modelSections,
   openingChoices,
   signInHint,
@@ -693,7 +694,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
             <span className={mode === "bash" ? "dc-mode bash" : "dc-mode"}>
               {mode === "bash"
                 ? "! bash mode: runs in the chat's folder"
-                : "# memory: saved to CLAUDE.md"}
+                : `# memory: saved to ${memoryFile(state, session?.provider)}`}
             </span>
           )}
           {files.length > 0 && (
@@ -922,7 +923,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
           }}
           width={380}
         >
-          <p className="dc-alert">{`“${text.slice(1).trim()}” goes into CLAUDE.md: the project's, or yours for all projects.`}</p>
+          <p className="dc-alert">{`“${text.slice(1).trim()}” goes into ${memoryFile(state, session.provider)}: the project's, or yours for all projects.`}</p>
           <div className="dc-sheet-acts">
             <Button
               onClick={() => {

@@ -1,4 +1,6 @@
-"""B59: `!` runs a shell command for the next message, `#` adds a line to CLAUDE.md."""
+"""B59: `!` runs a shell command for the next message, `#` adds a line to the file the
+chat's engine reads (CLAUDE.md for Claude, B145).
+"""
 
 import os
 from collections.abc import Mapping
@@ -7,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from nestd.composer.memory import append_memory
+from nestd.composer.memory_files import memory_files
 from nestd.composer.service import ComposerActions, NoUserMemoryError
 from nestd.composer.shell import context_block, run_command
 from nestd.pixies.files import PixieFiles
@@ -17,7 +20,6 @@ from nestd.sessions.errors import (
     NoWorkspaceError,
     PixieChatError,
     SessionNotFoundError,
-    UnsupportedFeatureError,
 )
 from nestd.sessions.models import Session
 from nestd.sessions.store import SessionStore
@@ -147,7 +149,11 @@ def actions(
         sessions=get,
         engine_of=engines.of,
         project_folder=lambda repo: tmp_path / "projects" / repo,
-        user_memory=user_memory,
+        memory_files=memory_files(
+            tmp_path / "home",
+            None if user_memory is None else user_memory.parent,
+            tmp_path / "codex-home",
+        ),
         pixie_files=PixieFiles(tmp_path / "pixies"),
         clock=FakeClock(),
         shell_env=fixed_env,
@@ -226,33 +232,49 @@ async def test_a_pixie_chats_memory_is_the_pixies_own_on_every_engine(
     assert not (tmp_path / "CLAUDE.md").exists()
 
 
-async def test_a_chat_a_pixie_started_keeps_claude_memory(
+async def test_a_chat_a_pixie_started_keeps_the_engines_memory(
     store: SessionStore, tmp_path: Path
 ) -> None:
     session = await store.create(new_session(repo="app", cwd=tmp_path, provider="opencode"))
     composer = actions(store, tmp_path, tmp_path / "CLAUDE.md", started_by_pixie="p1")
 
-    with pytest.raises(UnsupportedFeatureError):
-        await composer.remember(session.id, "x", "user")
+    written = await composer.remember(session.id, "x", "project")
+
+    assert (written.path, written.scope) == (tmp_path / "projects" / "app" / "AGENTS.md", "project")
 
 
-async def test_a_codex_chat_has_no_memory(store: SessionStore, tmp_path: Path) -> None:
-    """Codex reads AGENTS.md, not CLAUDE.md, so `#` is refused there (B91)."""
+async def test_each_engines_memory_goes_where_that_engine_reads(
+    store: SessionStore, tmp_path: Path
+) -> None:
+    """B145: Codex reads AGENTS.md, so its memories go there and to Codex's own home."""
     session = await store.create(new_session(repo="app", cwd=tmp_path, provider="codex"))
-    composer = actions(store, tmp_path, tmp_path / "CLAUDE.md")
-    with pytest.raises(UnsupportedFeatureError) as raised:
-        await composer.remember(session.id, "x", "user")
-    assert raised.value.payload() == {
-        "detail": "A Codex chat cannot save a memory to CLAUDE.md.",
-        "code": "unsupported_feature",
-        "provider": "codex",
-        "feature": "memory",
-    }
-    assert not (tmp_path / "CLAUDE.md").exists()
+    composer = actions(store, tmp_path, tmp_path / "claude" / "CLAUDE.md")
+
+    project = await composer.remember(session.id, "Use uv", "project")
+    user = await composer.remember(session.id, "Answer briefly", "user")
+
+    assert project.path == tmp_path / "projects" / "app" / "AGENTS.md"
+    assert user.path == tmp_path / "codex-home" / "AGENTS.md"
+    assert not (tmp_path / "projects" / "app" / "CLAUDE.md").exists()
+
+
+async def test_opencode_keeps_a_projects_claude_md_when_it_has_no_agents_md(
+    store: SessionStore, tmp_path: Path
+) -> None:
+    """OpenCode reads CLAUDE.md only without AGENTS.md: a new AGENTS.md would hide it."""
+    session = await store.create(new_session(repo="app", cwd=tmp_path, provider="opencode"))
+    folder = tmp_path / "projects" / "app"
+    folder.mkdir(parents=True)
+    (folder / "CLAUDE.md").write_text("# Rules\n", encoding="utf-8")
+
+    written = await actions(store, tmp_path, None).remember(session.id, "Use uv", "project")
+
+    assert written.path == folder / "CLAUDE.md"
+    assert not (folder / "AGENTS.md").exists()
 
 
 async def test_user_memory_needs_claudes_folder(store: SessionStore, tmp_path: Path) -> None:
     session = await store.create(new_session(cwd=tmp_path))
 
-    with pytest.raises(NoUserMemoryError, match="Claude Code's config folder"):
+    with pytest.raises(NoUserMemoryError, match="not in a file"):
         await actions(store, tmp_path, None).remember(session.id, "x", "user")

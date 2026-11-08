@@ -251,6 +251,20 @@ describe("# memory (B59)", () => {
     expect(api.sendMessage).not.toHaveBeenCalled();
   });
 
+  it("names the file the chat's engine reads (B145)", async () => {
+    const api = fakeApi();
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), codexProvider()] });
+    const { user, field } = await openChat({ api, chat: session({ provider: "codex" }) });
+
+    await user.type(field, "#Use uv");
+    expect(screen.getByText(/Saved to AGENTS\.md, not sent/)).toBeInTheDocument();
+    await user.type(field, "{Enter}");
+
+    expect(
+      screen.getByRole("menuitem", { name: /AGENTS\.md in this project/ }),
+    ).toBeInTheDocument();
+  });
+
   it("saves to user memory", async () => {
     const api = fakeApi();
     api.remember.mockResolvedValue({ path: "/u/CLAUDE.md", scope: "user", line: "- x" });
