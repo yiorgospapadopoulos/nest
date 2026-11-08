@@ -75,6 +75,7 @@ import { Button, TextField } from "../ui/controls.tsx";
 import { Menu, QuietMenu } from "../ui/Menu.tsx";
 import type { MenuEntry } from "../ui/menuItems.ts";
 import { AutopilotButton } from "./Autopilot.tsx";
+import { ComputerStrip } from "./Computer.tsx";
 import { askRewindLast, onComposerFocus } from "./composerFocus.ts";
 import { EscapeRepeat, keyAction, type ComposerKey } from "./composerKeys.ts";
 import { useWholeItems } from "./wholeItems.ts";
@@ -683,6 +684,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
           {shownPlace.kind === "newWorktree" && <BranchField value={branch} onChange={setBranch} />}
         </div>
       )}
+      {session !== undefined && <ComputerStrip session={session} />}
       <div
         className={`dc-field${mode === "bash" ? " bash" : ""}${focused || dropping ? " focus" : ""}`}
         onDragOver={onDragOver}

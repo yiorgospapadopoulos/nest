@@ -486,7 +486,7 @@ function ToolRow({ item, ev }: { item: ToolItem; ev: string }) {
             : undefined
         }
       >
-        <Glyph name={glyphOf(item.name)} size={11} className="dc-ti" />
+        <Glyph name={item.computer ? "pointer" : glyphOf(item.name)} size={11} className="dc-ti" />
         <span className="dc-tn">{toolName(item.name)}</span>
         {item.arg !== "" && (
           <span className={kind === "read" || kind === "edit" ? "dc-ta link" : "dc-ta"}>
@@ -517,7 +517,9 @@ function ToolRow({ item, ev }: { item: ToolItem; ev: string }) {
       {diff !== undefined && item.failed && output !== "" && (
         <ToolOutput id={item.key} output={output} />
       )}
-      {item.images !== undefined && <ToolImages images={item.images} />}
+      {item.images !== undefined && (
+        <ToolImages images={item.images} small={item.computer === true} />
+      )}
     </div>
   );
 }
@@ -903,17 +905,26 @@ function AgentSteps({
 }
 
 /** A tool result's images as thumbnails; a click opens one full size (B59). */
-function ToolImages({ images, indent = true }: { images: ResultImage[]; indent?: boolean }) {
+function ToolImages({
+  images,
+  indent = true,
+  small = false,
+}: {
+  images: ResultImage[];
+  indent?: boolean;
+  // A computer use step's screenshot, smaller (B150).
+  small?: boolean;
+}) {
   return (
     <div className={indent ? "dc-imgs" : "dc-imgs flush"}>
       {images.map((image, index) => (
-        <Thumbnail key={`${image.id}.${String(index)}`} id={image.id} />
+        <Thumbnail key={`${image.id}.${String(index)}`} id={image.id} small={small} />
       ))}
     </div>
   );
 }
 
-function Thumbnail({ id }: { id: string }) {
+function Thumbnail({ id, small }: { id: string; small: boolean }) {
   const { host } = useRows();
   const url = useImage(id);
   const [open, setOpen] = useState(false);
@@ -922,7 +933,7 @@ function Thumbnail({ id }: { id: string }) {
   return (
     <>
       <button
-        className="dc-thumb"
+        className={small ? "dc-thumb small" : "dc-thumb"}
         title="Open full size"
         aria-label="Image from the tool"
         onClick={() => {

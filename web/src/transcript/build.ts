@@ -11,8 +11,9 @@ import type {
   JsonValue,
   Pixie,
 } from "../api/types.ts";
-import { permissionOf } from "../api/payloads.ts";
+import { computerAskOf, permissionOf } from "../api/payloads.ts";
 import { CALL_TOOL, toolKind, turnLabel } from "./activity.ts";
+import { computerCall, computerNames, isComputerTool, namedAction } from "./computer.ts";
 import { decisionOf, reportOf } from "./decisions.ts";
 import { editDiff, type EditDiff } from "./edits.ts";
 import { githubPartOf, type GitHubPart } from "./github.ts";
@@ -35,6 +36,8 @@ export interface ToolItem {
   diff?: EditDiff;
   // Images in its result (B59).
   images?: ResultImage[];
+  // A computer use call (B150): its own row, named by what it did, with its screenshot.
+  computer?: true;
 }
 
 /** An image a tool returned, stored by the Mac as an attachment (B59). */
@@ -210,6 +213,7 @@ const SUMMARY_LIMIT = 40;
 const STOPPED = "stopped";
 const NO_TASKS: ReadonlySet<string> = new Set();
 const NO_PIXIES: ReadonlyMap<string, Pixie> = new Map();
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
 // The tools that call a subagent, by `input.subagent_type`, and Nest's call tool.
 const AGENT_TOOLS = new Set(["Task", "Agent", CALL_TOOL]);
 // The tools that save artifacts (B79), with the name their rows show. Their input carries
@@ -252,6 +256,7 @@ export function buildTranscript(
   // Artifact saves by tool use id, and those that succeeded, whose cards show instead.
   const saves = new Set<string>();
   const saved = new Set<string>();
+  const names = computerNames(events);
   // Choices cards the user has not written after yet.
   let open: { answered: boolean }[] = [];
   // The open turn's result: a turn a queued message ends has no other end (D045). An error
@@ -296,7 +301,7 @@ export function buildTranscript(
         if (p.parent_tool_use_id === null || p.parent_tool_use_id === undefined) {
           addBlocks(
             items,
-            { tools, calls, pixies, saves, saved },
+            { tools, calls, pixies, saves, saved, names },
             list(p.blocks).map(obj),
             key,
             root,
@@ -660,7 +665,10 @@ function groupTools(items: TranscriptItem[]): TranscriptItem[] {
     tail = [];
   };
   for (const item of items) {
-    if (item.kind === "tool") {
+    if (item.kind === "tool" && item.computer) {
+      flush();
+      grouped.push(item);
+    } else if (item.kind === "tool") {
       if (run.length === 0) key = item.key;
       run = [...run, ...tail, item];
       tail = [];
@@ -690,12 +698,20 @@ interface Known {
   pixies: ReadonlyMap<string, Pixie>;
   saves: Set<string>;
   saved: Set<string>;
+  // Computer use targets' names, by key.
+  names: ReadonlyMap<string, string>;
 }
 
 /** A call's name and argument for its row: an artifact save by name and title only. */
-function callLabel(block: JsonObject, root: string | null): { name: string; arg: string } {
+function callLabel(
+  block: JsonObject,
+  root: string | null,
+  names: ReadonlyMap<string, string> = NO_NAMES,
+): { name: string; arg: string } {
   const name = str(block.name) ?? "Tool";
   const input = obj(block.input);
+  const computer = computerCall(name, input, names);
+  if (computer !== null) return computer;
   const artifact = ARTIFACT_TOOLS.get(name);
   if (artifact !== undefined) return { name: artifact, arg: str(input.title) ?? "" };
   if (name === CALL_TOOL) {
@@ -734,7 +750,7 @@ function addSteps(steps: SubStep[], blocks: JsonObject[], key: string, root: str
 
 function addBlocks(
   items: TranscriptItem[],
-  { tools, calls, pixies, saves, saved }: Known,
+  { tools, calls, pixies, saves, saved, names }: Known,
   blocks: JsonObject[],
   key: string,
   root: string | null,
@@ -756,11 +772,12 @@ function addBlocks(
         kind: "tool",
         key: blockKey,
         id: str(block.id) ?? blockKey,
-        ...callLabel(block, root),
+        ...callLabel(block, root, names),
         result: null,
         detail: null,
         failed: false,
       };
+      if (isComputerTool(str(block.name) ?? "")) tool.computer = true;
       const diff = editDiff(tool.name, obj(block.input));
       if (diff !== null) tool.diff = diff;
       tools.set(tool.id, tool);
@@ -781,7 +798,9 @@ function addBlocks(
         const content = AGENT_TOOLS.has(tool.name) ? agentReport(raw) : raw;
         tool.failed = block.is_error === true;
         if (!tool.failed && saves.has(tool.id)) saved.add(tool.id);
-        tool.result = resultSummary(content, tool.failed);
+        // A computer use row says what it did already; its screenshot shows under it.
+        tool.result = tool.computer && !tool.failed ? "" : resultSummary(content, tool.failed);
+        if (tool.computer && !tool.failed) Object.assign(tool, namedAction(content) ?? {});
         tool.detail = content.trim() ? content : null;
         const images = imagesOf(block);
         if (images.length > 0) tool.images = images;
@@ -827,6 +846,15 @@ function resolvedText(approval: Approval | undefined, root: string | null): stri
   const r = approval.resolution ?? {};
   switch (approval.kind) {
     case "permission": {
+      const computer = computerAskOf(approval);
+      if (computer !== null) {
+        const allowed = r.behavior === "allow";
+        if (computer.kind === "use") {
+          const word = allowed ? (r.always === true ? "Always allowed" : "Allowed") : "Denied";
+          return `${word} ${computer.name}`;
+        }
+        return `${allowed ? "Allowed" : "Denied"}: ${computer.question.replace(/\?$/, "")}`;
+      }
       const command = permissionOf(approval, root).command;
       return r.behavior === "allow" ? `Allowed: ${command}` : `Rejected: ${command}`;
     }

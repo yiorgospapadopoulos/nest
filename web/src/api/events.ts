@@ -16,6 +16,11 @@ export const ENGINE_MODELS = "engine.models";
 // The engine updates' state, with `GET /api/updates`'s body. Not stored, so clients read it
 // again on every connect.
 export const UPDATES_CHANGED = "updates.changed";
+// Computer use (B150). A new screenshot of what a chat uses, `{target, label, seq}`, not
+// stored; its PNG is at `GET /api/sessions/{id}/computer/frame`.
+export const COMPUTER_FRAME = "computer.frame";
+// What a chat holds now, `{targets: [{key, name}]}`, stored; empty once it let go.
+export const COMPUTER_STATE = "computer.state";
 
 export interface SocketLike {
   onopen: (() => void) | null;

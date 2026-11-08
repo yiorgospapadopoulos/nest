@@ -1,3 +1,4 @@
+import { COMPUTER_FRAME } from "../api/events.ts";
 import { contextOf, list, obj, prOf, queuedOf, str, stuckOf } from "../api/payloads.ts";
 import type {
   Approval,
@@ -481,6 +482,12 @@ export function applyEvent(state: State, event: NestEvent): State {
       return runChanged(next, p);
     case "run.output":
       return runOutputAdded(next, p);
+    case COMPUTER_FRAME: {
+      const { target, label, seq } = p;
+      if (id === null || typeof target !== "string" || typeof seq !== "number") return next;
+      const frame = { target, label: str(label) ?? "", seq };
+      return { ...next, computerFrames: { ...next.computerFrames, [id]: frame } };
+    }
     default:
       return next;
   }
@@ -702,6 +709,7 @@ function removeSession(state: State, id: string): State {
     pixieGroups: without(state.pixieGroups),
     transcripts: without(state.transcripts),
     history: without(state.history),
+    computerFrames: without(state.computerFrames),
     live: without(state.live),
     thinking: without(state.thinking),
     thoughts: without(state.thoughts),

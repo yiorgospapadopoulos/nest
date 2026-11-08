@@ -4,6 +4,8 @@ import type {
   AvailablePlugin,
   CodexMarketplace,
   CodexPlugins,
+  ComputerPermission,
+  ComputerStatus,
   ConfigurationPage,
   CopyPreview,
   CopyResult,
@@ -41,7 +43,7 @@ interface Tools {
 export type FileSave = { version: string } | { conflict: string | null };
 
 // The settings sections saved whole with PUT, by their key in the state.
-type Section = "usage" | "stuck" | "storage" | "pixies" | "limits" | "worktrees";
+type Section = "usage" | "stuck" | "storage" | "pixies" | "limits" | "worktrees" | "computer";
 type Saved<K extends Section> = NonNullable<SettingsState[K]>;
 
 /** What the Settings pages do (B81): load and save the daemon's sections and accounts. */
@@ -113,6 +115,7 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
     pixies: (value) => api.savePixieDefaults(value),
     limits: (value) => api.saveLimitSettings(value),
     worktrees: (value) => api.saveWorktreeSettings(value),
+    computer: (value) => api.saveComputerSettings(value),
   };
 
   return {
@@ -121,19 +124,31 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
      * give (an older daemon) only leaves its rows loading.
      */
     async loadSettings(): Promise<void> {
-      const [usage, stuck, storage, pixies, limits, worktrees, github, claude, codex, features] =
-        await Promise.all([
-          quietly(() => api.usageSettings()),
-          quietly(() => api.stuckSettings()),
-          quietly(() => api.storageSettings()),
-          quietly(() => api.pixieDefaults()),
-          quietly(() => api.limitSettings()),
-          quietly(() => api.worktreeSettings()),
-          quietly(() => api.github()),
-          quietly(() => api.claudeAccount()),
-          quietly(() => api.codexAccount()),
-          quietly(() => api.features()),
-        ]);
+      const [
+        usage,
+        stuck,
+        storage,
+        pixies,
+        limits,
+        worktrees,
+        computer,
+        github,
+        claude,
+        codex,
+        features,
+      ] = await Promise.all([
+        quietly(() => api.usageSettings()),
+        quietly(() => api.stuckSettings()),
+        quietly(() => api.storageSettings()),
+        quietly(() => api.pixieDefaults()),
+        quietly(() => api.limitSettings()),
+        quietly(() => api.worktreeSettings()),
+        quietly(() => api.computerSettings()),
+        quietly(() => api.github()),
+        quietly(() => api.claudeAccount()),
+        quietly(() => api.codexAccount()),
+        quietly(() => api.features()),
+      ]);
       const found = {
         usage,
         stuck,
@@ -141,6 +156,7 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
         pixies,
         limits,
         worktrees,
+        computer,
         github,
         claude,
         codex,
@@ -150,6 +166,23 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
         Object.entries(found).filter(([, value]) => value !== null),
       );
       set(loaded);
+    },
+
+    /** Computer use's settings alone (B150), which a chat's switch needs; quiet. */
+    async loadComputer(): Promise<void> {
+      const computer = await quietly(() => api.computerSettings());
+      if (computer !== null) set({ computer });
+    },
+
+    /** What computer use can reach on the Mac now (B150); null when it cannot be read. */
+    computerStatus(): Promise<ComputerStatus | null> {
+      return quietly(() => api.computerStatus());
+    },
+
+    /** Asks macOS for a permission on the Mac, which opens System Settings there (B150). */
+    async askComputerPermission(name: ComputerPermission): Promise<boolean> {
+      const answer = await attempt(() => api.askComputerPermission(name));
+      return answer?.granted === true;
     },
 
     /** Shows the change at once and puts `previous` back if the Mac refuses it. */

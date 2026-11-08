@@ -1,4 +1,5 @@
 import {
+  computerAskOf,
   mergeOf,
   obj,
   pixieCallOf,
@@ -53,6 +54,8 @@ export function approvalLine(approval: Approval, root: string | null): NeedsLine
     case "review_comments":
       return { kind: "Review comments", detail: reviewCommentsDetail(approval) };
     case "permission": {
+      const computer = computerAskOf(approval);
+      if (computer !== null) return { kind: "Permission", detail: computer.question };
       const tool = str(approval.payload.tool) ?? "Tool";
       return { kind: "Permission", detail: toolCall(tool, obj(approval.payload.input), root) };
     }

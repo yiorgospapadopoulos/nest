@@ -145,6 +145,7 @@ export function session(overrides: Partial<Session> = {}): Session {
     autopilot: null,
     issue: null,
     review: null,
+    computer_targets: [],
     ...overrides,
   };
 }

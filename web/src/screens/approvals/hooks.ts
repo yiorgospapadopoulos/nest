@@ -36,6 +36,17 @@ export function usePermission(approval: Approval, session: Session | undefined) 
   return { view, busy, decide };
 }
 
+/** A computer use card's answers (B150): Allow (for this chat) or Deny. */
+export function useComputerAsk(approval: Approval) {
+  const { actions } = useStore();
+  const { busy, run } = useBusy();
+  const decide = (behavior: "allow" | "deny") => {
+    const done = behavior === "deny" ? "Denied" : "Allowed";
+    return run(() => actions.resolve(approval, { behavior }, done));
+  };
+  return { busy, decide };
+}
+
 export function usePlan(approval: Approval) {
   const { state, actions } = useStore();
   const { busy, run } = useBusy();

@@ -2876,6 +2876,118 @@ button.sf-file {
   padding-bottom: 8px;
 }
 
+/* Computer use (B150): the live strip sits on the composer and grows upward when tapped. */
+.cu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--div);
+  font-size: var(--fs-body);
+}
+.cu.large {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding-bottom: 14px;
+}
+.cu-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 8px;
+}
+.cu-shot {
+  flex: none;
+  width: 72px;
+  height: 45px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--raised);
+  box-shadow: 0 0 0 1px var(--div);
+}
+.cu-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.cu.large .cu-shot {
+  align-self: center;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  border-radius: 12px;
+}
+.cu.large .cu-shot img {
+  width: auto;
+  max-width: 100%;
+  max-height: 55vh;
+  object-fit: contain;
+}
+.cu-app {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--t1);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cu-ico,
+.cu-stop {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.cu-ico {
+  width: 40px;
+  padding: 0;
+  background: none;
+  color: var(--t2);
+}
+.cu-ico .ic {
+  width: 16px;
+  height: 16px;
+}
+.cu-stop {
+  padding: 0 14px 0 11px;
+  background: var(--fail-soft);
+  color: var(--fail-t);
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.cu-stop .ic {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+  stroke: none;
+}
+.cu-q {
+  margin: 8px 0 0;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--t1);
+}
+.cu-askshot {
+  display: block;
+  max-width: 100%;
+  margin-top: 8px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--div);
+}
+
 /* Autopilot (B120): its red, on the composer's button and mode, the bar and the report. */
 .qb.ap {
   align-self: center;

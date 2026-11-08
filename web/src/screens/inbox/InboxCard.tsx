@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { commentPlace, reviewCommentsOf } from "../../api/payloads.ts";
+import { commentPlace, computerAskOf, reviewCommentsOf } from "../../api/payloads.ts";
 import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { DiffStats } from "../../ui/bits.tsx";
@@ -9,6 +9,7 @@ import { usePermission, useReview, workRoot } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
 import { RemoteConfirmation } from "../approvals/ReviewGuards.tsx";
+import { ComputerAskBody } from "../chat/Computer.tsx";
 import { FoldRow } from "./FoldRow.tsx";
 import { approvalLine, approvalPixie, lineText } from "./needsLine.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
@@ -70,8 +71,14 @@ interface DetailProps {
 
 function ApprovalDetail({ approval, session }: DetailProps): ReactNode {
   switch (approval.kind) {
-    case "permission":
-      return <PermissionDetail approval={approval} session={session} />;
+    case "permission": {
+      const computer = computerAskOf(approval);
+      return computer === null ? (
+        <PermissionDetail approval={approval} session={session} />
+      ) : (
+        <ComputerAskBody approval={approval} ask={computer} />
+      );
+    }
     case "question":
       return <QuestionForm approval={approval} inline={false} />;
     case "review":

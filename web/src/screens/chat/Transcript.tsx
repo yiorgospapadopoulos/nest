@@ -945,7 +945,7 @@ function Tool({ item, ev }: { item: ToolItem; ev?: string | undefined }) {
   const live = agent ? (agentLive[item.id] ?? "") : "";
   const summary = (
     <>
-      <Icon name={toolIcon(item.name)} />
+      <Icon name={item.computer ? "pointer" : toolIcon(item.name)} />
       <span className="tn">{item.name}</span>
       <span className="ta">{item.arg}</span>
       <span className={item.failed ? "tr bad" : "tr"}>{item.result ?? "running"}</span>

@@ -88,6 +88,23 @@ export function fakeApi(): FakeApi {
     sendNow: vi.fn<Api["sendNow"]>().mockResolvedValue(null),
     resumeLimit: vi.fn<Api["resumeLimit"]>().mockResolvedValue(session()),
     setAutopilot: vi.fn<Api["setAutopilot"]>().mockResolvedValue(session()),
+    stopComputerUse: vi.fn<Api["stopComputerUse"]>().mockResolvedValue(session()),
+    computerFrame: vi.fn<Api["computerFrame"]>().mockResolvedValue(new Blob(["png"])),
+    computerSettings: vi
+      .fn<Api["computerSettings"]>()
+      .mockResolvedValue({ enabled: false, pixies: false }),
+    saveComputerSettings: vi
+      .fn<Api["saveComputerSettings"]>()
+      .mockImplementation((settings) => Promise.resolve(settings)),
+    computerStatus: vi.fn<Api["computerStatus"]>().mockResolvedValue({
+      enabled: false,
+      kinds: [],
+      accessibility: null,
+      screen_recording: null,
+    }),
+    askComputerPermission: vi
+      .fn<Api["askComputerPermission"]>()
+      .mockResolvedValue({ granted: false }),
     sessionCommands: vi.fn<Api["sessionCommands"]>().mockResolvedValue(commandList()),
     repoCommands: vi.fn<Api["repoCommands"]>().mockResolvedValue(commandList({ source: "repo" })),
     files: vi.fn<Api["files"]>().mockResolvedValue({ files: [] }),

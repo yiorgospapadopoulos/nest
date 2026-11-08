@@ -1126,3 +1126,37 @@
 .set .srow.pf-change {
   justify-content: flex-start;
 }
+
+/* Computer use (B150): a blocked permission's red line with Open on Mac, a link to get what
+   is missing, and an always allowed app's remove button. */
+.set .cu-fail {
+  font-size: var(--fs-meta);
+  color: var(--bad);
+}
+.set .cu-fail button,
+.set .cu-get {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  color: var(--link);
+  text-decoration: none;
+  cursor: pointer;
+}
+.set .cu-get {
+  margin-left: 0;
+}
+.set .cu-x {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--t3);
+  cursor: pointer;
+}
