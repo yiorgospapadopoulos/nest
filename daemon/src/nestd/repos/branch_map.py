@@ -2,6 +2,7 @@
 it comes from, under the top row, and the branches only a remote has.
 """
 
+import asyncio
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -14,7 +15,8 @@ from nestd.config.models import RepoConfig
 from nestd.gitops.hardened import remote_names, run_hardened_git
 from nestd.gitops.remotes import REMOTE
 from nestd.repos.service import BRANCH_REF, REMOTE_REF
-from nestd.worktrees.manager import OWNED_WORKTREE_PREFIXES, claude_worktrees_dir
+from nestd.worktrees.options import claude_worktrees_dir
+from nestd.worktrees.ownership import is_nest_worktree
 
 type Owner = Literal["nest", "claude", "other"]
 # Among branches as far from the root, the branch of the project folder (or of no
@@ -30,7 +32,8 @@ _BEHIND = re.compile(r"behind (\d+)")
 
 class MapWorktree(BaseModel):
     path: Path
-    # Nest's own (`nest-*`), Claude Code's (elsewhere in `.claude/worktrees/`) or other.
+    # Nest's own (B141 `is_nest_worktree`), Claude Code's (elsewhere in `.claude/worktrees/`)
+    # or other.
     owner: Owner
 
 
@@ -194,12 +197,13 @@ async def read_branch_map(
         branch = checkout.branch
         if branch is not None and branch in heads and branch != main.branch:
             worktrees.setdefault(branch, checkout)
+    owners = await asyncio.to_thread(_owners, repo.path, list(worktrees.values()))
 
     def local(name: str) -> Candidate:
         head, checkout = heads[name], worktrees.get(name)
         if checkout is None:
             return Candidate(name, head.tip, time=head.time)
-        worktree = MapWorktree(path=checkout.path, owner=_owner(repo.path, checkout.path))
+        worktree = MapWorktree(path=checkout.path, owner=owners[checkout.path])
         return Candidate(name, head.tip, worktree, bases.get(checkout.path), head.time)
 
     default = repo.default_branch
@@ -390,7 +394,11 @@ async def _ahead(
     return ahead
 
 
+def _owners(repo_path: Path, checkouts: list[Checkout]) -> dict[Path, Owner]:
+    return {checkout.path: _owner(repo_path, checkout.path) for checkout in checkouts}
+
+
 def _owner(repo_path: Path, path: Path) -> Owner:
-    if path.parent != claude_worktrees_dir(repo_path):
-        return "other"
-    return "nest" if path.name.startswith(OWNED_WORKTREE_PREFIXES) else "claude"
+    if is_nest_worktree(repo_path, path):
+        return "nest"
+    return "claude" if path.parent == claude_worktrees_dir(repo_path) else "other"

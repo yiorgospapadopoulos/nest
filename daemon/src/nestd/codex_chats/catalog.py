@@ -32,7 +32,7 @@ from nestd.providers.codex_process import CodexLaunch, TransportFactory
 from nestd.providers.codex_rpc import CodexRpc
 from nestd.sessions.models import ChatImport
 from nestd.sessions.titles import short_title
-from nestd.worktrees.manager import OWNED_WORKTREE_PREFIXES
+from nestd.worktrees.ownership import OWNED_WORKTREE_PREFIXES
 
 logger = logging.getLogger(__name__)
 

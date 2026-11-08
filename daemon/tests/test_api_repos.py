@@ -13,6 +13,9 @@ from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import reach
 
+# The worktree choices of B141 a project leaves to `[worktrees]`.
+FOLLOWS_DEFAULTS = {"folder": None, "branch_prefix": None, "clean_merged": None, "submodules": None}
+
 
 @pytest.fixture
 async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
@@ -69,7 +72,13 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "icon": None,
         "icon_color": None,
         # No override: new sessions follow `[agents] default_mode` (D038).
-        "worktree": {"default": None, "link": [], "setup": [], "setup_timeout_seconds": 900},
+        "worktree": {
+            "default": None,
+            "link": [],
+            "setup": [],
+            "setup_timeout_seconds": 900,
+            **FOLLOWS_DEFAULTS,
+        },
         # All open issues on the start screen (B101).
         "issues": {"show": "all"},
         # No dev server command: its chats show no Run control (B108).
@@ -86,6 +95,7 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "link": [".env"],
         "setup": ["make"],
         "setup_timeout_seconds": 900,
+        **FOLLOWS_DEFAULTS,
     }
 
 
@@ -176,6 +186,7 @@ async def test_links_and_setup_are_edited_and_announced(api: Api, tmp_path: Path
         "link": [".env"],
         "setup": ["npm ci", "make"],
         "setup_timeout_seconds": 900,
+        **FOLLOWS_DEFAULTS,
     }
     assert links.json()["worktree"]["link"] == [".env.local", "a/b.key"]
     assert links.json()["worktree"]["setup"] == ["npm ci", "make"]
