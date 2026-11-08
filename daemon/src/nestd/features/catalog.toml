@@ -217,10 +217,11 @@ block = "B59"
 id = "rewind-fork"
 group = "chats"
 name = "Rewind and fork"
-text = "Go back to before any of your messages, or start a new chat from that point."
+text = "Go back to before any of your messages, or start a new chat from that point, on every engine. Undo also puts back what shell commands changed."
 where = "Your message's menu"
 added = 2026-10-15
 block = "B59"
+changed = 2026-11-08
 
 [[features]]
 id = "limit-resume"
