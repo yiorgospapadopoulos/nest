@@ -1997,7 +1997,7 @@ html.desk .md td {
   background: var(--soft);
   color: var(--t3);
   font: inherit;
-  font-size: 11px;
+  font-size: 0.6471rem;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -3058,7 +3058,7 @@ summary.m-decl {
 /* The file viewer (B144): a sheet over the window on the desktop, full screen on the phone. */
 .fv-meta {
   color: var(--t3);
-  font-size: 12px;
+  font-size: 0.7059rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -3073,7 +3073,7 @@ p.fv-meta {
 .fv-text.md pre {
   margin: 0;
   padding: 8px 0;
-  font-size: 12px;
+  font-size: 0.7059rem;
   line-height: 1.6;
   white-space: pre;
   border-radius: var(--radius-mac-card);
@@ -3097,7 +3097,7 @@ p.fv-meta {
 .fv-note {
   margin: 8px 0 0;
   color: var(--t3);
-  font-size: 12px;
+  font-size: 0.7059rem;
 }
 .fv-pdf {
   display: grid;
