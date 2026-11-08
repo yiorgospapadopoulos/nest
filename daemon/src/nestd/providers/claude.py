@@ -149,6 +149,16 @@ CLAUDE_APP_ENV = {
 }
 
 
+# Claude Code's own size to compact at, which wins over its settings and is capped at the
+# model's window by Claude Code itself (B146).
+AUTO_COMPACT_WINDOW = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+
+
+def _compact_env(spec: SessionSpec) -> dict[str, str]:
+    """None leaves the user's own `autoCompactWindow`, or Claude Code's, in charge."""
+    return {} if spec.compact_at is None else {AUTO_COMPACT_WINDOW: str(spec.compact_at)}
+
+
 class StderrTail:
     """What the CLI writes to stderr: each line goes to the daemon log (BUG-82), and the
     last ones say why it crashed (BUG-42).
@@ -304,6 +314,7 @@ def build_options(
             **CLAUDE_APP_ENV,
             # Such as the folder's ports (B108).
             **spec.env,
+            **_compact_env(spec),
             # The account's profile folder (B98).
             **(spec.account.env if spec.account is not None else {}),
             # A local model's server (B106); the settings below make it beat the user's.

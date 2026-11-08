@@ -625,6 +625,9 @@ def _thread_config(spec: SessionSpec, block_env: Mapping[str, str]) -> JsonObjec
     env: dict[str, JsonValue] = {**spec.env, **block_env}
     if env:
         config["shell_environment_policy.set"] = env
+    if spec.compact_at is not None:
+        # Codex's own size to compact at, which it caps at 90% of the model's window (B146).
+        config["model_auto_compact_token_limit"] = spec.compact_at
     return config
 
 

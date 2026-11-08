@@ -210,6 +210,22 @@ async def test_a_runs_folder_ports_reach_codex_and_its_commands(tmp_path: Path) 
     await guarded.close()
 
 
+async def test_a_chosen_size_to_compact_at_reaches_codexs_own_setting(tmp_path: Path) -> None:
+    """B146: Codex compacts by itself at the chat's size; without one, at its own."""
+    server, run, _, _ = await opened(tmp_path, compact_at=300_000)
+    auto_server, auto, _, _ = await opened(tmp_path)
+
+    [start] = server.requests("thread/start")
+    [auto_start] = auto_server.requests("thread/start")
+    config, auto_config = start["config"], auto_start["config"]
+    assert isinstance(config, dict)
+    assert isinstance(auto_config, dict)
+    assert config["model_auto_compact_token_limit"] == 300_000
+    assert "model_auto_compact_token_limit" not in auto_config
+    await run.close()
+    await auto.close()
+
+
 async def test_a_session_with_a_thread_resumes_it(tmp_path: Path) -> None:
     server, run, sink, _ = await opened(tmp_path, resume_id="thread-7")
 
