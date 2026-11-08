@@ -12,6 +12,7 @@ import {
   TailscalePage,
 } from "./pages.tsx";
 import { StepMark } from "./parts.tsx";
+import { useNotified } from "./useNotified.ts";
 import {
   STEPS,
   canContinue,
@@ -55,7 +56,7 @@ export function SetupGuide({ firstRun, start }: { firstRun: boolean; start: Step
     ),
   );
   const [skipped, setSkipped] = useState<ReadonlySet<StepId>>(new Set());
-  const [notified, setNotified] = useState(false);
+  const [notified, markNotified] = useNotified();
   const found = checksById(checks ?? []);
   const step = STEPS[index] ?? STEPS[0];
   useEffect(() => {
@@ -87,13 +88,7 @@ export function SetupGuide({ firstRun, start }: { firstRun: boolean; start: Step
       case "tailscale":
         return <TailscalePage check={check} checking={checking} onCheck={refresh} />;
       case "notifications":
-        return (
-          <NotificationsPage
-            onSent={() => {
-              setNotified(true);
-            }}
-          />
-        );
+        return <NotificationsPage onSent={markNotified} />;
       case "first_chat":
         return (
           <FirstChatPage

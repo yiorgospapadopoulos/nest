@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { SetupCheck } from "../../api/types.ts";
@@ -10,6 +10,7 @@ import { defined } from "../../test/defined.ts";
 import { memoryStorage } from "../../test/render.tsx";
 import { browserBridge, type Bridge } from "../bridge.ts";
 import { DesktopApp } from "../DesktopApp.tsx";
+import { NOTIFIED_KEY } from "./useNotified.ts";
 
 beforeAll(() => {
   globalThis.ResizeObserver = class {
@@ -235,6 +236,22 @@ describe("the setup guide after the Linux checks (B136)", () => {
     expect(await screen.findByText("Finish signing in in your browser.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Sign in again" }));
     expect(api.signInAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a test notification's tick when the app starts again", async () => {
+    localStorage.removeItem(NOTIFIED_KEY);
+    const api = firstRun([check("engine", { state: "ok" })]);
+    const { user } = renderGuide(api, { notify: () => Promise.resolve() });
+    const rail = await screen.findByRole("navigation", { name: "Set up Nest" });
+    await user.click(within(rail).getByRole("button", { name: /Notifications/ }));
+    await user.click(screen.getByRole("button", { name: "Send a test notification" }));
+    await screen.findByText("Sent");
+    cleanup();
+
+    renderGuide(firstRun([check("engine", { state: "ok" })]));
+    const again = await screen.findByRole("navigation", { name: "Set up Nest" });
+    const step = within(again).getByRole("button", { name: /Notifications/ });
+    expect(within(step).getByRole("img", { name: "Done" })).toBeInTheDocument();
   });
 });
 

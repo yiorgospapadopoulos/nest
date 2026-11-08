@@ -3,6 +3,7 @@ import type { SetupCheck } from "../../../api/types.ts";
 import { Fireflies } from "../../../ui/Fireflies.tsx";
 import { SheetFrame } from "../../sheets/SheetFrame.tsx";
 import { FixAction, StepMark, TestNotification } from "../../setup/parts.tsx";
+import { useNotified } from "../../setup/useNotified.ts";
 import type { Mark } from "../../setup/steps.ts";
 import { useChecks } from "../../setup/useChecks.ts";
 import { Button } from "../../ui/controls.tsx";
@@ -23,9 +24,10 @@ function CheckRow({ check }: { check: SetupCheck }) {
   // The daemon cannot tell whether a notification reaches this desktop; the app can.
   const appAnswers = check.id === "notifications";
   const message = appAnswers ? "" : check.message;
+  const [notified, markNotified] = useNotified();
   return (
     <div className="su-check">
-      <StepMark mark={MARKS[check.state]} />
+      <StepMark mark={appAnswers && notified ? "ok" : MARKS[check.state]} />
       <div className="su-check-head">
         {check.title}
         {check.detail !== null && <span>{check.detail}</span>}
@@ -34,7 +36,7 @@ function CheckRow({ check }: { check: SetupCheck }) {
         <div className="su-check-more">
           {message !== "" && <p className="su-line">{message}</p>}
           {check.fix !== null && <FixAction fix={check.fix} />}
-          {appAnswers && <TestNotification />}
+          {appAnswers && <TestNotification onSent={markNotified} />}
         </div>
       )}
     </div>
