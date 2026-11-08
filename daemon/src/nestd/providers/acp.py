@@ -46,7 +46,13 @@ from pydantic import JsonValue
 from nestd import __version__
 from nestd.config.models import Effort, PermissionMode
 from nestd.errors import ConflictError
-from nestd.providers.acp_engines import AcpEngine
+from nestd.providers.acp_engines import (
+    GEMINI,
+    GEMINI_SUBAGENT_SETTINGS,
+    GEMINI_SYSTEM_SETTINGS_ENV,
+    AcpEngine,
+    gemini_subagent_files,
+)
 from nestd.providers.acp_events import AcpStream, NestTools
 from nestd.providers.acp_fs import AcpFiles
 from nestd.providers.acp_permissions import AcpPermissions, AcpRules
@@ -77,7 +83,8 @@ from nestd.providers.base import (
 from nestd.providers.claude_tools import NEST_SERVER, TOOL_SERVER
 from nestd.providers.codex_items import items, obj, text
 from nestd.providers.codex_tools import ToolHost
-from nestd.providers.push_block import push_block
+from nestd.providers.git_tools import DENY_REASON
+from nestd.providers.push_block import helper_files, push_block
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
 __all__ = [
@@ -690,7 +697,12 @@ class AcpProvider:
     ) -> AcpRun:
         launch = await self._launcher(spec.account)
         run = AcpRun(self._engine, spec, handler, sink)
-        extra = {**spec.env, **(self._engine.guarded_env if spec.nest_decides else {})}
+        engine = self._engine
+        extra = {
+            **spec.env,
+            **(await _subagent_env(engine) if spec.guard_subagents else {}),
+            **(engine.guarded_env if spec.nest_decides else {}),
+        }
         env = process_env(await self._shell_env(), launch.env, extra)
         if spec.guard_git:
             block = await push_block((spec.cwd, *spec.extra_dirs))
@@ -754,6 +766,18 @@ async def probe(
     except Exception as error:
         # The engine's errors can quote what it printed; only their kind is kept.
         raise AcpProbeError(type(error).__name__) from error
+
+
+async def _subagent_env(engine: AcpEngine) -> dict[str, str]:
+    """The engine's own rules against its subagents' pushes (B127). Gemini's are in files of
+    Nest's, named by the system settings it reads instead of its usual ones.
+    """
+    if engine.id != GEMINI.id:
+        return dict(engine.subagent_env)
+    folder = await asyncio.to_thread(
+        helper_files, lambda folder: gemini_subagent_files(folder, DENY_REASON)
+    )
+    return {GEMINI_SYSTEM_SETTINGS_ENV: str(folder / GEMINI_SUBAGENT_SETTINGS)}
 
 
 def process_env(

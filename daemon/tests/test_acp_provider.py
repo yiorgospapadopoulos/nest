@@ -1,6 +1,10 @@
 """The ACP provider against recorded OpenCode and Gemini sessions (B107)."""
 
+import json
 import os
+import re
+import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
@@ -8,7 +12,7 @@ import pytest
 from pydantic import JsonValue
 
 from nestd.providers.acp import AcpLaunch, AcpProvider, AcpRun, AcpToolsUnsupportedError, probe
-from nestd.providers.acp_engines import GEMINI, OPENCODE, AcpEngine
+from nestd.providers.acp_engines import GEMINI, GEMINI_SYSTEM_SETTINGS_ENV, OPENCODE, AcpEngine
 from nestd.providers.base import (
     AgentTool,
     PermissionDecision,
@@ -226,6 +230,77 @@ async def test_with_agents_allowed_to_push_a_pixie_run_is_not_touched(tmp_path: 
     env = agent.transport.launch.env
     assert "GIT_CONFIG_COUNT" not in env
     assert "OPENCODE_CONFIG_CONTENT" not in env
+    await run.close()
+
+
+def _text(path: str) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+def _agent_rules(env: Mapping[str, str]) -> dict[str, object]:
+    return json.loads(env["OPENCODE_CONFIG_CONTENT"])["agent"]
+
+
+async def test_a_normal_chats_opencode_subagents_may_not_push(tmp_path: Path) -> None:
+    """B127: their questions never reach Nest, so OpenCode's own rules deny their pushes,
+    and the chat's own agent is left as the user set it up."""
+    agent = FakeAgent(load("opencode-shell-reject", tmp_path, {}))
+    run, _, _ = await open_run(agent, tmp_path, guard_git=False)
+
+    rules = _agent_rules(agent.transport.launch.env)
+
+    assert set(rules) == {"general", "explore"}
+    for name in ("general", "explore"):
+        bash = rules[name]["permission"]["bash"]  # type: ignore[index]
+        assert bash["*git*push*"] == bash["*gh*pr*"] == "deny"
+    await run.close()
+
+
+async def test_a_guarded_runs_opencode_subagents_are_denied_pushes_too(tmp_path: Path) -> None:
+    agent = FakeAgent(load("opencode-shell-reject", tmp_path, {}))
+    run, _, _ = await open_run(agent, tmp_path, guard_git=True)
+
+    rules = _agent_rules(agent.transport.launch.env)
+
+    assert rules["build"]["permission"]["bash"] == "ask"  # type: ignore[index]
+    explore = rules["explore"]["permission"]["bash"]  # type: ignore[index]
+    assert (explore["*"], explore["*git*push*"]) == ("ask", "deny")
+    await run.close()
+
+
+async def test_a_normal_chats_gemini_subagent_is_denied_pushes_by_admin_policy(
+    tmp_path: Path,
+) -> None:
+    """B127: Gemini's system settings name an admin policy, which outranks every other."""
+    agent = FakeAgent(load("gemini-fake-key-prompt", tmp_path))
+    run, _, _ = await open_run(agent, tmp_path, engine=GEMINI, guard_git=False)
+
+    settings = json.loads(_text(agent.transport.launch.env[GEMINI_SYSTEM_SETTINGS_ENV]))
+    policy = tomllib.loads(_text(settings["adminPolicyPaths"][0]))
+
+    assert settings["security"] == {"disableAlwaysAllow": True}
+    [rule] = policy["rule"]
+    assert (rule["subagent"], rule["toolName"], rule["decision"]) == (
+        "generalist",
+        "run_shell_command",
+        "deny",
+    )
+    pushes = re.compile(rule["commandRegex"])
+    assert pushes.search("git -C x push origin main")
+    assert pushes.search("gh pr create --fill")
+    assert not pushes.search("git status")
+    await run.close()
+
+
+async def test_with_agents_allowed_to_push_gemini_keeps_its_usual_settings(
+    tmp_path: Path,
+) -> None:
+    agent = FakeAgent(load("gemini-fake-key-prompt", tmp_path))
+    run, _, _ = await open_run(
+        agent, tmp_path, engine=GEMINI, guard_git=False, guard_subagents=False
+    )
+
+    assert GEMINI_SYSTEM_SETTINGS_ENV not in agent.transport.launch.env
     await run.close()
 
 
