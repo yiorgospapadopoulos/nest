@@ -151,6 +151,7 @@ from nestd.search.index import SearchIndex
 from nestd.sessions.commands import CommandStore
 from nestd.sessions.engines import Engine
 from nestd.sessions.manager import SessionManager
+from nestd.sessions.merged_worktrees import MergedWorktrees
 from nestd.sessions.models import Session
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.store import SessionStore
@@ -165,7 +166,9 @@ from nestd.usage.refresher import UsageRefresher
 from nestd.usage.store import UsageStore
 from nestd.usage.visibility import ClientVisibility
 from nestd.usage.warnings import UsageWarnings
-from nestd.worktrees.manager import WORKTREE_PREFIX, WorktreeManager, claude_worktrees_dir
+from nestd.worktrees.manager import WorktreeManager
+from nestd.worktrees.options import claude_worktrees_dir
+from nestd.worktrees.ownership import WORKTREE_PREFIX
 
 # How long signing in to Claude or installing Claude Code may take (D104).
 LONG_COMMAND_SECONDS = 900.0
@@ -201,6 +204,8 @@ class AppContext:
     claude_chats: ClaudeChats
     # Announces worktrees and checked-out branches changing outside Nest too (B96).
     branch_watch: BranchWatch
+    # Removes merged worktrees in projects that ask for it (B141).
+    merged_worktrees: MergedWorktrees
     usage_refresher: UsageRefresher
     commands: CommandStore
     prs: PullRequests
@@ -572,19 +577,19 @@ class AppContext:
             store.get,
             followers=followers,
         )
+        worktrees = WorktreeManager(
+            paths,
+            # Codex trusted each folder it worked in; a removed worktree's entry goes.
+            on_removed=None if codex_home is None else lambda path: forget_trust(codex_home, path),
+            bus=bus,
+            runs=runs,
+            defaults=lambda: context.settings.worktrees,
+        )
         sessions = SessionManager(
             store=store,
             bus=bus,
             repos=repos,
-            worktrees=WorktreeManager(
-                paths,
-                # Codex trusted each folder it worked in; a removed worktree's entry goes.
-                on_removed=None
-                if codex_home is None
-                else lambda path: forget_trust(codex_home, path),
-                bus=bus,
-                runs=runs,
-            ),
+            worktrees=worktrees,
             attachments=attachments,
             provider=provider
             or ClaudeProvider(
@@ -857,7 +862,7 @@ class AppContext:
                 machine=machine_name_text,
                 timings=perf_timings,
                 send_times=notifications.send_times.all,
-                worktree_folders=lambda: _worktree_folders(paths, repos),
+                worktree_folders=lambda: _worktree_folders(paths, repos, worktrees),
                 local_token=devices.ensure_local_device,
                 general_prompt=PLAIN_FOLDER_PROMPT,
                 general_tools=artifact_tools(artifacts, _general_stand_in(clock)),
@@ -904,6 +909,13 @@ class AppContext:
             notifications=notifications,
             claude_chats=claude_chats,
             branch_watch=BranchWatch(repos=repos, bus=bus),
+            merged_worktrees=MergedWorktrees(
+                repos=repos,
+                store=store,
+                worktrees=worktrees,
+                remove=sessions.remove_unused_worktree,
+                bus=bus,
+            ),
             places=places,
             fetcher=RepoFetcher(bus),
             usage_refresher=usage_refresher,
@@ -1079,12 +1091,18 @@ def _locations(paths: AppPaths) -> Locations | None:
     return Locations(paths.claude_dir, paths.claude_account_file, paths.codex_home)
 
 
-def _worktree_folders(paths: AppPaths, repos: RepoService) -> list[Path]:
-    """Where Nest's worktrees are: each repo's `.claude/worktrees/nest-*`, and the old folder."""
+def _worktree_folders(
+    paths: AppPaths, repos: RepoService, worktrees: WorktreeManager
+) -> list[Path]:
+    """Where Nest's worktrees are: each repo's `nest-*` in its worktrees folder and, after
+    a move to another, in `.claude/worktrees` (B141), and the old folder.
+    """
     # The old folder counts only while it still holds a worktree.
     folders = [paths.worktrees_dir] if any(paths.worktrees_dir.glob("*")) else []
     for repo in repos.list_repos():
-        folders += claude_worktrees_dir(repo.path).glob(f"{WORKTREE_PREFIX}*")
+        places = dict.fromkeys((worktrees.options(repo).folder, claude_worktrees_dir(repo.path)))
+        for place in places:
+            folders += (path for path in place.glob(f"{WORKTREE_PREFIX}*") if path.is_dir())
     return folders
 
 
