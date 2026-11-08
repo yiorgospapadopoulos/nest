@@ -262,6 +262,15 @@ describe("Markdown web addresses", () => {
     expect(hrefs()).toEqual(["https://b.dev"]);
     expect(screen.getByRole("link").textContent).toBe("https://a.dev");
   });
+
+  it("shows an image as a link with its words, loading nothing (B136)", () => {
+    // Seen in the Linux app on 2026-11-08: ![dot](dot.png) read "!dot".
+    const box = show("See ![dot](https://a.dev/dot.png) and ![](https://a.dev/x.png).");
+
+    expect(box?.querySelector("img")).toBeNull();
+    expect(box?.textContent).toBe("See dot and https://a.dev/x.png.");
+    expect(hrefs()).toEqual(["https://a.dev/dot.png", "https://a.dev/x.png"]);
+  });
 });
 
 describe("Markdown nesting", () => {
