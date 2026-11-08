@@ -15,7 +15,7 @@ const watch = (fields: Partial<GitHubWatch>): GitHubWatch => ({
   projects: [],
   labels: [],
   branches: [],
-  authors: "humans",
+  authors: "members",
   ...fields,
 });
 
@@ -34,8 +34,8 @@ describe("GitHub triggers", () => {
       "On GitHub when an issue is opened or CI fails",
     );
     expect(githubText([])).toBeNull();
-    expect(triggerSummary(watch({ branches: ["main"], labels: ["bug"], authors: "others" }))).toBe(
-      "When CI fails · on main · labelled bug · others, not me",
+    expect(triggerSummary(watch({ branches: ["main"], labels: ["bug"], authors: "humans" }))).toBe(
+      "When CI fails · on main · labelled bug · anyone but bots",
     );
   });
 
@@ -55,7 +55,7 @@ describe("GitHub triggers", () => {
       events: ["ci_failed", "ci_passed"],
       labels: [],
       branches: ["main", "release/*"],
-      authors: "humans",
+      authors: "members",
     });
     expect(parseList(" , ")).toEqual([]);
   });

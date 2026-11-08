@@ -22,8 +22,8 @@ export const GITHUB_EVENTS: { value: GitHubEventKind; label: string; phrase: str
 ];
 
 export const AUTHORS: { value: TriggerAuthors; label: string }[] = [
+  { value: "members", label: "People with write access" },
   { value: "humans", label: "Anyone but bots" },
-  { value: "others", label: "Others, not me" },
   { value: "everyone", label: "Everyone" },
 ];
 
@@ -58,7 +58,7 @@ export function triggerSummary(filter: EventFilter): string {
     when,
     filter.branches.length > 0 ? `on ${filter.branches.join(", ")}` : null,
     filter.labels.length > 0 ? `labelled ${filter.labels.join(", ")}` : null,
-    filter.authors === "humans" ? null : authorsLabel(filter.authors).toLowerCase(),
+    filter.authors === "members" ? null : authorsLabel(filter.authors).toLowerCase(),
   ]
     .filter((part) => part !== null && part !== "")
     .join(" · ");
@@ -112,7 +112,7 @@ export function githubDraftOf(watches: GitHubWatch[] | undefined): GitHubDraft {
     projects: first === undefined ? [] : [...first.projects],
     labels: first === undefined ? "" : listText(first.labels),
     branches: first === undefined ? "" : listText(first.branches),
-    authors: first?.authors ?? "humans",
+    authors: first?.authors ?? "members",
   };
 }
 
@@ -162,7 +162,7 @@ export function newTriggerDraft(): TriggerDraft {
     events: [],
     labels: "",
     branches: "",
-    authors: "humans",
+    authors: "members",
     enabled: true,
   };
 }

@@ -1247,8 +1247,9 @@ export type HabitTrigger = "stuck" | "failed" | "review_ready" | "ci_failed";
 // Events on GitHub that start habits and chats (B148).
 export type GitHubEventKind =
   "issue_opened" | "pr_opened" | "comment" | "review" | "ci_failed" | "ci_passed";
-// Whose events count: anyone but bots, also not the user's own, or every one.
-export type TriggerAuthors = "humans" | "others" | "everyone";
+// Whose events count: people with write access to the repository (the default), anyone
+// but bots, or every one.
+export type TriggerAuthors = "members" | "humans" | "everyone";
 
 /** Labels apply to issues and pull requests, branches to CI runs and pull requests. */
 // A type, not an interface, so a project with its triggers stays a JSON value in events.
