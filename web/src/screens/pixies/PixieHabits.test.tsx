@@ -141,6 +141,7 @@ describe("Pixie habits page (B42)", () => {
       prompt: "Look for stuck chats",
       schedule: { kind: "hourly", minute: 15 },
       triggers: ["failed"],
+      github: [],
       max_minutes: 30,
       autopilot: false,
       enabled: true,
@@ -239,6 +240,7 @@ describe("Pixie habits page (B42)", () => {
       prompt: "Look at yesterday's chats and report anything stuck.",
       schedule: { kind: "weekly", weekday: 2, time: "07:45" },
       triggers: ["stuck"],
+      github: [],
       max_minutes: 20,
       autopilot: false,
     });

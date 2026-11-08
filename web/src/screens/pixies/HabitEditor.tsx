@@ -1,6 +1,9 @@
 import { useId, useState } from "react";
 import type { Habit, HabitBody, HabitSchedule, HabitTrigger } from "../../api/types.ts";
+import { useStore } from "../../store/context.ts";
+import { githubDraftOf, watchesOf } from "../../triggers/github.ts";
 import { Sheet } from "../../ui/Sheet.tsx";
+import { GitHubFields } from "./GitHubFields.tsx";
 import { SCHEDULE_KINDS, TRIGGERS, WEEKDAYS, type ScheduleKind } from "./habits.ts";
 
 const NONE = "none";
@@ -45,6 +48,8 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
   const [triggers, setTriggers] = useState<ReadonlySet<HabitTrigger>>(
     new Set(habit?.triggers ?? []),
   );
+  const [github, setGithub] = useState(() => githubDraftOf(habit?.github));
+  const { state } = useStore();
   const [limit, setLimit] = useState(String(habit?.max_minutes ?? DEFAULT_MINUTES));
   const [autopilot, setAutopilot] = useState(habit?.autopilot ?? false);
   const [saving, setSaving] = useState(false);
@@ -64,7 +69,7 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
     }
   })();
   const chosen = (Object.keys(TRIGGERS) as HabitTrigger[]).filter((t) => triggers.has(t));
-  const when = planned !== null || chosen.length > 0;
+  const when = planned !== null || chosen.length > 0 || github.events.length > 0;
   // What Save sends; null while something is missing.
   const body: HabitBody | null =
     name.trim() !== "" &&
@@ -77,6 +82,7 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
           prompt: prompt.trim(),
           schedule: planned,
           triggers: chosen,
+          github: watchesOf(github, habit?.github),
           max_minutes: limitValue,
           autopilot,
         }
@@ -229,6 +235,7 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
           </label>
         ))}
       </div>
+      <GitHubFields draft={github} repos={state.repos} onChange={setGithub} />
       {!when && <p className="hint gnote">Choose a schedule or a trigger.</p>}
 
       <div className="lgrp gl pxgap">

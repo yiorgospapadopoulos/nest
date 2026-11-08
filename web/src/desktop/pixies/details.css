@@ -651,6 +651,10 @@
   height: 30px;
   padding: 0 8px;
 }
+.pd-filter .pd-field {
+  width: 60%;
+  margin: 0;
+}
 .pd-timefield {
   display: inline-flex;
   align-items: center;

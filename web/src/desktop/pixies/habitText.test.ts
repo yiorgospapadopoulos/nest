@@ -189,6 +189,7 @@ describe("the habit editor's draft", () => {
       prompt: "Look",
       schedule: { kind: "daily", time: "09:00" },
       triggers: ["stuck", "ci_failed"],
+      github: [],
       max_minutes: 20,
       autopilot: false,
     });
