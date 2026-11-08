@@ -760,3 +760,12 @@ block = "B147"
 [features.linux]
 text = "Every control, row and status is named for screen readers, and the keyboard reaches everything: Ctrl+K searches and opens a chat with the keyboard in its composer, and focus comes back where it was when a sheet closes."
 where = "Everywhere"
+
+[[features]]
+id = "github-triggers"
+group = "around"
+name = "Start work when GitHub changes"
+text = "A project's trigger starts a chat in its own worktree when an issue or pull request opens, someone comments or reviews, or CI fails or passes, with labels, branches and authors to choose. A pixie's habit can run on the same events. Nest checks every minute and starts each event once."
+where = "Settings > the project > Triggers, or a pixie's habit editor"
+added = 2026-11-08
+block = "B148"
