@@ -760,3 +760,15 @@ block = "B147"
 [features.linux]
 text = "Every control, row and status is named for screen readers, and the keyboard reaches everything: Ctrl+K searches and opens a chat with the keyboard in its composer, and focus comes back where it was when a sheet closes."
 where = "Everywhere"
+
+[[features]]
+id = "computer-use"
+group = "chats"
+name = "Agents that use your apps"
+text = "A chat can see and use your Mac apps, the iOS Simulator, an Android emulator and a browser it shares with you, in the background while you keep working. It asks before using each app and before anything that sends, buys, deletes or changes settings, never types passwords, and shows what it sees above the composer with a Stop button."
+where = "Settings > Computer use; a chat asks when it needs an app"
+added = 2026-11-08
+block = "B150"
+
+[features.linux]
+text = "A chat can use an Android emulator and a browser it shares with you, in the background while you keep working. It asks before each one and before anything that sends, buys, deletes or changes settings, never types passwords, and shows what it sees above the composer with a Stop button."
