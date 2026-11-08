@@ -55,6 +55,19 @@ export function visible(p: Palette): PaletteItem[] {
   return [...matches, ...p.messages];
 }
 
+/** Shown items in runs of one group, each with the index of its first item. */
+export function sections(
+  items: PaletteItem[],
+): { group: string; start: number; items: PaletteItem[] }[] {
+  const out: { group: string; start: number; items: PaletteItem[] }[] = [];
+  items.forEach((item, index) => {
+    const last = out.at(-1);
+    if (last?.group === item.group) last.items.push(item);
+    else out.push({ group: item.group, start: index, items: [item] });
+  });
+  return out;
+}
+
 export function selected(p: Palette): PaletteItem | null {
   return visible(p)[p.selection] ?? null;
 }

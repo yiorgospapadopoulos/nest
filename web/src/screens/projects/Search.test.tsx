@@ -90,6 +90,8 @@ describe("search", () => {
 
     await user.click(screen.getByRole("button", { name: "Clear search" }));
     expect(field()).toHaveValue("");
+    // B147: the button goes with the text; the keyboard stays in the field, not the page.
+    expect(field()).toHaveFocus();
     expect(screen.getByRole("button", { name: /^Other chat, Idle/ })).toBeInTheDocument();
   });
 

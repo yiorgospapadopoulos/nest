@@ -835,14 +835,15 @@ export function Composer({ target }: { target: ComposerTarget }) {
                 ? `Worktree ${chatPlace.name}`
                 : `Project folder, on ${placeName(chatPlace)}`
             }
-            aria-label={
-              chatPlace.kind === "worktree"
-                ? `Worktree ${chatPlace.name}`
-                : `On ${placeName(chatPlace)}`
-            }
           >
             <Glyph name="branch" size={11} />
-            {fit.showsPlaceName && <span>{placeName(chatPlace)}</span>}
+            {/* A label on a plain span is not read; this text is (B147). */}
+            <span className="sr">
+              {chatPlace.kind === "worktree"
+                ? `Worktree ${chatPlace.name}`
+                : `On ${placeName(chatPlace)}`}
+            </span>
+            {fit.showsPlaceName && <span aria-hidden="true">{placeName(chatPlace)}</span>}
           </span>
         )}
         <span className="grow" />

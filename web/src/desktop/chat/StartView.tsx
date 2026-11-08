@@ -43,7 +43,7 @@ export function StartView({ repo: name, onOpen, onCreated }: Props) {
           <aside className="dk-startv-col" aria-label="Waiting and recent">
             {waiting.length > 0 && (
               <>
-                <h3 className="dk-startv-lbl">Waiting on you · {waiting.length}</h3>
+                <h2 className="dk-startv-lbl">Waiting on you · {waiting.length}</h2>
                 {waiting.map((item) => (
                   <button
                     key={item.id}
@@ -63,7 +63,7 @@ export function StartView({ repo: name, onOpen, onCreated }: Props) {
             )}
             {recent.length > 0 && (
               <>
-                <h3 className="dk-startv-lbl">Recent chats</h3>
+                <h2 className="dk-startv-lbl">Recent chats</h2>
                 {recent.map((chat) => (
                   <button
                     key={chat.id}

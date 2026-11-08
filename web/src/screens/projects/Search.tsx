@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SearchHit, SearchResults } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { projectName } from "../../store/general.ts";
@@ -45,10 +45,12 @@ interface FieldProps {
 }
 
 export function SearchField({ query, onQuery }: FieldProps) {
+  const field = useRef<HTMLInputElement>(null);
   return (
     <div className="sfield gl" role="search">
       <Icon name="search" />
       <input
+        ref={field}
         type="search"
         aria-label="Search chats"
         placeholder="Search chats"
@@ -63,6 +65,8 @@ export function SearchField({ query, onQuery }: FieldProps) {
           aria-label="Clear search"
           onClick={() => {
             onQuery("");
+            // The button goes with the text, so the keyboard stays in the field (B147).
+            field.current?.focus();
           }}
         >
           <Icon name="x" />
