@@ -5,7 +5,13 @@
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { mergeOf, questionsOf, type QuestionView } from "../../api/payloads.ts";
 import type { Approval, PlanMode, SessionDiff } from "../../api/types.ts";
-import { usePermission, usePlan, useReview, useMerge } from "../../screens/approvals/hooks.ts";
+import {
+  usePermission,
+  usePlan,
+  useReview,
+  useMerge,
+  useRestack,
+} from "../../screens/approvals/hooks.ts";
 import { useStore } from "../../store/context.ts";
 import { engineName } from "../../store/selectors.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
@@ -26,6 +32,7 @@ const TITLES: Record<Approval["kind"], string> = {
   merge: "Ready to merge",
   review: "Ready for review",
   review_comments: "Review comments",
+  restack: "Branch to move",
 };
 
 export function ApprovalCard({ approval, style }: { approval: Approval; style: CardStyle }) {
@@ -55,6 +62,9 @@ export function ApprovalCard({ approval, style }: { approval: Approval; style: C
       break;
     case "review_comments":
       body = <p className="dc-ask-t">{approval.title}</p>;
+      break;
+    case "restack":
+      body = <RestackBody approval={approval} />;
       break;
   }
   return (
@@ -366,6 +376,35 @@ function MergeBody({ approval }: { approval: Approval }) {
           kind="plain"
           disabled={busy}
           onClick={() => void actions.resolve(approval, { dismiss: true }, "Merge dismissed")}
+        >
+          Dismiss
+        </Button>
+      </ActionRow>
+    </>
+  );
+}
+
+/** A stacked branch to move onto where the branch under it went, then Dismiss (B149). */
+function RestackBody({ approval }: { approval: Approval }) {
+  const { actions } = useStore();
+  const { view, title, action, busy, restack } = useRestack(approval);
+  return (
+    <>
+      <p className="dc-ask-t">{title}</p>
+      {view.error !== null && <p className="dc-ask-why lines">{view.error}</p>}
+      <ActionRow>
+        <Button kind="primary" disabled={busy} onClick={() => void restack()}>
+          {action.label}
+        </Button>
+        {view.url !== null && (
+          <a className="dk-btn k-plain" href={view.url} target="_blank" rel="noreferrer">
+            Open on GitHub
+          </a>
+        )}
+        <Button
+          kind="plain"
+          disabled={busy}
+          onClick={() => void actions.resolve(approval, { dismiss: true }, "Dismissed")}
         >
           Dismiss
         </Button>

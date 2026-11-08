@@ -2313,6 +2313,51 @@ final class Shell {
         }
     }
 
+    func setAutoMerge(_ session: String, _ on: Bool) {
+        run("Could not change Merge when checks pass") {
+            try await self.sessions.setAutoMerge(session, on)
+        }
+    }
+
+    /// The pull request popover's restack button (B149).
+    func restack(_ session: Session, _ action: RestackAction) {
+        run(action.failure) {
+            try await self.sessions.restack(session.id)
+            self.show("\(action == .rebase ? "Rebased" : "Pushed") \(session.title)", kind: .done)
+        }
+    }
+
+    /// The restack card's button; the daemon resolves the card.
+    func restack(_ approval: Approval, _ action: RestackAction) {
+        run(action.failure) {
+            self.sessions.insert(try await self.approvals.restack(approval))
+            self.show("\(action == .rebase ? "Rebased" : "Pushed") \(approval.title)", kind: .done)
+        }
+    }
+
+    func writeReviewGuide(_ session: String) {
+        run("Could not write the review guide") {
+            try await self.sessions.writeReviewGuide(session)
+        }
+    }
+
+    func postReviewGuide(_ session: String) {
+        run("Could not post the review guide") {
+            try await self.sessions.postReviewGuide(session)
+            self.show("Posted the review guide on GitHub", kind: .done)
+        }
+    }
+
+    /// A new chat whose worktree starts from the chat's branch; the daemon stacks it on
+    /// that chat (B149).
+    func newChat(onTopOf session: Session) {
+        guard let branch = session.branch else { return }
+        if project != session.repo {
+            openProject(session.repo)
+        }
+        newChat().chosenPlace = .newWorktree(from: branch)
+    }
+
     /// A start screen issue row: the start draft gets the issue, its first message (B101).
     func startFromIssue(_ issue: IssueSummary) {
         let draft = startDraft()

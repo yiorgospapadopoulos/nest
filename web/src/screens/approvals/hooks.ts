@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { mergeOf, permissionOf, planOf, reviewOf } from "../../api/payloads.ts";
+import { mergeOf, permissionOf, planOf, restackOf, reviewOf } from "../../api/payloads.ts";
 import type { Approval, ApproveBody, PlanMode, Session, SessionDiff } from "../../api/types.ts";
 import type { RemotePrompt } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
 import { planModes } from "../chat/options.ts";
+import { restackAction, restackTitle } from "../chat/prWork.ts";
 
 /** Where the session's agent works; tool paths inside it are shown relative to it. */
 export function workRoot(session: Session | undefined): string | null {
@@ -229,6 +230,21 @@ export function useMerge(approval: Approval) {
     busy,
     // The branch stays unless `deleteBranch` (B96).
     merge: (deleteBranch = false) => run(() => actions.merge(approval, view.number, deleteBranch)),
+  };
+}
+
+/** A stacked branch to move (B149): the rebase, push or both, as the PR details offer it. */
+export function useRestack(approval: Approval) {
+  const { actions } = useStore();
+  const { busy, run } = useBusy();
+  const view = restackOf(approval);
+  const action = restackAction(view.rebased, view.number !== null);
+  return {
+    view,
+    title: restackTitle(view),
+    action,
+    busy,
+    restack: () => run(() => actions.restack(approval.session_id, action.done, approval)),
   };
 }
 

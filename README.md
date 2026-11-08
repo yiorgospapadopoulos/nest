@@ -110,7 +110,7 @@ Click the branch next to the project's name to open the branch map. It draws eve
 
 ### Reviews and pull requests
 
-When a turn changes files, a bar above the message box shows what changed. **Review** opens the diff. **Approve** commits it, and for a worktree chat also pushes the branch and opens a pull request. Nest then follows the pull request's checks: if they fail, it can send the failing log to the chat; when they pass, it offers the merge.
+When a turn changes files, a bar above the message box shows what changed. **Review** opens the diff. **Approve** commits it, and for a worktree chat also pushes the branch and opens a pull request. Nest then follows the pull request's checks: if they fail, it can send the failing log to the chat; when they pass, it offers the merge. You can also have it merge by itself once the checks pass, start a chat on top of another chat's branch for a stacked pull request, and ask an agent for a review guide: what changed, where to look and the risks.
 
 ### The board
 

@@ -34,6 +34,7 @@ from nestd.issues.message import issue_message, issue_meta
 from nestd.issues.models import Issue
 from nestd.local.models import is_local
 from nestd.providers.base import AgentProvider, AgentTask, ApprovalHandler, MessageBlock
+from nestd.prs.models import Stack
 from nestd.prs.untrusted import one_line
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
 from nestd.sessions.bookkeeping import isolated
@@ -479,6 +480,8 @@ class SessionManager:
         session = await self._store.create(
             new, branch=branch, worktree_path=None if joined is None else joined.path
         )
+        if mode == "worktree" and place is None and request.base is not None:
+            session = await self._stack_on(session, request.base)
         if on_autopilot:
             assert request.autopilot is not None  # noqa: S101 (`on_autopilot` says so)
             session = await self.autopilot.start(
@@ -504,6 +507,17 @@ class SessionManager:
             )
         )
         return session
+
+    async def _stack_on(self, session: Session, base: str) -> Session:
+        """A new worktree chat starting from another open chat's branch is stacked on it:
+        its pull request merges into that branch until that one's merges (B149).
+        """
+        parent = await self._store.chat_on_branch(session.repo, base)
+        if parent is None or parent.id == session.id:
+            return session
+        return await self._store.set_quietly(
+            session.id, stack=Stack(parent=parent.id, parent_branch=base)
+        )
 
     async def _place(self, repo: RepoConfig, request: CreateSession) -> Place | None:
         """Where a new chat on an existing branch or worktree works (B96); None for any

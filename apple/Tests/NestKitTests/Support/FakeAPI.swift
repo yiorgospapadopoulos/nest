@@ -574,6 +574,26 @@ final class FakeAPI: NestAPI {
         }
     }
 
+    func setAutoMerge(_ id: String, enabled: Bool) async throws -> Session {
+        try call("setAutoMerge", "\(id) \(enabled)") { state in
+            session(id, in: &state) {
+                $0.mergeWhenReady = enabled ? MergeWhenReady() : nil
+            }
+        }
+    }
+
+    func restack(_ id: String) async throws -> Session {
+        try call("restack", id) { state in session(id, in: &state) { $0.stack?.restack = nil } }
+    }
+
+    func writeReviewGuide(_ id: String) async throws -> Session {
+        try call("writeReviewGuide", id) { state in session(id, in: &state) { _ in } }
+    }
+
+    func postReviewGuide(_ id: String) async throws -> Session {
+        try call("postReviewGuide", id) { state in session(id, in: &state) { _ in } }
+    }
+
     func runStatus(_ id: String) async throws -> RunStatus {
         try runCall("runStatus", id) { _ in }
     }

@@ -217,6 +217,23 @@ def test_a_chosen_size_to_compact_at_reaches_claude_codes_own_setting(tmp_path: 
     assert options.env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "400000"
 
 
+def test_a_bare_run_has_no_tools_and_none_of_the_users_setup(tmp_path: Path) -> None:
+    """B149: a review guide reads a diff an agent wrote; with no tools, settings, MCP
+    servers or plugins, nothing written in it can act, whatever the user's allow rules.
+    """
+    options = build_options(
+        SessionSpec(cwd=tmp_path, permission_mode="default", keep_history=False, bare=True),
+        ScriptedHandler(PermissionDecision("allow")),
+    )
+
+    assert options.tools == []
+    assert options.allowed_tools == []
+    assert options.setting_sources == []
+    assert options.strict_mcp_config is True
+    assert options.mcp_servers == {}
+    assert options.max_turns == 1
+
+
 def test_a_run_on_an_added_account_points_claude_code_at_its_profile(tmp_path: Path) -> None:
     """B98: the account's CLAUDE_CONFIG_DIR wins over the shell's."""
     account = RunAccount("0123456789ab", {"CLAUDE_CONFIG_DIR": str(tmp_path / "profile")})

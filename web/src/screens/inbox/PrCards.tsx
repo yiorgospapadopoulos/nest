@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { Approval, Session } from "../../api/types.ts";
+import { useStore } from "../../store/context.ts";
 import type { CiFailure } from "../../store/selectors.ts";
-import { useCiFailure, useMerge } from "../approvals/hooks.ts";
+import { useCiFailure, useMerge, useRestack } from "../approvals/hooks.ts";
 import { FoldRow } from "./FoldRow.tsx";
 import { checksFailedLine, lineText } from "./needsLine.ts";
 
@@ -46,6 +47,35 @@ export function MergeDetail({
         />
         Also delete the branch
       </label>
+    </>
+  );
+}
+
+/** A stacked branch to move onto where the branch under it went (B149), or Dismiss. */
+export function RestackDetail({ approval }: { approval: Approval }) {
+  const { actions } = useStore();
+  const { view, title, action, busy, restack } = useRestack(approval);
+  return (
+    <>
+      <div className="cq">{title}</div>
+      {view.error !== null && <div className="why lines">{view.error}</div>}
+      <div className="acts">
+        <button className="b b-pri" disabled={busy} onClick={() => void restack()}>
+          {action.label}
+        </button>
+        {view.url !== null && (
+          <a className="b qb2" href={view.url} target="_blank" rel="noreferrer">
+            Open on GitHub
+          </a>
+        )}
+        <button
+          className="b qb2"
+          disabled={busy}
+          onClick={() => void actions.resolve(approval, { dismiss: true }, "Dismissed")}
+        >
+          Dismiss
+        </button>
+      </div>
     </>
   );
 }

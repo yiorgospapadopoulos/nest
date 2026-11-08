@@ -207,6 +207,16 @@ class SessionStore:
         )
         return await self.get(session_id)
 
+    async def set_quietly(self, session_id: str, **changes: object) -> Session:
+        """Store changes without moving the session up the list."""
+        # Column names come from code, never from requests.
+        assignments = ", ".join(f"{name} = ?" for name in changes)
+        await self._db.execute(
+            f"UPDATE sessions SET {assignments} WHERE id = ?",  # noqa: S608
+            (*(_column(value) for value in changes.values()), session_id),
+        )
+        return await self.get(session_id)
+
     async def set_review(self, session_id: str, review: PrReview) -> Session:
         """Store the pull request's review comments without moving the session up the list."""
         await self._db.execute(
@@ -249,6 +259,34 @@ class SessionStore:
             "SELECT * FROM sessions WHERE pr_url IS NOT NULL AND (? IS NULL OR repo = ?)"
             " ORDER BY created_at DESC, rowid DESC",
             (repo, repo),
+        )
+        return [_session(row) for row in rows]
+
+    async def chat_on_branch(self, repo: str, branch: str) -> Session | None:
+        """The open worktree chat of the repo on `branch`, one with a pull request first,
+        then the newest; a chat stacked on another starts from it (B149).
+        """
+        rows = await self._db.fetch_all(
+            "SELECT * FROM sessions WHERE repo = ? AND branch = ? AND mode = 'worktree'"
+            " AND state != ? AND archived_at IS NULL"
+            " ORDER BY pr_url IS NULL, created_at DESC, rowid DESC LIMIT 1",
+            (repo, branch, SessionState.CLOSED),
+        )
+        return _session(rows[0]) if rows else None
+
+    async def writing_guides(self) -> list[str]:
+        """Sessions whose review guide was being written (B149)."""
+        rows = await self._db.fetch_all(
+            "SELECT id FROM sessions WHERE json_extract(pr_guide, '$.state') = 'writing'"
+        )
+        return [str(row["id"]) for row in rows]
+
+    async def stacked_on(self, session_id: str) -> list[Session]:
+        """The open chats whose branch starts from the session's, oldest first (B149)."""
+        rows = await self._db.fetch_all(
+            "SELECT * FROM sessions WHERE json_extract(stack, '$.parent') = ? AND state != ?"
+            " ORDER BY created_at, rowid",
+            (session_id, SessionState.CLOSED),
         )
         return [_session(row) for row in rows]
 
@@ -400,6 +438,9 @@ _JSON_COLUMNS = (
     "issue",
     "started_by_trigger",
     "review",
+    "merge_when_ready",
+    "stack",
+    "pr_guide",
     "pending_worktree",
     "autopilot",
 )

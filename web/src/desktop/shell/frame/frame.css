@@ -1973,6 +1973,20 @@ html.desk .ewl {
   text-align: center;
   font-weight: 600;
 }
+.fr-prstack {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-meta);
+  text-align: left;
+  cursor: pointer;
+}
+.fr-prstack:hover:enabled {
+  color: var(--t1);
+}
+.fr-prstack:disabled {
+  cursor: default;
+}
 .fr-prstatus {
   padding-left: 20px;
   font-size: var(--fs-meta);

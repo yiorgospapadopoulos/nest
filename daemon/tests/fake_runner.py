@@ -83,7 +83,9 @@ class FakeRunner:
         )
         if failure is not None:
             raise failure
-        output = self.outputs.pop(" ".join(words[:2]), None)
+        output = self.outputs.pop(" ".join(words[:3]), None) or self.outputs.pop(
+            " ".join(words[:2]), None
+        )
         if output is not None:
             return output
         if tuple(argv[:3]) == ("gh", "pr", "view"):

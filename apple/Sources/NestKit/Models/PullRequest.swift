@@ -72,6 +72,10 @@ public struct PullRequest: Codable, Sendable, Hashable {
     public var mergeState: String?
     public var reviewDecision: String?
     public var headSHA: String?
+    /// The branch it merges into; missing on daemons before B149.
+    public var baseBranch: String?
+    /// Set while GitHub's own auto-merge is on for it (B149).
+    public var autoMerge: GitHubAutoMerge?
     public var createdAt: Date?
     /// When Nest last saw something change, and when it last asked GitHub.
     public var changedAt: Date
@@ -82,6 +86,8 @@ public struct PullRequest: Codable, Sendable, Hashable {
         case mergeState = "merge_state"
         case reviewDecision = "review_decision"
         case headSHA = "head_sha"
+        case baseBranch = "base_branch"
+        case autoMerge = "auto_merge"
         case createdAt = "created_at"
         case changedAt = "changed_at"
         case updatedAt = "updated_at"
@@ -91,6 +97,37 @@ public struct PullRequest: Codable, Sendable, Hashable {
     public var failingChecks: [String] {
         checks.items.filter { $0.state == .failure }.map(\.name)
     }
+}
+
+/// GitHub's own auto-merge, on for a pull request; it merges there when checks pass.
+public struct GitHubAutoMerge: Codable, Sendable, Hashable {
+    public var enabledAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case enabledAt = "enabled_at"
+    }
+}
+
+/// A chat's "Merge when checks pass" (B149): Nest merges the pull request itself once it is
+/// green, when GitHub's auto-merge is not available for it.
+public struct MergeWhenReady: Codable, Sendable, Hashable {
+    public var method: MergeMethod
+    public var deleteBranch: Bool
+
+    public init(method: MergeMethod = .squash, deleteBranch: Bool = false) {
+        self.method = method
+        self.deleteBranch = deleteBranch
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case method
+        case deleteBranch = "delete_branch"
+    }
+}
+
+/// `PATCH /api/sessions/{id}/pr/auto-merge`; the daemon squashes and keeps the branch.
+struct AutoMergeRequest: Encodable {
+    var enabled: Bool
 }
 
 /// A merge approval's payload: the pull request is green and mergeable at this commit.
@@ -174,6 +211,22 @@ public enum PRBadge {
     /// Whether the chat sends new review comments itself; off until the user turns it on.
     public static func autoSends(_ session: Session) -> Bool {
         session.review?.autoSend ?? false
+    }
+
+    public static let mergeWhenReadyTitle = "Merge when checks pass"
+
+    /// On while Nest waits to merge or GitHub's own auto-merge is on.
+    public static func mergesWhenReady(_ session: Session) -> Bool {
+        session.mergeWhenReady != nil || session.pr?.autoMerge != nil
+    }
+
+    /// Who merges it, while the switch is on; nil while it is off.
+    public static func mergeWhenReadyDetail(_ session: Session) -> String? {
+        if session.pr?.autoMerge != nil {
+            return "GitHub merges it when checks pass"
+        }
+        return session.mergeWhenReady == nil
+            ? nil : "Nest merges it when checks pass, while Nest is running"
     }
 
     public static func stateLabel(_ state: PRState) -> String {

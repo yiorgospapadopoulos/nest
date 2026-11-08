@@ -478,7 +478,7 @@ async def test_what_codex_lacks_fails_cleanly(tmp_path: Path) -> None:
     assert (rewind.can_rewind, rewind.error) == (False, NO_REWIND)
     assert not await run.stop_task("task-1")
     assert await run.context_usage() is None
-    assert {"slash_commands", "withdraw"} == CODEX_UNSUPPORTED
+    assert {"slash_commands", "withdraw", "review_guide"} == CODEX_UNSUPPORTED
     assert codex.unsupported == CODEX_UNSUPPORTED
     await run.close()
 

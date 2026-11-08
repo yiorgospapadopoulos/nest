@@ -134,8 +134,10 @@ from nestd.providers.codex_trust import forget_trust
 from nestd.providers.one_off import cheapest
 from nestd.providers.shell_env import LoginShellEnv, ShellEnvSource, login_shell
 from nestd.prs.adopt import PrAdopter
+from nestd.prs.guide import ReviewGuides
 from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
+from nestd.prs.stacks import Stacks
 from nestd.reactions import SessionReactions, StateFollower
 from nestd.repos.branch_watch import BranchWatch
 from nestd.repos.fetching import RepoFetcher
@@ -214,6 +216,8 @@ class AppContext:
     usage_refresher: UsageRefresher
     commands: CommandStore
     prs: PullRequests
+    stacks: Stacks
+    guides: ReviewGuides
     pr_adopter: PrAdopter
     # Open GitHub issues for new chats (B101).
     issues: IssueService
@@ -773,13 +777,46 @@ class AppContext:
             check_soon=monitor.check_soon,
         )
         followers.append(pr_adopter)
+        publisher = GitPublisher(runner, store, bus, paths.data_dir)
         reviews = ReviewActions(
             sessions=sessions,
             repos=repos,
             approvals=approvals,
             tracking=tracking,
-            publisher=GitPublisher(runner, store, bus, paths.data_dir),
+            publisher=publisher,
             prs=monitor,
+        )
+        prs = PullRequests(
+            sessions=sessions,
+            store=store,
+            approvals=approvals,
+            monitor=monitor,
+            bus=bus,
+            run=runner,
+            cwd=paths.data_dir,
+        )
+        stacks = Stacks(
+            store=store,
+            sessions=sessions,
+            approvals=approvals,
+            publisher=publisher,
+            repos=repos,
+            monitor=monitor,
+            bus=bus,
+            run=runner,
+            neutral_cwd=paths.data_dir,
+        )
+        prs.on_merged(stacks.parent_merged)
+        guides = ReviewGuides(
+            store=store,
+            bus=bus,
+            clock=clock,
+            engines=sessions.engines,
+            local=local,
+            artifacts=artifacts,
+            run=runner,
+            cwd=paths.data_dir,
+            folder=paths.guides_dir,
         )
         notifications = NotificationDelivery(
             bus,
@@ -954,15 +991,9 @@ class AppContext:
             fetcher=RepoFetcher(bus),
             usage_refresher=usage_refresher,
             commands=commands,
-            prs=PullRequests(
-                sessions=sessions,
-                store=store,
-                approvals=approvals,
-                monitor=monitor,
-                bus=bus,
-                run=runner,
-                cwd=paths.data_dir,
-            ),
+            prs=prs,
+            stacks=stacks,
+            guides=guides,
             search=search,
             issues=issues,
             pr_adopter=pr_adopter,

@@ -1086,6 +1086,19 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "PATCH", "/api/sessions/s1/pr/review", body: #"{"auto_send":true}"#,
             response: sessionJSON
         ) { _ = try await $0.setReviewAutoSend("s1", true) },
+        RouteCase(
+            "PATCH", "/api/sessions/s1/pr/auto-merge", body: #"{"enabled":false}"#,
+            response: sessionJSON
+        ) { _ = try await $0.setAutoMerge("s1", enabled: false) },
+        RouteCase("POST", "/api/sessions/s1/restack", response: sessionJSON) {
+            _ = try await $0.restack("s1")
+        },
+        RouteCase("POST", "/api/sessions/s1/pr/guide", response: sessionJSON) {
+            _ = try await $0.writeReviewGuide("s1")
+        },
+        RouteCase("POST", "/api/sessions/s1/pr/guide/post", response: sessionJSON) {
+            _ = try await $0.postReviewGuide("s1")
+        },
         RouteCase("GET", "/api/sessions/s1/run", response: runStatusJSON) {
             _ = try await $0.runStatus("s1")
         },
