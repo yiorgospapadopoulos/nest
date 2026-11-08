@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 from nestd.attachments.store import (
-    MAX_ATTACHMENT_BYTES,
     AttachmentStore,
     AttachmentTooLargeError,
     UnknownAttachmentError,
@@ -38,19 +37,44 @@ async def test_save_writes_the_file_under_its_id(
 
 async def test_media_type_is_guessed_when_missing(store: AttachmentStore) -> None:
     pdf = await store.save("notes.pdf", b"%PDF", None)
-    unknown = await store.save("blob", b"?", None)
+    unknown = await store.save("blob", b"\x00\x01", None)
 
     assert pdf.media_type == "application/pdf"
     assert pdf.is_image is False
     assert unknown.media_type == "application/octet-stream"
 
 
-async def test_size_limit(store: AttachmentStore) -> None:
-    await store.save("max.bin", b"\0" * MAX_ATTACHMENT_BYTES, None)
+@pytest.mark.parametrize(
+    ("name", "data", "given", "expected"),
+    [
+        # Browsers call TypeScript a video stream.
+        ("app.ts", b"export const a = 1;\n", "video/mp2t", "text/plain"),
+        ("server.log", "caf\u00e9 ok\n".encode(), "application/octet-stream", "text/plain"),
+        ("clip.ts", b"\x47\x00\x11\x10", "video/mp2t", "video/mp2t"),
+        # A known type is kept even when its content would pass as text.
+        ("doc.pdf", b"%PDF-1.4 plain", "application/pdf", "application/pdf"),
+    ],
+)
+async def test_a_file_of_unsure_type_that_is_text_is_saved_as_text(
+    store: AttachmentStore, name: str, data: bytes, given: str, expected: str
+) -> None:
+    attachment = await store.save(name, data, given)
 
-    with pytest.raises(AttachmentTooLargeError, match="larger than 20 MB") as caught:
-        await store.save("big.bin", b"\0" * (MAX_ATTACHMENT_BYTES + 1), None)
+    assert attachment.media_type == expected
+
+
+async def test_size_limit_keeps_nothing_of_a_refused_file(
+    db: Database, clock: FakeClock, tmp_path: Path
+) -> None:
+    root = tmp_path / "attachments"
+    store = AttachmentStore(db, clock, root, max_bytes=3 * 1024 * 1024)
+    await store.save("max.bin", b"\0" * store.max_bytes, None)
+
+    with pytest.raises(AttachmentTooLargeError, match="larger than 3 MB") as caught:
+        await store.save("big.bin", b"\0" * (store.max_bytes + 1), None)
     assert caught.value.status_code == 413
+    assert len(list(root.iterdir())) == 1
+    assert await db.fetch_all("SELECT id FROM attachments WHERE filename = 'big.bin'") == []
 
 
 @pytest.mark.parametrize(

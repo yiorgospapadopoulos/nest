@@ -1,207 +1,52 @@
-import { Fragment, memo, use, useMemo, type ReactNode } from "react";
+import type { Element, ElementContent } from "hast";
+import { memo, use, useEffect, useMemo, useState, type ReactNode } from "react";
+import ReactMarkdown, { type Components, type Options } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import { remarkChatText } from "./chatText.ts";
 import { codeTokens } from "./codeColors.ts";
-import { codeRef, fileRefsIn, linkRef } from "./fileRefs.ts";
-import { parse, type Block, type ListEntry } from "./markdownBlocks.ts";
-import { OpenFileContext, type OpenFile } from "./openFile.ts";
+import { codeRef, lineIn, linkRef } from "./fileRefs.ts";
+import { hasMath, useMath } from "./math.ts";
+import {
+  CopyTextContext,
+  OpenFileContext,
+  ReadFileContext,
+  type OpenFile,
+  type ReadFile,
+} from "./openFile.ts";
 
-// A small markdown reader for messages and plans. It builds React elements only, never raw
-// HTML.
+// Messages and plans as Markdown (B144): CommonMark with tables, task lists, strikethrough
+// and math. It builds React elements only: raw HTML shows as text and only web and file
+// links open.
 
-// A marked span's text: an escaped character in it is not its closing mark.
-const SPAN = String.raw`(?:\\.|[^\\\n])+?`;
-// In order of precedence, each with one capture but the links' two and the bare address's
-// none: an escape, inline code, bold, italic (not inside words), strikethrough, a link or an
-// image, an address in angle brackets, and a bare address.
-const INLINE = new RegExp(
-  [
-    /\\([!-/:-@[-`{-~])/.source,
-    /`([^`]+)`/.source,
-    String.raw`\*\*(${SPAN})\*\*`,
-    `__(${SPAN})__`,
-    String.raw`\*(?!\s)(${SPAN})\*`,
-    String.raw`\b_(?!\s)(${SPAN})_\b`,
-    `~~(?!\\s)(${SPAN})~~`,
-    // A link, or an image, shown as a link: nothing is loaded from what an agent wrote.
-    /!?\[([^\]]*)\]\(([^)\s]+)\)/.source,
-    /<(https?:\/\/[^\s<>]+)>/.source,
-    /\bhttps?:\/\/[^\s<>]+/.source,
-  ].join("|"),
-  "gi",
-);
 const SAFE_URL = /^https?:\/\//i;
-const WEB_ADDRESS = /^https?:\/\/./i;
-const TRAILING = /[?!.,:;*_~'"]$/;
+const MATH = { singleDollarTextMath: false };
 
-function count(text: string, char: string): number {
-  return text.split(char).length - 1;
-}
-
-/** A bare address without the punctuation that ends the sentence around it. */
-function addressIn(found: string): string {
-  let url = found;
-  for (;;) {
-    const unmatched = url.endsWith(")") && count(url, ")") > count(url, "(");
-    if (!unmatched && !TRAILING.test(url)) return url;
-    url = url.slice(0, -1);
-  }
-}
-
-function link(key: number, url: string, label: ReactNode): ReactNode {
-  return (
-    <a key={key} href={url} target="_blank" rel="noopener noreferrer">
-      {label}
-    </a>
-  );
-}
+type Plugins = NonNullable<Options["remarkPlugins"]>;
 
 /** Opens on a click, keeps its text selectable and copied as it is, and has no href to route. */
-function fileLink(key: number, path: string, label: ReactNode, open: OpenFile): ReactNode {
+interface FileLinkProps {
+  path: string;
+  line: number | null;
+  open: OpenFile;
+  children: ReactNode;
+}
+
+function FileLink({ path, line, open, children }: FileLinkProps) {
   return (
     <a
-      key={key}
       className="md-file"
       role="link"
       tabIndex={0}
       onClick={() => {
-        open(path);
+        open(path, line);
       }}
       onKeyDown={(event) => {
-        if (event.key === "Enter") open(path);
+        if (event.key === "Enter") open(path, line);
       }}
     >
-      {label}
+      {children}
     </a>
-  );
-}
-
-/** Plain text, with what names a file as links. */
-function plain(text: string, offset: number, open: OpenFile | null): ReactNode[] {
-  if (open === null) return [text];
-  const out: ReactNode[] = [];
-  let last = 0;
-  for (const ref of fileRefsIn(text)) {
-    if (ref.start > last) out.push(text.slice(last, ref.start));
-    out.push(fileLink(offset + ref.start, ref.path, text.slice(ref.start, ref.end), open));
-    last = ref.end;
-  }
-  if (last < text.length) out.push(text.slice(last));
-  return out;
-}
-
-// `links` is off inside a link's label, as a link cannot hold another.
-function inline(text: string, open: OpenFile | null, links = true): ReactNode[] {
-  const files = links ? open : null;
-  const out: ReactNode[] = [];
-  let last = 0;
-  for (const match of text.matchAll(INLINE)) {
-    const [whole, escaped, code, bold1, bold2, em1, em2, struck, label, url, auto] = match;
-    if (match.index > last) out.push(...plain(text.slice(last, match.index), last, files));
-    const key = match.index;
-    const strong = bold1 ?? bold2;
-    const em = em1 ?? em2;
-    last = match.index + whole.length;
-    if (escaped !== undefined) out.push(escaped);
-    else if (code !== undefined) {
-      const path = files === null ? null : codeRef(code);
-      const shown = <code key={key}>{code}</code>;
-      out.push(files !== null && path !== null ? fileLink(key, path, shown, files) : shown);
-    } else if (strong !== undefined) {
-      out.push(<strong key={key}>{inline(strong, open, links)}</strong>);
-    } else if (em !== undefined) out.push(<em key={key}>{inline(em, open, links)}</em>);
-    else if (struck !== undefined) out.push(<del key={key}>{inline(struck, open, links)}</del>);
-    else if (label !== undefined) {
-      // A link only to a web address or a file, otherwise its label alone; an image with no
-      // words is named by its address.
-      const shown = inline(label === "" ? (url ?? "") : label, open, false);
-      const path = files === null || url === undefined ? null : linkRef(url);
-      if (url !== undefined && SAFE_URL.test(url)) out.push(link(key, url, shown));
-      else if (files !== null && path !== null) out.push(fileLink(key, path, shown, files));
-      else out.push(<Fragment key={key}>{shown}</Fragment>);
-    } else if (auto !== undefined) {
-      out.push(links ? link(key, auto, auto) : auto);
-    } else {
-      const address = addressIn(whole);
-      if (links && WEB_ADDRESS.test(address)) {
-        out.push(link(key, address, address));
-        // What was left off goes on as text.
-        last = match.index + address.length;
-      } else {
-        out.push(whole);
-      }
-    }
-  }
-  if (last < text.length) out.push(...plain(text.slice(last), last, files));
-  return out;
-}
-
-function heading(level: number, text: string, key: number, open: OpenFile | null): ReactNode {
-  // Inside a card that already sits under page and section headings.
-  const content = inline(text, open);
-  if (level === 1) return <h3 key={key}>{content}</h3>;
-  if (level === 2) return <h4 key={key}>{content}</h4>;
-  if (level === 3) return <h5 key={key}>{content}</h5>;
-  return <h6 key={key}>{content}</h6>;
-}
-
-function entry(item: ListEntry, key: number, open: OpenFile | null): ReactNode {
-  if (item.kind === "more") {
-    return (
-      <li key={key} className={`d${String(item.depth)} more`}>
-        <span className="mk sp" aria-hidden="true">
-          {item.marker}
-        </span>
-        <div className="md-in">{blocks(item.blocks, open)}</div>
-      </li>
-    );
-  }
-  return (
-    <li key={key} className={`d${String(item.depth)}`}>
-      {item.task === null ? (
-        <span className="mk" aria-hidden="true">
-          {item.marker}
-        </span>
-      ) : (
-        <span
-          className={item.task ? "md-box on" : "md-box"}
-          role="img"
-          aria-label={item.task ? "Done" : "Not done"}
-        />
-      )}
-      <span>{inline(item.text, open)}</span>
-    </li>
-  );
-}
-
-function table(
-  block: Extract<Block, { kind: "table" }>,
-  key: number,
-  open: OpenFile | null,
-): ReactNode {
-  return (
-    <div key={key} className="md-tw">
-      <table>
-        <thead>
-          <tr>
-            {block.header.map((cell, index) => (
-              <th key={index} scope="col" className={block.aligns[index]}>
-                {inline(cell, open)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {block.rows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {row.map((cell, index) => (
-                <td key={index} className={block.aligns[index]}>
-                  {inline(cell, open)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
@@ -228,33 +73,204 @@ const CodeBlock = memo(function CodeBlock({
     if (last < text.length) out.push(text.slice(last));
     return out;
   }, [text, language]);
-  return <pre>{parts}</pre>;
+  return (
+    <div className="md-code">
+      <pre>{parts}</pre>
+      <CopyButton text={text} />
+    </div>
+  );
 });
 
-function render(block: Block, key: number, open: OpenFile | null): ReactNode {
-  switch (block.kind) {
-    case "heading":
-      return heading(block.level, block.text, key, open);
-    case "paragraph":
-      return <p key={key}>{inline(block.text, open)}</p>;
-    case "list":
-      return <ul key={key}>{block.entries.map((item, index) => entry(item, index, open))}</ul>;
-    case "pre":
-      return <CodeBlock key={key} text={block.text} language={block.language} />;
-    case "quote":
-      return <blockquote key={key}>{blocks(block.blocks, open)}</blockquote>;
-    case "table":
-      return table(block, key, open);
-    case "rule":
-      return <hr key={key} />;
+/** Copies a code block's text as written; says Copied for a moment. */
+function CopyButton({ text }: { text: string }) {
+  const copy = use(CopyTextContext);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!done) return;
+    const timer = window.setTimeout(() => {
+      setDone(false);
+    }, 1200);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [done]);
+  return (
+    <button
+      className="md-copy"
+      aria-label="Copy code"
+      onClick={() => {
+        void copy(text).then(() => {
+          setDone(true);
+        });
+      }}
+    >
+      {done ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+/** An image from the chat's folder, read through the daemon. */
+function LocalImage({ path, alt, read }: { path: string; alt: string; read: ReadFile }) {
+  const [url, setUrl] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    let made: string | null = null;
+    void read(path).then((blob) => {
+      if (!live) return;
+      made = blob === null ? null : URL.createObjectURL(blob);
+      setUrl(made);
+    });
+    return () => {
+      live = false;
+      if (made !== null) URL.revokeObjectURL(made);
+    };
+  }, [path, read]);
+  if (url === undefined) return <span className="md-img wait" aria-hidden="true" />;
+  if (url === null) return <>{alt === "" ? path : alt}</>;
+  return <img className="md-img" src={url} alt={alt} />;
+}
+
+/**
+ * A picture from the web loads only on a click (D173): its address is the agent's, and could
+ * carry what it read to the site, so nothing is fetched until the user asks.
+ */
+function WebImage({ url, alt }: { url: string; alt: string }) {
+  const [shown, setShown] = useState(false);
+  if (shown) {
+    return <img className="md-img" src={url} alt={alt} referrerPolicy="no-referrer" />;
   }
+  return (
+    <button
+      className="md-imgask"
+      title={url}
+      onClick={() => {
+        setShown(true);
+      }}
+    >
+      Show picture from {new URL(url).host}
+    </button>
+  );
 }
 
-function blocks(list: Block[], open: OpenFile | null): ReactNode[] {
-  return list.map((block, index) => render(block, index, open));
+function textOf(node: ElementContent): string {
+  if (node.type === "text") return node.value;
+  return node.type === "element" ? node.children.map(textOf).join("") : "";
 }
 
-export function Markdown({ text }: { text: string }) {
+function language(code: Element): string | null {
+  const names = code.properties.className;
+  const found = Array.isArray(names)
+    ? names.find((name) => typeof name === "string" && name.startsWith("language-"))
+    : undefined;
+  return typeof found === "string" ? found.slice("language-".length) : null;
+}
+
+function alignOf(node: Element | undefined): string | undefined {
+  const align = node?.properties.align;
+  return align === "right" ? "r" : align === "center" ? "c" : undefined;
+}
+
+function components(open: OpenFile | null, read: ReadFile | null): Components {
+  return {
+    // Inside a card that already sits under page and section headings.
+    h1: ({ children }) => <h3>{children}</h3>,
+    h2: ({ children }) => <h4>{children}</h4>,
+    h3: ({ children }) => <h5>{children}</h5>,
+    h4: ({ children }) => <h6>{children}</h6>,
+    h5: ({ children }) => <h6>{children}</h6>,
+    h6: ({ children }) => <h6>{children}</h6>,
+    a: ({ node, href = "", children }) => {
+      const named = node?.properties.dataNestPath;
+      if (typeof named === "string") {
+        const line = node?.properties.dataNestLine;
+        return open === null ? (
+          children
+        ) : (
+          <FileLink
+            path={named}
+            line={typeof line === "number" ? line : null}
+            open={open}
+            children={children}
+          />
+        );
+      }
+      if (SAFE_URL.test(href)) {
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        );
+      }
+      const path = open === null ? null : linkRef(href);
+      // A link only to a web address or a file, otherwise its words alone.
+      return path === null || open === null ? (
+        children
+      ) : (
+        <FileLink path={path} line={lineIn(href)} open={open} children={children} />
+      );
+    },
+    img: ({ src, alt = "" }) => {
+      const url = typeof src === "string" ? src : "";
+      if (SAFE_URL.test(url) && URL.canParse(url)) return <WebImage url={url} alt={alt} />;
+      const path = linkRef(url);
+      if (path !== null && read !== null) return <LocalImage path={path} alt={alt} read={read} />;
+      return alt === "" ? url : alt;
+    },
+    code: ({ children }) => {
+      const text = typeof children === "string" ? children : "";
+      const path = open === null ? null : codeRef(text);
+      const shown = <code>{children}</code>;
+      return path === null || open === null ? (
+        shown
+      ) : (
+        <FileLink path={path} line={lineIn(text)} open={open} children={shown} />
+      );
+    },
+    pre: ({ node }) => {
+      const code = node?.children[0];
+      if (code?.type !== "element") return null;
+      const text = textOf(code).replace(/\n$/, "");
+      return <CodeBlock text={text} language={language(code)} />;
+    },
+    table: ({ children }) => (
+      <div className="md-tw">
+        <table>{children}</table>
+      </div>
+    ),
+    th: ({ node, children }) => (
+      <th scope="col" className={alignOf(node)}>
+        {children}
+      </th>
+    ),
+    td: ({ node, children }) => <td className={alignOf(node)}>{children}</td>,
+    input: ({ checked }) => (
+      <span
+        className={checked === true ? "md-box on" : "md-box"}
+        role="img"
+        aria-label={checked === true ? "Done" : "Not done"}
+      />
+    ),
+  };
+}
+
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const open = use(OpenFileContext);
-  return <div className="md">{blocks(parse(text), open)}</div>;
-}
+  const read = use(ReadFileContext);
+  const katex = useMath(hasMath(text));
+  const shown = useMemo(() => components(open, read), [open, read]);
+  const remark = useMemo<Plugins>(
+    () => [remarkGfm, [remarkMath, MATH], [remarkChatText, { files: open !== null }]],
+    [open],
+  );
+  return (
+    <div className="md">
+      <ReactMarkdown
+        remarkPlugins={remark}
+        rehypePlugins={katex === null ? [] : [katex]}
+        components={shown}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+});

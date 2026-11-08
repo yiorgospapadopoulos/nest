@@ -48,6 +48,7 @@ from nestd.providers.base import (
     SessionSpec,
     Subagent,
     UserInput,
+    with_files,
 )
 from nestd.providers.claude_commands import context_usage, described_catalog
 from nestd.providers.claude_engine import engine_details
@@ -538,10 +539,7 @@ def _agent(subagent: Subagent, own_tools: frozenset[str]) -> AgentDefinition:
 
 
 def _user_message(user_input: UserInput) -> dict[str, Any]:
-    text = user_input.text
-    if user_input.file_paths:
-        listing = "\n".join(f"- {path}" for path in user_input.file_paths)
-        text = f"{text}\n\nAttached files:\n{listing}"
+    text = with_files(user_input.text, user_input.files)
     content: list[dict[str, Any]] = [
         {
             "type": "image",

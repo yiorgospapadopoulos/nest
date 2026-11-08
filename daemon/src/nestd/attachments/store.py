@@ -6,6 +6,7 @@ import mimetypes
 import re
 import shutil
 import sqlite3
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -16,10 +17,49 @@ from nestd.clock import Clock
 from nestd.errors import InvalidInputError, NestError, NotFoundError
 from nestd.storage.db import Database
 
-MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+MAX_ATTACHMENT_BYTES = 500 * 1024 * 1024
 MAX_FILENAME_LENGTH = 100
 # Image types the agent receives as image content; anything else is passed by path.
 IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+# Types of text that do not start with `text/`.
+TEXT_TYPES = frozenset(
+    {
+        "application/javascript",
+        "application/json",
+        "application/sql",
+        "application/toml",
+        "application/x-sh",
+        "application/x-yaml",
+        "application/xml",
+        "application/yaml",
+    }
+)
+# Types that say nothing about the content: a file with one of these is read to see if it is
+# text. `video/mp2t` is what `.ts` files get, which are more often TypeScript.
+UNSURE_TYPES = frozenset({"application/octet-stream", "video/mp2t"})
+SNIFF_BYTES = 8192
+CHUNK_BYTES = 1024 * 1024
+
+Read = Callable[[int], Awaitable[bytes]]
+
+
+def is_text_type(media_type: str) -> bool:
+    return (
+        media_type.startswith("text/")
+        or media_type in TEXT_TYPES
+        or media_type.endswith(("+json", "+xml"))
+    )
+
+
+def looks_like_text(head: bytes) -> bool:
+    """Whether a file's first bytes are UTF-8 text; a character cut off at the end is fine."""
+    if b"\0" in head:
+        return False
+    try:
+        head.decode()
+    except UnicodeDecodeError as error:
+        return error.start >= len(head) - 3 and error.reason == "unexpected end of data"
+    return True
 
 
 class AttachmentTooLargeError(NestError):
@@ -47,6 +87,10 @@ class Attachment(BaseModel):
     def is_image(self) -> bool:
         return self.media_type in IMAGE_TYPES
 
+    @property
+    def is_text(self) -> bool:
+        return is_text_type(self.media_type)
+
     def read_base64(self) -> str:
         return base64.b64encode(self.path.read_bytes()).decode()
 
@@ -73,27 +117,45 @@ def safe_filename(name: str) -> str:
 
 
 class AttachmentStore:
-    def __init__(self, db: Database, clock: Clock, root: Path) -> None:
+    def __init__(
+        self, db: Database, clock: Clock, root: Path, max_bytes: int = MAX_ATTACHMENT_BYTES
+    ) -> None:
         self._db = db
         self._clock = clock
         self._root = root
+        self.max_bytes = max_bytes
 
     async def save(self, filename: str, data: bytes, media_type: str | None) -> Attachment:
-        if len(data) > MAX_ATTACHMENT_BYTES:
-            msg = "attachments larger than 20 MB are not accepted"
-            raise AttachmentTooLargeError(msg)
+        async def read(size: int) -> bytes:
+            nonlocal data
+            chunk, data = data[:size], data[size:]
+            return chunk
+
+        return await self.save_from(filename, read, media_type)
+
+    async def save_from(self, filename: str, read: Read, media_type: str | None) -> Attachment:
+        """Saves what `read` gives, a chunk at a time, so a large file never sits in memory;
+        one past the limit is refused and nothing of it is kept.
+        """
         name = safe_filename(filename)
         attachment_id = uuid4().hex
         path = self._root / attachment_id / name
         path.parent.mkdir(parents=True)
-        await asyncio.to_thread(path.write_bytes, data)
+        try:
+            size, head = await self._write(path, read)
+        except AttachmentTooLargeError:
+            await asyncio.to_thread(self._delete_dirs, [path.parent])
+            raise
+        guessed = media_type or mimetypes.guess_type(name)[0] or "application/octet-stream"
         attachment = Attachment(
             id=attachment_id,
             session_id=None,
             filename=name,
-            media_type=media_type or mimetypes.guess_type(name)[0] or "application/octet-stream",
+            media_type="text/plain"
+            if guessed in UNSURE_TYPES and looks_like_text(head)
+            else guessed,
             path=path,
-            size=len(data),
+            size=size,
             created_at=self._clock.now(),
         )
         await self._db.execute(
@@ -109,6 +171,22 @@ class AttachmentStore:
             ),
         )
         return attachment
+
+    async def _write(self, path: Path, read: Read) -> tuple[int, bytes]:
+        """The size written and the first bytes, for telling text apart."""
+        size = 0
+        head = b""
+        with await asyncio.to_thread(path.open, "wb") as out:
+            while chunk := await read(CHUNK_BYTES):
+                size += len(chunk)
+                if size > self.max_bytes:
+                    limit = self.max_bytes // (1024 * 1024)
+                    msg = f"attachments larger than {limit} MB are not accepted"
+                    raise AttachmentTooLargeError(msg)
+                if len(head) < SNIFF_BYTES:
+                    head += chunk[: SNIFF_BYTES - len(head)]
+                await asyncio.to_thread(out.write, chunk)
+        return size, head
 
     async def get(self, attachment_id: str) -> Attachment:
         row = await self._db.fetch_one("SELECT * FROM attachments WHERE id = ?", (attachment_id,))
@@ -152,6 +230,13 @@ class AttachmentStore:
         return tuple(
             Path(row["path"]).parent for row in rows if row["media_type"] not in IMAGE_TYPES
         )
+
+    async def dirs(self, session_id: str) -> tuple[Path, ...]:
+        """The directories of all of a session's attachments, images included."""
+        rows = await self._db.fetch_all(
+            "SELECT path FROM attachments WHERE session_id = ?", (session_id,)
+        )
+        return tuple(Path(row["path"]).parent for row in rows)
 
     async def largest(self, limit: int) -> list[StoredAttachment]:
         """The largest attachments first, with the chat each was sent in."""

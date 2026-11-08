@@ -185,7 +185,7 @@ describe("chat view", () => {
       within(done)
         .getAllByRole("listitem")
         .map((li) => li.textContent),
-    ).toEqual(["•one", "•two"]);
+    ).toEqual(["one", "two"]);
     expect(done).not.toHaveTextContent("**");
 
     push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "So *far*" } });

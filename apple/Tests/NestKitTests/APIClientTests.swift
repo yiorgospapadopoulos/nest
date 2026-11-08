@@ -1329,33 +1329,33 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         defer { try? FileManager.default.removeItem(at: small) }
         #expect(try await AttachmentFile.read(small) == Data([0, 0, 0]))
 
-        let largest = try file(size: AttachmentFile.maximumSize)
+        let largest = try file(size: 8)
         defer { try? FileManager.default.removeItem(at: largest) }
-        #expect(try await AttachmentFile.read(largest).count == 20 * 1024 * 1024)
+        #expect(try await AttachmentFile.read(largest, limit: 8).count == 8)
     }
 
     @Test func refusesALargerFileBeforeReadingIt() async throws {
-        let large = try file(size: AttachmentFile.maximumSize + 1)
+        let large = try file(size: 9)
         defer { try? FileManager.default.removeItem(at: large) }
         await #expect(throws: AttachmentFileError.tooLarge) {
-            _ = try await AttachmentFile.read(large)
+            _ = try await AttachmentFile.read(large, limit: 8)
         }
         #expect(
             AttachmentFileError.tooLarge.localizedDescription
-                == "attachments larger than 20 MB are not accepted")
+                == "attachments larger than 500 MB are not accepted")
     }
 
     /// A file that grows after its size was checked is still cut off at the limit: the
     /// read itself stops one byte past it and refuses (audit M-8).
     @Test func aFileThatGrewAfterTheCheckIsRefusedAfterReading() throws {
-        let large = try file(size: AttachmentFile.maximumSize + 1)
+        let large = try file(size: 9)
         defer { try? FileManager.default.removeItem(at: large) }
         #expect(throws: AttachmentFileError.tooLarge) {
-            _ = try AttachmentFile.readCapped(large)
+            _ = try AttachmentFile.readCapped(large, limit: 8)
         }
-        let largest = try file(size: AttachmentFile.maximumSize)
+        let largest = try file(size: 8)
         defer { try? FileManager.default.removeItem(at: largest) }
-        #expect(try AttachmentFile.readCapped(largest).count == AttachmentFile.maximumSize)
+        #expect(try AttachmentFile.readCapped(largest, limit: 8).count == 8)
     }
 
     @Test func anEmptyFileReadsEmpty() async throws {
@@ -1388,7 +1388,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
 
     /// A link is read as the file it points to, size check included (audit BUG-78).
     @Test func aLinkIsCheckedAsItsTarget() async throws {
-        let large = try file(size: AttachmentFile.maximumSize + 1)
+        let large = try file(size: 9)
         let small = try file(size: 2)
         let links = [large, small].map { _ in
             FileManager.default.temporaryDirectory.appending(path: "\(UUID()).link")
@@ -1399,9 +1399,9 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             for url in [large, small] + links { try? FileManager.default.removeItem(at: url) }
         }
         await #expect(throws: AttachmentFileError.tooLarge) {
-            _ = try await AttachmentFile.read(links[0])
+            _ = try await AttachmentFile.read(links[0], limit: 8)
         }
-        #expect(try await AttachmentFile.read(links[1]) == Data([0, 0]))
+        #expect(try await AttachmentFile.read(links[1], limit: 8) == Data([0, 0]))
     }
 
     @Test func uploadsWithTheFilesNameAndType() async throws {

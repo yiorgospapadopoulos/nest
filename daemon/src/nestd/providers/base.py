@@ -1,6 +1,6 @@
 """Provider-neutral agent types, so engines other than Claude (Codex) can plug in later."""
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -471,11 +471,34 @@ class ImageInput:
 
 
 @dataclass(frozen=True)
+class FileInput:
+    """An attachment other than an image; the agent reads it from its absolute path."""
+
+    path: Path
+    media_type: str
+
+
+@dataclass(frozen=True)
 class UserInput:
     text: str
     images: tuple[ImageInput, ...] = ()
-    # Other attachments; the agent reads them from these absolute paths.
-    file_paths: tuple[Path, ...] = ()
+    files: tuple[FileInput, ...] = ()
+
+
+def with_files(text: str, files: Iterable[FileInput]) -> str:
+    """The message with its files listed by path, which is how Claude Code itself passes
+    a file: the agent opens it with its own tools (B144).
+    """
+    lines = [
+        f"- {file.path} (a video, which you cannot watch)"
+        if file.media_type.startswith("video/")
+        else f"- {file.path}"
+        for file in files
+    ]
+    if not lines:
+        return text
+    listing = "\n".join(lines)
+    return f"{text}\n\nAttached files:\n{listing}"
 
 
 @dataclass(frozen=True)

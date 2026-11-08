@@ -11,7 +11,7 @@ from nestd.attachments.store import Attachment
 from nestd.config.models import PermissionMode, RepoConfig
 from nestd.errors import ConflictError
 from nestd.events import types
-from nestd.providers.base import UserInput
+from nestd.providers.base import FileInput, UserInput
 from nestd.sessions.errors import SessionBusyError, SessionClosedError
 from nestd.sessions.live import LiveSession
 from nestd.sessions.models import QueuedMessage, Session, SessionState, UpdateSession
@@ -254,7 +254,7 @@ async def test_a_document_attached_while_background_tasks_run_keeps_the_run(env:
 
     (run,) = env.provider.runs
     assert not run.closed
-    assert run.inputs[1].file_paths == (doc.path,)
+    assert run.inputs[1].files == (FileInput(doc.path, "text/plain"),)
 
 
 async def test_stop_while_the_turn_end_reads_the_queue_keeps_the_queue_waiting(

@@ -47,6 +47,7 @@ from typing import get_args
 from pydantic import JsonValue
 
 from nestd import __version__
+from nestd.attachments.store import is_text_type
 from nestd.config.models import Effort, PermissionMode
 from nestd.errors import ConflictError
 from nestd.providers.acp_engines import (
@@ -74,6 +75,7 @@ from nestd.providers.base import (
     AgentTool,
     ApprovalHandler,
     ContextUsage,
+    FileInput,
     ForkPoint,
     McpServer,
     ModelOption,
@@ -84,6 +86,7 @@ from nestd.providers.base import (
     RunAccount,
     SessionSpec,
     UserInput,
+    with_files,
 )
 from nestd.providers.claude_tools import NEST_SERVER, TOOL_SERVER
 from nestd.providers.codex_items import items, obj, text
@@ -118,6 +121,9 @@ DEFAULT_MODEL = "default"
 PROTOCOL_VERSION = 1
 PROBE_TIMEOUT = timedelta(seconds=60)
 PLAN_MODE = "plan"
+# A text file up to this size goes in the prompt for an engine that takes files' content;
+# a larger one is passed by path, as for other engines.
+INLINE_TEXT_BYTES = 256 * 1024
 # Codex's own words for going on from an approved plan (B145).
 IMPLEMENT_PLAN = "Implement the plan."
 DEFAULT_MODE: PermissionMode = "default"
@@ -192,6 +198,8 @@ class AgentCaps:
     image: bool
     # The engine lists its sessions with their titles (`session/list`).
     list_sessions: bool = False
+    # The engine takes a file's content in the prompt (`resource` blocks).
+    embedded_context: bool = False
 
 
 @dataclass(frozen=True)
@@ -230,6 +238,7 @@ def agent_caps(result: JsonObject) -> AgentCaps:
         mcp_http=obj(caps.get("mcpCapabilities")).get("http") is True,
         image=obj(caps.get("promptCapabilities")).get("image") is True,
         list_sessions=sessions.get("list") not in (None, False),
+        embedded_context=obj(caps.get("promptCapabilities")).get("embeddedContext") is True,
     )
 
 
@@ -652,10 +661,11 @@ class AcpRun:
             lead = "\n\n".join(part for part in parts if part)
             if lead:
                 blocks.append({"type": "text", "text": lead})
-        message = user_input.text
-        if user_input.file_paths:
-            listing = "\n".join(f"- {path}" for path in user_input.file_paths)
-            message = f"{message}\n\nAttached files:\n{listing}"
+        inline = self._caps is not None and self._caps.embedded_context
+        texts = [file for file in user_input.files if inline and _inline_text(file)]
+        blocks.extend(_text_resource(file) for file in texts)
+        listed = [file for file in user_input.files if file not in texts]
+        message = with_files(user_input.text, listed)
         if self._caps is not None and self._caps.image:
             for image in user_input.images:
                 blocks.append({"type": "image", "mimeType": image.media_type, "data": image.data})
@@ -862,6 +872,25 @@ def skills_line(skills: tuple[str, ...]) -> str:
     if not skills:
         return ""
     return f"Use only these skills in this chat: {', '.join(skills)}. Leave any other skill alone."
+
+
+def _inline_text(file: FileInput) -> bool:
+    try:
+        return is_text_type(file.media_type) and file.path.stat().st_size <= INLINE_TEXT_BYTES
+    except OSError:
+        return False  # gone: listed by path, the agent finds it missing
+
+
+def _text_resource(file: FileInput) -> JsonValue:
+    """A text file's content, ACP's own way of attaching a file (B144)."""
+    return {
+        "type": "resource",
+        "resource": {
+            "uri": file.path.as_uri(),
+            "mimeType": file.media_type,
+            "text": file.path.read_text(errors="replace"),
+        },
+    }
 
 
 def _tools_hint(served: Served) -> str:
