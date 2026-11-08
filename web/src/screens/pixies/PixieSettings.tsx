@@ -15,10 +15,22 @@ import {
   modelTitle,
   pixieCanRunOn,
   sectionKey,
+  supportsFeature,
 } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
-import { effortLabel, NO_THINKING, PERMISSIONS, type Option } from "../chat/options.ts";
+import {
+  COMPACT_AT_PICKS,
+  COMPACT_AT_TITLE,
+  compactAtChoice,
+  compactAtLabel,
+  compactAtPick,
+  effortLabel,
+  NO_THINKING,
+  PERMISSIONS,
+  pickedCompactAt,
+  type Option,
+} from "../chat/options.ts";
 import { PickerSheet } from "../chat/PickerSheet.tsx";
 import { AUTONOMY, optionsOf, PROJECT_ACCESS } from "./options.ts";
 
@@ -40,10 +52,10 @@ interface Props {
 }
 
 /**
- * Model, thinking, permissions, project files and autonomy: a value on the right that opens
- * a picker sheet. The model menu has a section per engine and choosing a model chooses its
- * engine (B91); thinking and permissions follow that engine's models, with no Default
- * entries (B94), as NestKit's PixieModelPicker.
+ * Model, thinking, compact at (where the engine takes it), permissions, project files and
+ * autonomy: a value on the right that opens a picker sheet. The model menu has a section
+ * per engine and choosing a model chooses its engine (B91); thinking and permissions follow
+ * that engine's models, with no Default entries (B94), as NestKit's PixieModelPicker.
  */
 export function PixieSettings({ pixie, save }: Props) {
   const { state, actions } = useStore();
@@ -73,6 +85,19 @@ export function PixieSettings({ pixie, save }: Props) {
       checked: pixie.effort,
       pick: (effort) => ({ effort: effort as Effort }),
     },
+    ...(supportsFeature(state, "compact_window", pixie.provider)
+      ? [
+          {
+            title: COMPACT_AT_TITLE,
+            value: compactAtLabel(pixie.compact_at),
+            options: COMPACT_AT_PICKS,
+            checked: compactAtPick(pixie.compact_at),
+            pick: (size: string | null): UpdatePixieBody => ({
+              compact_at: compactAtChoice(size === null ? null : pickedCompactAt(size)),
+            }),
+          },
+        ]
+      : []),
     {
       title: "Permissions",
       value:

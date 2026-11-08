@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import type { ModelOption, PermissionMode } from "../../api/types.ts";
-import { claudeProvider, codexProvider, modelList, pixie, session } from "../../test/fixtures.ts";
+import {
+  applied,
+  claudeProvider,
+  codexProvider,
+  modelList,
+  pixie,
+  session,
+} from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
 import { fill } from "../../test/render.tsx";
 
@@ -192,7 +199,7 @@ describe("Pixie details", () => {
       (_id, body) =>
         new Promise((resolve) => {
           finish = () => {
-            resolve({ ...shown, ...body });
+            resolve({ ...shown, ...applied(body) });
           };
         }),
     );
@@ -299,7 +306,7 @@ describe("Pixie details", () => {
     // The Mac answers with the pixie as it is now, each change kept.
     let current = pixie();
     api.updatePixie.mockImplementation((_id, body) => {
-      current = { ...current, ...body };
+      current = { ...current, ...applied(body) };
       return Promise.resolve(current);
     });
 

@@ -66,6 +66,7 @@ async def test_without_choices_the_first_engines_default_model_medium_and_ask_ar
         "effort": "medium",
         "permission_mode": "default",
         "mode": "in_place",
+        "compact_at": None,
     }
     assert stored_agents(api) == {
         "provider": "fake",
@@ -101,6 +102,7 @@ async def test_before_any_model_list_is_known_nothing_is_stored(api: Api) -> Non
         "effort": None,
         "permission_mode": "default",
         "mode": "in_place",
+        "compact_at": None,
     }
     assert "model" not in stored_agents(api)
 
@@ -125,6 +127,7 @@ async def test_older_defaults_that_left_choices_to_claude_code_become_concrete(
         "effort": None,
         "permission_mode": "default",
         "mode": "in_place",
+        "compact_at": None,
     }
     assert stored_agents(api) == {
         "provider": "fake",
@@ -163,6 +166,7 @@ async def test_old_clients_sending_nulls_or_default_get_concrete_values(api: Api
         "effort": "medium",
         "permission_mode": "default",
         "mode": "in_place",
+        "compact_at": None,
     }
     assert named_default.json()["model"] == "opus"
     assert stored_agents(api)["permission_mode"] == "default"
@@ -184,6 +188,7 @@ async def test_choosing_a_codex_model_makes_codex_the_engine_of_new_chats(api: A
         "effort": None,
         "permission_mode": "default",
         "mode": "in_place",
+        "compact_at": None,
     }
     assert stored_agents(api)["provider"] == "codex"
     assert (session["provider"], session["model"], session["effort"]) == ("codex", "gpt-5.5", None)
@@ -346,3 +351,25 @@ async def test_an_older_clients_chat_runs_on_the_engine_of_the_model_it_names(ap
     assert (claude["provider"], claude["model"]) == ("fake", "opus")
     assert (unlisted["provider"], unlisted["model"]) == ("fake", "claude-opus-4-1")
     assert (codex["provider"], codex["model"]) == ("codex", "gpt-5.5")
+
+
+async def test_the_size_new_chats_compact_at_is_stored_and_kept_by_older_clients(
+    api: Api,
+) -> None:
+    """B146: Auto is no key; a client that sends no size leaves the chosen one."""
+    await claude_models(api, "default", "opus")
+
+    chosen = await api.http.put("/api/agents/defaults", json={"compact_at": 400_000})
+    older = await api.http.put("/api/agents/defaults", json={"mode": "worktree"})
+    stored = stored_agents(api)
+    chat = await start_chat(api)
+    auto = await api.http.put("/api/agents/defaults", json={"compact_at": None})
+    too_big = await api.http.put("/api/agents/defaults", json={"compact_at": 2_000_000})
+
+    assert chosen.json()["compact_at"] == 400_000
+    assert older.json()["compact_at"] == 400_000
+    assert stored["compact_at"] == 400_000
+    assert chat["compact_at"] == 400_000
+    assert auto.json()["compact_at"] is None
+    assert "compact_at" not in stored_agents(api)
+    assert too_big.status_code == 422

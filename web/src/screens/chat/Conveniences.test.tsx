@@ -4,7 +4,7 @@ import { ApiError } from "../../api/client.ts";
 import type { Approval, NestEvent, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
-import { commandList, detail, event, plan, repo, session } from "../../test/fixtures.ts";
+import { applied, commandList, detail, event, plan, repo, session } from "../../test/fixtures.ts";
 import { renderApp, typeAndWait } from "../../test/render.tsx";
 
 interface Setup {
@@ -395,7 +395,7 @@ describe("context meter", () => {
     await user.click(meter);
     const sheet = screen.getByRole("dialog", { name: "Context" });
     expect(within(sheet).getByText("82k of 200k tokens")).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("menuitem", { name: /Compact/ }));
+    await user.click(within(sheet).getByRole("menuitem", { name: /^Compact\s?Summarise/ }));
 
     expect(api.sendMessage).toHaveBeenCalledWith("s1", "/compact", []);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -420,10 +420,31 @@ describe("context meter", () => {
     const { user } = await openChat({ chat: session({ context }), api });
 
     await user.click(screen.getByRole("button", { name: "Context: 41% used" }));
-    await user.click(screen.getByRole("menuitem", { name: /Compact/ }));
+    await user.click(screen.getByRole("menuitem", { name: /^Compact\s?Summarise/ }));
     expect(
       await screen.findByText("This chat is open in Claude Code right now. Close it there first."),
     ).toBeInTheDocument();
+  });
+
+  it("sets the size the chat compacts at, and Auto gives it back to the engine", async () => {
+    const api = fakeApi();
+    const chat = session({ context, compact_at: 300_000 });
+    api.updateSession.mockImplementation((_id, body) =>
+      Promise.resolve({ ...chat, ...applied(body) }),
+    );
+    const { user } = await openChat({ chat, api });
+
+    await user.click(screen.getByRole("button", { name: "Context: 41% used" }));
+    await user.click(screen.getByRole("menuitem", { name: "Compact at: 300k" }));
+    const picker = screen.getByRole("dialog", { name: "Compact at" });
+    expect(within(picker).getByRole("menuitemradio", { name: "300k" })).toBeChecked();
+    await user.click(within(picker).getByRole("menuitemradio", { name: "700k" }));
+    expect(api.updateSession).toHaveBeenCalledWith("s1", { compact_at: 700_000 });
+
+    await user.click(screen.getByRole("button", { name: "Context: 41% used" }));
+    await user.click(screen.getByRole("menuitem", { name: "Compact at: 700k" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Auto" }));
+    expect(api.updateSession).toHaveBeenLastCalledWith("s1", { compact_at: "auto" });
   });
 
   it("closes without compacting", async () => {

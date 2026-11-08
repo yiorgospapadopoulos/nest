@@ -1,4 +1,5 @@
-import type { ModelOption, PermissionMode, PlanMode } from "../../api/types.ts";
+import type { CompactAtChoice, ModelOption, PermissionMode, PlanMode } from "../../api/types.ts";
+import { tokens } from "../../format.ts";
 
 export interface Option<T> {
   value: T;
@@ -76,3 +77,37 @@ export function effortLabel(level: string): string {
 export function effortOptions(levels: string[]): Option<string>[] {
   return levels.map((level) => ({ value: level, label: effortLabel(level) }));
 }
+
+// The sizes a chat may compact at (B146); null is the engine's own.
+const COMPACT_SIZES = [100_000, 300_000, 400_000, 700_000, 1_000_000];
+
+export const COMPACT_AT_TITLE = "Compact at";
+
+/** "Auto" for the engine's own, else the size, such as "300k" or "1M". */
+export function compactAtLabel(size: number | null): string {
+  return size === null ? "Auto" : tokens(size);
+}
+
+export const COMPACT_AT: Option<number | null>[] = [null, ...COMPACT_SIZES].map((size) => ({
+  value: size,
+  label: compactAtLabel(size),
+}));
+
+/** What a PATCH sends for a choice: "auto" for the engine's own. */
+export function compactAtChoice(size: number | null): CompactAtChoice {
+  return size ?? "auto";
+}
+
+/** A choice as a picker's or select's value, "auto" for the engine's own. */
+export function compactAtPick(size: number | null): string {
+  return String(compactAtChoice(size));
+}
+
+export function pickedCompactAt(value: string): number | null {
+  return value === "auto" ? null : Number(value);
+}
+
+export const COMPACT_AT_PICKS: Option<string>[] = COMPACT_AT.map((option) => ({
+  value: compactAtPick(option.value),
+  label: option.label,
+}));

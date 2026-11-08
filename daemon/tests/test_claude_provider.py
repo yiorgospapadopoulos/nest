@@ -204,6 +204,19 @@ async def test_a_normal_chat_uses_git_and_gh_as_in_the_terminal(tmp_path: Path) 
     }
 
 
+def test_a_chosen_size_to_compact_at_reaches_claude_codes_own_setting(tmp_path: Path) -> None:
+    """B146: Claude Code's variable, which wins over the user's `autoCompactWindow`; with no
+    size the run passes none (above), so the user's own setting applies.
+    """
+    options = build_options(
+        SessionSpec(cwd=tmp_path, permission_mode="default", compact_at=400_000),
+        ScriptedHandler(PermissionDecision("allow")),
+    )
+
+    assert options.env is not None
+    assert options.env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == "400000"
+
+
 def test_a_run_on_an_added_account_points_claude_code_at_its_profile(tmp_path: Path) -> None:
     """B98: the account's CLAUDE_CONFIG_DIR wins over the shell's."""
     account = RunAccount("0123456789ab", {"CLAUDE_CONFIG_DIR": str(tmp_path / "profile")})

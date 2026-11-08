@@ -407,6 +407,9 @@ class SessionSpec:
     permission_mode: PermissionMode | None
     model: str | None = None
     effort: Effort | None = None
+    # How many tokens the context holds before the engine compacts it by itself; None
+    # leaves it to the engine (B146).
+    compact_at: int | None = None
     # The engine's own session id to continue a previous conversation.
     resume_id: str | None = None
     extra_dirs: tuple[Path, ...] = ()
@@ -806,6 +809,8 @@ type ProviderFeature = Literal[
     # A pixie's own list of skills, which limits its runs to them: Claude's per run, Codex's
     # per thread (B112); an ACP engine is told the list in its prompt.
     "pixie_skills",
+    # A chosen size the chat compacts at by itself, the engine's own setting (B146).
+    "compact_window",
 ]
 
 

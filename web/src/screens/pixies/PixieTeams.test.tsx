@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
-import { pixie, team } from "../../test/fixtures.ts";
+import { applied, pixie, team } from "../../test/fixtures.ts";
 import { showPixies } from "../../test/pixies.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
 import { LONG_PRESS_MS } from "../projects/rowGestures.ts";
@@ -25,7 +25,7 @@ async function openList(api: FakeApi = fakeApi(), storage = memoryStorage()) {
   api.pixies.mockResolvedValue(PIXIES);
   api.teams.mockResolvedValue(TEAMS);
   api.updatePixie.mockImplementation((id, body) =>
-    Promise.resolve({ ...defined(PIXIES.find((p) => p.id === id)), ...body }),
+    Promise.resolve({ ...defined(PIXIES.find((p) => p.id === id)), ...applied(body) }),
   );
   api.updateTeam.mockImplementation((id, body) =>
     Promise.resolve({ ...(TEAMS.find((t) => t.id === id) ?? team({ id })), ...body }),

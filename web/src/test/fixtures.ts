@@ -10,6 +10,7 @@ import type {
   AutopilotDecision,
   AutopilotReport,
   AutopilotRun,
+  CompactAtChoice,
   ArtifactDetail,
   CallEntry,
   CallWork,
@@ -97,6 +98,16 @@ export function repo(name: string): RepoConfig {
   };
 }
 
+/** A PATCH body as the Mac stores it, for fakes that answer with the changed item. */
+export function applied<B extends { compact_at?: CompactAtChoice }>(
+  body: B,
+): Omit<B, "compact_at"> & { compact_at?: number | null } {
+  const { compact_at, ...rest } = body;
+  return compact_at === undefined
+    ? rest
+    : { ...rest, compact_at: compact_at === "auto" ? null : compact_at };
+}
+
 export function session(overrides: Partial<Session> = {}): Session {
   return {
     id: "s1",
@@ -107,6 +118,7 @@ export function session(overrides: Partial<Session> = {}): Session {
     cwd: "/w/s1",
     model: null,
     effort: null,
+    compact_at: null,
     permission_mode: "default",
     provider: "claude",
     base_ref: "abc",
@@ -220,6 +232,7 @@ export function pixie(overrides: Partial<Pixie> = {}): Pixie {
     provider: "claude",
     model: null,
     effort: null,
+    compact_at: null,
     permission_mode: "default",
     autonomy: "observe",
     project_access: "edit",
@@ -744,7 +757,14 @@ export function account(overrides: Partial<AccountInfo> = {}): AccountInfo {
 }
 
 export function agentDefaults(overrides: Partial<AgentDefaults> = {}): AgentDefaults {
-  return { model: null, effort: null, permission_mode: "default", mode: "in_place", ...overrides };
+  return {
+    model: null,
+    effort: null,
+    permission_mode: "default",
+    mode: "in_place",
+    compact_at: null,
+    ...overrides,
+  };
 }
 
 // A pixie call's result exactly as Claude Code stored it (B40 live check).
@@ -1142,7 +1162,7 @@ export function acpProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo
     signed_in: true,
     sign_in_hint: null,
     account: null,
-    unsupported: ["withdraw"],
+    unsupported: ["withdraw", "compact_window"],
     memory_file: "AGENTS.md",
     version: "1.19.4",
     tested: true,

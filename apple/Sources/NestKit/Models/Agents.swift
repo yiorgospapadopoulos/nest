@@ -112,6 +112,8 @@ public struct AgentDefaults: Codable, Sendable, Hashable {
     public var effort: Effort?
     public var permissionMode: PermissionMode
     public var mode: SessionMode
+    /// Nil for Auto (`CompactAt`, B146).
+    public var compactAt: Int?
 
     /// What applies before the daemon has answered: Claude, Medium and Ask.
     public static let standard = AgentDefaults(
@@ -119,13 +121,14 @@ public struct AgentDefaults: Codable, Sendable, Hashable {
 
     public init(
         provider: String = ProviderInfo.claude, model: String?, effort: Effort?,
-        permissionMode: PermissionMode, mode: SessionMode
+        permissionMode: PermissionMode, mode: SessionMode, compactAt: Int? = nil
     ) {
         self.provider = provider
         self.model = model
         self.effort = effort
         self.permissionMode = permissionMode
         self.mode = mode
+        self.compactAt = compactAt
     }
 
     /// Values a newer daemon may add read as the standard ones, so they are never sent
@@ -143,6 +146,7 @@ public struct AgentDefaults: Codable, Sendable, Hashable {
         permissionMode = permission == .unknown ? .default : permission
         let mode = try container.decode(SessionMode.self, forKey: .mode)
         self.mode = mode == .unknown ? .inPlace : mode
+        compactAt = try container.decodeIfPresent(Int.self, forKey: .compactAt)
     }
 
     /// The whole set: the daemon replaces it.
@@ -153,11 +157,13 @@ public struct AgentDefaults: Codable, Sendable, Hashable {
         try container.encode(effort, forKey: .effort)
         try container.encode(permissionMode, forKey: .permissionMode)
         try container.encode(mode, forKey: .mode)
+        try container.encode(compactAt, forKey: .compactAt)
     }
 
     enum CodingKeys: String, CodingKey {
         case provider, model, effort, mode
         case permissionMode = "permission_mode"
+        case compactAt = "compact_at"
     }
 }
 

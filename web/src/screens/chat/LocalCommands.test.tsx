@@ -4,7 +4,7 @@ import type { Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { ApiError } from "../../api/client.ts";
-import { claudeChat, connector, detail, repo, session } from "../../test/fixtures.ts";
+import { applied, claudeChat, connector, detail, repo, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 
 // Commands the SDK cannot run open Nest's own screens instead (B59).
@@ -16,7 +16,9 @@ async function openChat(chats: Session[] = [session()], api: FakeApi = fakeApi()
   api.session.mockImplementation((id) =>
     Promise.resolve(detail(chats.find((c) => c.id === id) ?? chat)),
   );
-  api.updateSession.mockImplementation((_id, body) => Promise.resolve({ ...chat, ...body }));
+  api.updateSession.mockImplementation((_id, body) =>
+    Promise.resolve({ ...chat, ...applied(body) }),
+  );
   const rendered = await renderApp({ api });
   await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));

@@ -1,13 +1,14 @@
 """Pixies and their files, as the API and the store see them (D072)."""
 
 from datetime import datetime
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from nestd.config.models import (
     Autonomy,
     Color,
+    CompactAt,
     Effort,
     Mascot,
     MaxPerDay,
@@ -61,6 +62,9 @@ class PixieSettings(_IgnoresRemoved):
     # None: the engine's default model (on Claude, the agent defaults' model) and effort.
     model: str | None = None
     effort: Effort | None = None
+    # Where its chats, habit runs and calls compact by themselves; None: the engine's own
+    # (B146).
+    compact_at: CompactAt | None = None
     permission_mode: PermissionMode = "default"
     autonomy: Autonomy = "observe"
     project_access: ProjectAccess = "edit"
@@ -111,6 +115,8 @@ class UpdatePixie(_IgnoresRemoved):
     provider: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
     model: str | None = None
     effort: Effort | None = None
+    # "auto" is the engine's own (B146).
+    compact_at: CompactAt | Literal["auto"] | None = None
     permission_mode: PermissionMode | None = None
     autonomy: Autonomy | None = None
     project_access: ProjectAccess | None = None

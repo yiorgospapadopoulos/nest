@@ -68,18 +68,23 @@ import Testing
             AgentDefaults.self,
             json: """
                 {"provider": "claude", "model": "haiku", "effort": null,
-                 "permission_mode": "plan", "mode": "worktree"}
+                 "permission_mode": "plan", "mode": "worktree", "compact_at": 400000}
                 """
         )
         #expect(
             defaults
                 == AgentDefaults(
-                    model: "haiku", effort: nil, permissionMode: .plan, mode: .worktree))
+                    model: "haiku", effort: nil, permissionMode: .plan, mode: .worktree,
+                    compactAt: 400_000))
         let encoded = String(decoding: try NestJSON.encoder.encode(defaults), as: UTF8.self)
         #expect(
             encoded
-                == #"{"effort":null,"mode":"worktree","model":"haiku","permission_mode":"plan","provider":"claude"}"#
+                == #"{"compact_at":400000,"effort":null,"mode":"worktree","model":"haiku","permission_mode":"plan","provider":"claude"}"#
         )
+        // Auto goes back as null, so the daemon keeps the engine's own behaviour.
+        var engineOwn = defaults
+        engineOwn.compactAt = CompactAt.auto.tokens
+        #expect(Fixture.json(engineOwn).contains(#""compact_at":null"#))
         #expect(AgentDefaults.standard.mode == .inPlace)
         let auto = Fixture.decode(
             AgentDefaults.self, json: #"{"permission_mode": "auto", "mode": "in_place"}"#)
@@ -101,6 +106,8 @@ import Testing
         #expect(missing.model == nil)
         #expect(missing.effort == nil)
         #expect(missing.permissionMode == .acceptEdits)
+        // A daemon before B146 sends no size: Auto.
+        #expect(missing.compactAt == nil)
     }
 }
 

@@ -318,6 +318,9 @@
                 if let effort = request.effort {
                     sessionList[index].effort = effort
                 }
+                if let compactAt = request.compactAt {
+                    sessionList[index].compactAt = compactAt.tokens
+                }
                 return sessionList[index]
             }
         }

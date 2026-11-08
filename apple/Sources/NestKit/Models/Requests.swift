@@ -66,6 +66,8 @@ public struct UpdateSessionRequest: Encodable, Sendable, Hashable {
     /// Applies from the chat's next message.
     public var effort: Effort?
     public var permissionMode: PermissionMode?
+    /// Applies when the agent run next opens, like effort.
+    public var compactAt: CompactAt?
     public var title: String?
     public var pinned: Bool?
     /// True archives the session and closes its agent run; false restores it.
@@ -73,11 +75,13 @@ public struct UpdateSessionRequest: Encodable, Sendable, Hashable {
 
     public init(
         model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
-        title: String? = nil, pinned: Bool? = nil, archived: Bool? = nil
+        compactAt: CompactAt? = nil, title: String? = nil, pinned: Bool? = nil,
+        archived: Bool? = nil
     ) {
         self.model = model
         self.effort = effort
         self.permissionMode = permissionMode
+        self.compactAt = compactAt
         self.title = title
         self.pinned = pinned
         self.archived = archived
@@ -86,6 +90,7 @@ public struct UpdateSessionRequest: Encodable, Sendable, Hashable {
     enum CodingKeys: String, CodingKey {
         case model, effort, title, pinned, archived
         case permissionMode = "permission_mode"
+        case compactAt = "compact_at"
     }
 }
 
@@ -347,6 +352,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var provider: String?
     public var model: String?
     public var effort: Effort?
+    public var compactAt: CompactAt?
     public var permissionMode: PermissionMode?
     public var autonomy: Autonomy?
     public var projectAccess: ProjectAccess?
@@ -364,7 +370,8 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public init(
         name: String? = nil, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
         provider: String? = nil, model: String? = nil, effort: Effort? = nil,
-        permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
+        compactAt: CompactAt? = nil, permissionMode: PermissionMode? = nil,
+        autonomy: Autonomy? = nil,
         projectAccess: ProjectAccess? = nil, skills: [String]? = nil, hidden: Bool? = nil,
         teamID: String? = nil,
         leavesTeam: Bool = false, maxRunning: Int? = nil, maxPerDay: Int? = nil
@@ -376,6 +383,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         self.provider = provider
         self.model = model
         self.effort = effort
+        self.compactAt = compactAt
         self.permissionMode = permissionMode
         self.autonomy = autonomy
         self.projectAccess = projectAccess
@@ -394,6 +402,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         case teamID = "team_id"
         case maxRunning = "max_running"
         case maxPerDay = "max_per_day"
+        case compactAt = "compact_at"
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -405,6 +414,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(provider, forKey: .provider)
         try container.encodeIfPresent(model, forKey: .model)
         try container.encodeIfPresent(effort, forKey: .effort)
+        try container.encodeIfPresent(compactAt, forKey: .compactAt)
         try container.encodeIfPresent(permissionMode, forKey: .permissionMode)
         try container.encodeIfPresent(autonomy, forKey: .autonomy)
         try container.encodeIfPresent(projectAccess, forKey: .projectAccess)

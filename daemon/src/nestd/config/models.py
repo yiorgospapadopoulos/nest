@@ -17,6 +17,10 @@ from pydantic import (
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 PermissionMode = Literal["default", "acceptEdits", "bypassPermissions", "plan", "auto"]
+# How many tokens a chat's context holds before its engine compacts it by itself (B146), in
+# Claude Code's range; None leaves it to the engine. Each model uses the smaller of this and
+# its own window.
+type CompactAt = Annotated[int, Field(ge=100_000, le=1_000_000)]
 # The modes an approved plan may continue in; `auto` only with a model that supports it.
 PlanApprovalMode = Literal["acceptEdits", "default", "auto"]
 type SessionMode = Literal["worktree", "in_place"]
@@ -163,6 +167,8 @@ class AgentDefaults(_Strict):
     permission_mode: PermissionMode | None = None
     # Where new chats work; a repo's `[worktree] default` overrides it when set (D038).
     default_mode: SessionMode = "in_place"
+    # Where new chats compact by themselves; null: each engine's own (B146).
+    compact_at: CompactAt | None = None
     # Idle agent processes are closed after this long and resumed on the next message.
     idle_close_minutes: int = Field(default=60, ge=1)
 
@@ -182,6 +188,8 @@ class AgentChoices(_Strict):
     effort: Effort | None = None
     permission_mode: PermissionMode | None = None
     mode: SessionMode = "in_place"
+    # Null is each engine's own; left out keeps the stored one (B146).
+    compact_at: CompactAt | None = None
 
 
 class ModulesSettings(_Strict):

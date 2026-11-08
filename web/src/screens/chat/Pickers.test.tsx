@@ -4,6 +4,7 @@ import type { ModelList, Session } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { defined } from "../../test/defined.ts";
 import {
+  applied,
   acpProvider,
   agentDefaults,
   claudeProvider,
@@ -53,7 +54,9 @@ async function openChat(chat: Session, api: FakeApi = fakeApi()) {
   api.repos.mockResolvedValue([repo("todo-ui")]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
   api.session.mockResolvedValue(detail(chat));
-  api.updateSession.mockImplementation((_id, body) => Promise.resolve({ ...chat, ...body }));
+  api.updateSession.mockImplementation((_id, body) =>
+    Promise.resolve({ ...chat, ...applied(body) }),
+  );
   const rendered = await renderApp({ api });
   await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));

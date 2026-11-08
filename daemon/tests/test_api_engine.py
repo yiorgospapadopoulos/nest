@@ -143,6 +143,7 @@ async def test_agent_defaults_start_in_place_with_concrete_choices(api: Api) -> 
         "effort": "medium",
         "permission_mode": "default",
         "mode": "in_place",
+        "compact_at": None,
     }
 
 
@@ -156,6 +157,7 @@ async def test_agent_defaults_are_saved_and_used_for_new_sessions(api: Api) -> N
         "effort": "high",
         "permission_mode": "plan",
         "mode": "worktree",
+        "compact_at": None,
     }
 
     saved = await api.http.put("/api/agents/defaults", json=chosen)
@@ -211,6 +213,7 @@ async def test_effort_is_checked_against_the_engine_list(api: Api) -> None:
         "effort": None,
         "permission_mode": "default",
         "mode": "in_place",
+        "compact_at": None,
     }
     assert session.status_code == 422
     assert session.json() == {"detail": "Haiku does not take a thinking level"}
