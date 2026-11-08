@@ -67,12 +67,15 @@ class EngineInfo:
         account_file: Path | Callable[[], Path | None] | None = None,
         settings_file: Path | None = None,
         on_signed_in: Callable[[], Awaitable[None]] | None = None,
+        on_models: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """`account_file` is Claude Code's `~/.claude.json`, for the account name (D039), or
         what names the active account's (B98),
         and `settings_file` its `~/.claude/settings.json`, for its default thinking levels
         (IMP-07); None reads no file. `on_signed_in` hears of every report naming an
-        account, which only a signed-in Claude Code gives (B94).
+        account, which only a signed-in Claude Code gives (B94). `on_models` hears of a report
+        whose models differ from the last stored, so clients stop showing the aliases from
+        before the first sign in (B136).
         """
         self._store = store
         self._fetch = fetch
@@ -84,6 +87,7 @@ class EngineInfo:
         self._account_file = account_file
         self._settings_file = settings_file
         self._on_signed_in = on_signed_in
+        self._on_models = on_models
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._last_attempt: datetime | None = None
@@ -163,7 +167,14 @@ class EngineInfo:
 
     async def report(self, details: EngineDetails) -> None:
         """Details an agent run reported when it opened."""
+        before = await self._store.models()
         await self._store.save(details)
+        after = await self._store.models()
+        changed = (before is None) != (after is None) or (
+            before is not None and after is not None and before.models != after.models
+        )
+        if changed and self._on_models is not None:
+            await self._on_models()
         self._last_report = self._clock.now()
         account = details.account
         if (

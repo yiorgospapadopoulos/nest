@@ -10,8 +10,8 @@ import { OpenFileContext, type OpenFile } from "./openFile.ts";
 // A marked span's text: an escaped character in it is not its closing mark.
 const SPAN = String.raw`(?:\\.|[^\\\n])+?`;
 // In order of precedence, each with one capture but the links' two and the bare address's
-// none: an escape, inline code, bold, italic (not inside words), strikethrough, a link, an
-// address in angle brackets, and a bare address.
+// none: an escape, inline code, bold, italic (not inside words), strikethrough, a link or an
+// image, an address in angle brackets, and a bare address.
 const INLINE = new RegExp(
   [
     /\\([!-/:-@[-`{-~])/.source,
@@ -21,7 +21,8 @@ const INLINE = new RegExp(
     String.raw`\*(?!\s)(${SPAN})\*`,
     String.raw`\b_(?!\s)(${SPAN})_\b`,
     `~~(?!\\s)(${SPAN})~~`,
-    /\[([^\]]+)\]\(([^)\s]+)\)/.source,
+    // A link, or an image, shown as a link: nothing is loaded from what an agent wrote.
+    /!?\[([^\]]*)\]\(([^)\s]+)\)/.source,
     /<(https?:\/\/[^\s<>]+)>/.source,
     /\bhttps?:\/\/[^\s<>]+/.source,
   ].join("|"),
@@ -109,8 +110,9 @@ function inline(text: string, open: OpenFile | null, links = true): ReactNode[] 
     } else if (em !== undefined) out.push(<em key={key}>{inline(em, open, links)}</em>);
     else if (struck !== undefined) out.push(<del key={key}>{inline(struck, open, links)}</del>);
     else if (label !== undefined) {
-      // A link only to a web address or a file, otherwise its label alone.
-      const shown = inline(label, open, false);
+      // A link only to a web address or a file, otherwise its label alone; an image with no
+      // words is named by its address.
+      const shown = inline(label === "" ? (url ?? "") : label, open, false);
       const path = files === null || url === undefined ? null : linkRef(url);
       if (url !== undefined && SAFE_URL.test(url)) out.push(link(key, url, shown));
       else if (files !== null && path !== null) out.push(fileLink(key, path, shown, files));

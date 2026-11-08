@@ -91,6 +91,9 @@ class Updating(BaseModel):
     from_version: str
     to_version: str
     started_at: str
+    # What Undo went back to before this update, given back if the update fails (B136).
+    undo: str | None = None
+    undo_schema: int | None = None
 
 
 class AppState(BaseModel):
@@ -317,7 +320,11 @@ class AppUpdater:
         schema = await asyncio.to_thread(database_version, database)
         await asyncio.to_thread(self._watcher, self._daemon_dir, port, self._running, new, backup)
         updating = Updating(
-            from_version=self._running, to_version=new, started_at=datetime.now(UTC).isoformat()
+            from_version=self._running,
+            to_version=new,
+            started_at=datetime.now(UTC).isoformat(),
+            undo=state.previous,
+            undo_schema=state.previous_schema,
         )
         (self._daemon_dir / new / STARTS_NAME).unlink(missing_ok=True)
         update = {
@@ -346,7 +353,8 @@ class AppUpdater:
         if not self._packaged or not self._daemon_dir.is_dir():
             return
         state = self.state()
-        keep = {self._running, state.previous, state.ready.version if state.ready else None}
+        undo = state.updating.undo if state.updating else None
+        keep = {self._running, state.previous, undo, state.ready.version if state.ready else None}
         for entry in self._daemon_dir.iterdir():
             name = entry.name.removesuffix(PARTIAL_SUFFIX)
             removable = entry.is_dir() and not entry.is_symlink() and _VERSION.fullmatch(name)

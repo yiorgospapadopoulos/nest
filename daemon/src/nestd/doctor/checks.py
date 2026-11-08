@@ -303,7 +303,12 @@ def check_secret_service(machine: Machine) -> Check:
 def check_first_chat(machine: Machine) -> Check:
     if machine.database("SELECT 1 FROM sessions LIMIT 1"):
         return Check(id="first_chat", title="First chat", state="ok")
-    return Check(id="first_chat", title="First chat", state="missing")
+    return Check(
+        id="first_chat",
+        title="First chat",
+        state="missing",
+        message="No chat yet. Send one message in the app to check it all works.",
+    )
 
 
 def check_engine_installs(machine: Machine) -> Check:

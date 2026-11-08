@@ -172,6 +172,21 @@ async def test_a_report_with_an_account_says_claude_is_signed_in(h: Rig) -> None
     assert seen == ["claude"]
 
 
+async def test_only_a_report_with_other_models_says_the_list_changed(h: Rig) -> None:
+    # B136: the model menus kept the aliases from before the first sign in until a restart.
+    seen: list[str] = []
+
+    async def changed() -> None:
+        seen.append("models")
+
+    engine = EngineInfo(store=h.store, fetch=_never_called, clock=h.clock, on_models=changed)
+    await engine.report(EngineDetails(models=[OPUS]))
+    await engine.report(EngineDetails(models=[OPUS], account=ACCOUNT))
+    await engine.report(EngineDetails(models=[OPUS, HAIKU]))
+
+    assert seen == ["models", "models"]
+
+
 async def test_the_cache_survives_a_restart(h: Rig) -> None:
     await h.engine.refresh()
 

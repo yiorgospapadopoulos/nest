@@ -57,8 +57,9 @@ for platform in linux/arm64 linux/amd64; do
   case "$docker_arch" in amd64) arch=x86_64; deb=amd64 ;; *) arch=arm64; deb=arm64 ;; esac
   NEST_DOCKER_PLATFORM="$platform" desktop/docker/build.sh bundle
   bundle="desktop/target/linux-$docker_arch/bundle"
-  cp "$bundle"/appimage/*.AppImage "$out/Nest-$version-linux-$arch.AppImage"
-  cp "$bundle"/deb/*"_$deb.deb" "$out/Nest-$version-linux-$arch.deb"
+  # The build volume keeps earlier versions' bundles, so only this version's are copied.
+  cp "$bundle"/appimage/*"_${version}_"*.AppImage "$out/Nest-$version-linux-$arch.AppImage"
+  cp "$bundle"/deb/*"_${version}_$deb.deb" "$out/Nest-$version-linux-$arch.deb"
 done
 
 cp release/install.sh "$out/install.sh"

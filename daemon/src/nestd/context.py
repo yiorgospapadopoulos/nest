@@ -439,6 +439,9 @@ class AppContext:
                 return paths.claude_account_file
             return chosen.profile / ".claude.json"
 
+        async def claude_models_changed() -> None:
+            await bus.publish_ephemeral(types.ENGINE_MODELS, {})
+
         engine = EngineInfo(
             EngineInfoStore(db, clock),
             fetch=claude_details,
@@ -446,6 +449,7 @@ class AppContext:
             account_file=claude_account_file,
             settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
             on_signed_in=lambda: signed_in(CLAUDE),
+            on_models=claude_models_changed,
         )
 
         async def active_codex() -> CodexLaunch:
@@ -875,6 +879,7 @@ class AppContext:
             busy_chats=sessions.busy_count,
             port=lambda: context.serving_port(),
             setup=update_setup or UpdateSetup(),
+            engines_wait=local.engine_updates_wait,
         )
         context = cls(
             paths=paths,

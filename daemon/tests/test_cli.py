@@ -328,6 +328,32 @@ def test_a_locked_secret_store_stops_serve_with_what_to_do(cli: Rig) -> None:
     assert cli.recorder.served == []
 
 
+class UnlockingSecretStore(FakeSecretStore):
+    """Locked for its first `times` reads, as at login before the keyring opens."""
+
+    def __init__(self, times: int) -> None:
+        super().__init__()
+        self.left = times
+
+    def get(self, account: str) -> str | None:
+        if self.left > 0:
+            self.left -= 1
+            raise SecretStoreUnavailableError("locked", locked=True)
+        return super().get(account)
+
+
+def test_a_keyring_still_locked_at_login_is_waited_for(
+    cli: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B136: the service started before the login keyring opened and failed that start."""
+    monkeypatch.setattr("nestd.cli.KEYRING_WAIT_SECONDS", 0)
+    runtime = replace(cli.runtime, secrets=UnlockingSecretStore(times=2))
+
+    assert main(["serve"], runtime) == 0
+
+    assert cli.recorder.served == [8765]
+
+
 @pytest.fixture
 def linux(tmp_path: Path) -> Rig:
     """B117: Linux with no variables, so the XDG defaults under home are used."""

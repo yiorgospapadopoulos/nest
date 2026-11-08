@@ -482,9 +482,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
   const modelName = choices === null ? "Model" : modelLabel(catalog, choices.model);
   const effortName =
     levels.length === 0
-      ? localModel !== null
-        ? "No thinking"
-        : "No thinking"
+      ? "No thinking"
       : choices?.effort == null
         ? "Thinking"
         : fit.compact

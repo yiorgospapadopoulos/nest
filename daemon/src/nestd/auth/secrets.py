@@ -36,6 +36,11 @@ class SecretStore(Protocol):
 class SecretStoreUnavailableError(Exception):
     """The system's secret store is missing or locked; the message says what to do."""
 
+    def __init__(self, message: str, *, locked: bool = False) -> None:
+        super().__init__(message)
+        # A locked store may open in a moment, as at login; a missing one will not.
+        self.locked = locked
+
 
 @contextmanager
 def _available(help_text: str) -> Generator[None]:
@@ -43,7 +48,7 @@ def _available(help_text: str) -> Generator[None]:
         yield
     except (NoKeyringError, KeyringLocked, InitError) as error:
         msg = f"the secret store is not available ({error}). {help_text}".rstrip()
-        raise SecretStoreUnavailableError(msg) from error
+        raise SecretStoreUnavailableError(msg, locked=isinstance(error, KeyringLocked)) from error
 
 
 class KeyringSecretStore:

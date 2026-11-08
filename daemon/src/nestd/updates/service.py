@@ -133,9 +133,11 @@ class UpdateService:
         busy_chats: Callable[[], int],
         port: Callable[[], int],
         setup: UpdateSetup,
+        engines_wait: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         """`busy_chats` counts the chats a relaunch would interrupt and `port` is the one
-        the daemon serves on.
+        the daemon serves on. While `engines_wait` says so, engine updates are prepared but
+        not offered, as in a new install's first day (B136); a new Nest always is.
         """
         root = paths.environments_dir
         engines_dir = paths.engines_dir
@@ -146,6 +148,7 @@ class UpdateService:
         self._busy_chats = busy_chats
         self._port = port
         self._setup = setup
+        self._engines_wait = engines_wait
         self._files = StateFile(root)
         self._lock = asyncio.Lock()
         self._phase: Phase | None = None
@@ -193,6 +196,8 @@ class UpdateService:
     async def status(self) -> EngineUpdates:
         state, ready = await asyncio.to_thread(self._read)
         app = await asyncio.to_thread(self._app.state)
+        if ready is not None and self._engines_wait is not None and await self._engines_wait():
+            ready = None
         engines: list[EngineUpdate] = []
         if ready is not None:
             now = await asyncio.to_thread(self._setup.versions)

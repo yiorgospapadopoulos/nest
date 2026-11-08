@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import logging
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -55,6 +56,9 @@ type Handler = Callable[[argparse.Namespace, AppPaths, Runtime], int]
 logger = logging.getLogger(__name__)
 
 SERVICE_WAIT_SECONDS = 90
+# A keyring locked at start is asked this often, this far apart (B136).
+KEYRING_TRIES = 10
+KEYRING_WAIT_SECONDS = 2.0
 
 
 def main(argv: list[str] | None = None, runtime: Runtime | None = None) -> int:
@@ -187,9 +191,26 @@ def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
     drop_leaked_env(os.environ)
     # The server reads its token at startup; a missing or locked secret store stops here
     # with what to do, not with a traceback from inside the server.
-    rt.secrets.get(LOCAL_DEVICE_ACCOUNT)
+    _read_token(rt)
     asyncio.run(_run_server(paths, rt, args.port, watch))
     return 0
+
+
+def _read_token(rt: Runtime, sleep: Callable[[float], None] = time.sleep) -> None:
+    """The local device token. At login the service can start a moment before the keyring
+    is unlocked, which failed that start once on Ubuntu (B136): a locked store is asked
+    again for a while, a missing one is not.
+    """
+    for _ in range(KEYRING_TRIES - 1):
+        try:
+            rt.secrets.get(LOCAL_DEVICE_ACCOUNT)
+        except SecretStoreUnavailableError as error:
+            if not error.locked:
+                raise
+            sleep(KEYRING_WAIT_SECONDS)
+        else:
+            return
+    rt.secrets.get(LOCAL_DEVICE_ACCOUNT)
 
 
 async def _run_server(

@@ -9,6 +9,7 @@ import { autopilotDecision, autopilotReport, autopilotRun, session } from "../..
 import { memoryStorage } from "../../test/render.tsx";
 import { AutopilotReportCard, DecisionLine } from "./Autopilot.tsx";
 import { Composer } from "./Composer.tsx";
+import { TranscriptRow } from "./Rows.tsx";
 
 function renderWith(api: ReturnType<typeof fakeApi>, children: ReactNode) {
   const storage = memoryStorage();
@@ -113,5 +114,15 @@ describe("Autopilot on a pane (B120)", () => {
     fireEvent.click(within(card).getByRole("button", { name: /git push/ }));
     expect(within(card).getByText("Blocked")).toBeInTheDocument();
     expect(within(card).queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+  });
+
+  it("heads its own keep-going messages Autopilot, not a limit resume", () => {
+    // Seen in the Linux app on 2026-11-08: every nudge read "Resumed after the limit".
+    render(
+      <TranscriptRow item={{ kind: "report", key: "7", title: "Autopilot", text: "Keep going" }} />,
+    );
+
+    expect(screen.getByText("Autopilot")).toBeInTheDocument();
+    expect(screen.queryByText("Resumed after the limit")).not.toBeInTheDocument();
   });
 });

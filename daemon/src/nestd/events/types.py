@@ -194,6 +194,9 @@ CONFIGURATION_CHANGED: Final = "configuration.changed"
 # Local models (B106) were added or removed, or their engine or `local_only` changed;
 # ephemeral and global, `{}`. Clients fetch `GET /api/local/models` again.
 LOCAL_MODELS_CHANGED: Final = "local_models.changed"
+# Claude Code reported another list of models than before (B136), as after its first sign
+# in; ephemeral and global, `{}`. Clients fetch `GET /api/models` again.
+ENGINE_MODELS: Final = "engine.models"
 # Artifacts (B79). The chat's agent saved one, at that place in its transcript (stored):
 # `{artifact_id, version, title, kind, action}`, `action` `created` or `updated`, or
 # `edited` when the user saved a document section in the reader (B88).

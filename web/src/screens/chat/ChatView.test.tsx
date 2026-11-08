@@ -514,12 +514,12 @@ describe("chat view", () => {
   it("toasts when the chat cannot load", async () => {
     const api = fakeApi();
     api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
-    api.session.mockRejectedValue(new ApiError(404, "unknown session"));
+    api.session.mockRejectedValue(new ApiError(500, "the chat could not be read"));
     const { user } = await renderApp({ api });
     await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
 
-    expect(await screen.findByText("unknown session")).toBeInTheDocument();
+    expect(await screen.findByText("the chat could not be read")).toBeInTheDocument();
   });
 });
 

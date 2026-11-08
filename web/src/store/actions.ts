@@ -1,4 +1,5 @@
 import { ApiError, OPEN_ELSEWHERE, type Api } from "../api/client.ts";
+import { ENGINE_MODELS } from "../api/events.ts";
 import {
   disablePush,
   enablePush,
@@ -352,6 +353,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     }
   }
 
+  /** Claude Code's models; one the Mac cannot give keeps its last list. */
+  async function loadClaudeModels(): Promise<void> {
+    const list = await quietly(() => api.models());
+    if (list !== null) dispatch({ type: "modelList", provider: CLAUDE, list });
+  }
+
   /** The engines and their models; `refresh` asks the engines for their login now. */
   async function loadProviders(refresh = false): Promise<void> {
     const found = await quietly(() => api.providers(refresh));
@@ -403,27 +410,42 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   // `stale`: streamed text and thinking may have missed their end, so a chat that is no
   // longer working drops them.
   async function fetchChat(id: string, stale = false): Promise<void> {
-    const done = await attempt(() =>
-      snapshot(
-        () => Promise.all([api.session(id), api.sessionEvents(id)]),
-        ([found, events]) => {
-          // The detail is a session too; its task list and agents go to tracking.
-          dispatch({ type: "session", session: found });
-          const { tasks, agents, background } = found;
-          dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
-          dispatch({ type: "queued", id, queued: found.queued });
-          // A chat closed meanwhile keeps no transcript.
-          if (onScreen.has(id)) dispatch({ type: "transcriptLoaded", id, events });
-          if (stale && !WORKING.has(found.state)) dispatch({ type: "liveCleared", id });
-        },
-      ),
-    );
-    if (done === null && onScreen.has(id)) {
+    // A chat the daemon no longer has, as one a pane remembers from data that was removed
+    // (B136), goes as a deleted one does, with no error.
+    const result = await attempt(async () => {
+      try {
+        await loadChat(id, stale);
+        return "loaded" as const;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return "gone" as const;
+        throw error;
+      }
+    });
+    if (result === "gone") {
+      failed.delete(id);
+      dispatch({ type: "sessionRemoved", id });
+    } else if (result === null && onScreen.has(id)) {
       failed.add(id);
       dispatch({ type: "historyFailed", id });
     } else {
       failed.delete(id);
     }
+  }
+
+  function loadChat(id: string, stale: boolean): Promise<void> {
+    return snapshot(
+      () => Promise.all([api.session(id), api.sessionEvents(id)]),
+      ([found, events]) => {
+        // The detail is a session too; its task list and agents go to tracking.
+        dispatch({ type: "session", session: found });
+        const { tasks, agents, background } = found;
+        dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
+        dispatch({ type: "queued", id, queued: found.queued });
+        // A chat closed meanwhile keeps no transcript.
+        if (onScreen.has(id)) dispatch({ type: "transcriptLoaded", id, events });
+        if (stale && !WORKING.has(found.state)) dispatch({ type: "liveCleared", id });
+      },
+    );
   }
 
   /** The chat's dev server (B108); quiet, as a daemon before B108 has none to tell. */
@@ -718,6 +740,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       if (event.type === "extensions.updated") void settings.extensionsChanged();
       // Whether an engine can run chats follows its login and its install (B107).
       if (ENGINE_EVENTS.has(event.type)) void loadProviders();
+      if (event.type === ENGINE_MODELS) void loadClaudeModels();
       if (event.type === "configuration.changed") void settings.configurationChanged(event.payload);
     },
 
