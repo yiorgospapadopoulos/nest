@@ -39,7 +39,7 @@ from nestd.providers.base import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from nestd.providers.codex_items import items, obj, text
+from nestd.providers.codex_items import items, mcp_image, obj, text
 
 # Nest's own MCP servers of a run by name, with their tools' names.
 type NestTools = Mapping[str, frozenset[str]]
@@ -271,7 +271,13 @@ def _result(call: ToolCall) -> ToolResultBlock:
         body = text(output.get("error")) if failed else text(output.get("output"))
     if not body and call.diffs():
         body = "Done"
-    return ToolResultBlock(tool_use_id=call.id, content=body, is_error=failed)
+    images = [
+        image
+        for part in call.content
+        if obj(part).get("type") == "content"
+        and (image := mcp_image(obj(obj(part).get("content")))) is not None
+    ]
+    return ToolResultBlock(tool_use_id=call.id, content=body, is_error=failed, image_data=images)
 
 
 def tokens(usage: JsonObject) -> TokenUsage:

@@ -3,6 +3,7 @@ guard of who calls which pixie (B70).
 """
 
 import asyncio
+import base64
 from pathlib import Path
 from typing import Any, cast
 
@@ -43,10 +44,16 @@ def nest_tool_names(tools: tuple[AgentTool, ...]) -> frozenset[str]:
 def to_sdk_tool(tool: AgentTool) -> SdkMcpTool[Any]:
     async def handler(args: dict[str, Any]) -> dict[str, Any]:
         try:
-            text = await tool.handler(args)
+            result = await tool.handler(args)
         except ToolRefusedError as error:
             return {"content": [{"type": "text", "text": str(error)}], "is_error": True}
-        return {"content": [{"type": "text", "text": text}]}
+        if isinstance(result, str):
+            return {"content": [{"type": "text", "text": result}]}
+        images = [
+            {"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"}
+            for png in result.images
+        ]
+        return {"content": [{"type": "text", "text": result.text}, *images]}
 
     return SdkMcpTool(tool.name, tool.description, tool.schema, handler)
 

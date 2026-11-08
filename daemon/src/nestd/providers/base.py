@@ -334,6 +334,16 @@ class ToolRefusedError(Exception):
 
 
 @dataclass(frozen=True)
+class ToolResult:
+    """What a Nest tool returns when the agent should also see pictures, such as a
+    screenshot of the app it uses (B150)."""
+
+    text: str
+    # PNG images.
+    images: tuple[bytes, ...] = ()
+
+
+@dataclass(frozen=True)
 class AgentTool:
     """A tool the daemon offers the agent in-process, such as a pixie's memory (D072)."""
 
@@ -341,8 +351,8 @@ class AgentTool:
     description: str
     # JSON Schema of the input object.
     schema: dict[str, JsonValue]
-    # Returns the text the agent sees; raises ToolRefusedError to refuse.
-    handler: Callable[[dict[str, JsonValue]], Awaitable[str]]
+    # Returns what the agent sees; raises ToolRefusedError to refuse.
+    handler: Callable[[dict[str, JsonValue]], Awaitable[str | ToolResult]]
 
 
 @dataclass(frozen=True)

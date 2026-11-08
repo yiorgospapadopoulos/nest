@@ -1,7 +1,7 @@
 import pytest
 from pydantic import JsonValue
 
-from nestd.providers.base import ToolResultBlock, ToolUseBlock
+from nestd.providers.base import ImageData, ToolResultBlock, ToolUseBlock
 from nestd.providers.codex_items import (
     DECLINED,
     file_paths,
@@ -147,6 +147,24 @@ def test_an_mcp_call_is_named_like_claude_codes_with_its_text_result() -> None:
         ToolUseBlock(id="m1", name="mcp__github__get_issue", input={"number": 3})
     ]
     assert tool_results(item) == [ToolResultBlock(tool_use_id="m1", content="Issue 3")]
+
+
+def test_a_nest_tools_screenshot_stays_with_its_result() -> None:
+    image: JsonObject = {"type": "image", "data": "iVBORw0KGgo=", "mimeType": "image/png"}
+    item: JsonObject = {
+        "type": "mcpToolCall",
+        "id": "m1",
+        "server": "nest",
+        "tool": "computer_view",
+        "arguments": {"target": "browser"},
+        "status": "completed",
+        "result": {"content": [{"type": "text", "text": "Window w1"}, image]},
+    }
+
+    (result,) = tool_results(item)
+
+    assert result.content == "Window w1"
+    assert result.image_data == [ImageData(media_type="image/png", data="iVBORw0KGgo=")]
 
 
 def test_a_failed_mcp_call_shows_its_error() -> None:
