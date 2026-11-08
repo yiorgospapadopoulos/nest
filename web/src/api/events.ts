@@ -10,6 +10,9 @@ export const ACCOUNTS_CHANGED = "accounts.changed";
 // Local models were added or removed, or their engine changed (B106); `{}`, so clients
 // fetch `GET /api/local/models` again.
 export const LOCAL_MODELS_CHANGED = "local_models.changed";
+// Claude Code reported another list of models, as after its first sign in (B136); `{}`, so
+// clients fetch `GET /api/models` again.
+export const ENGINE_MODELS = "engine.models";
 // The engine updates' state, with `GET /api/updates`'s body. Not stored, so clients read it
 // again on every connect.
 export const UPDATES_CHANGED = "updates.changed";

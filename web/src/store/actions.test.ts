@@ -681,6 +681,14 @@ describe("engines (B102)", () => {
     expect(api.providers).toHaveBeenCalledTimes(2);
   });
 
+  it("reads Claude Code's models again when it reports other ones (B136)", async () => {
+    const { api, actions } = setup();
+    actions.receive(event({ type: "engine.models", session_id: null, payload: {} }));
+    await vi.waitFor(() => {
+      expect(api.models).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("refreshes another engine's usage, saying when it was refreshed moments ago", async () => {
     const { api, dispatched, actions } = setup();
     await actions.refreshUsage("codex");

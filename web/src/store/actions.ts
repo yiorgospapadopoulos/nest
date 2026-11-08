@@ -1,4 +1,5 @@
 import { ApiError, OPEN_ELSEWHERE, type Api } from "../api/client.ts";
+import { ENGINE_MODELS } from "../api/events.ts";
 import {
   disablePush,
   enablePush,
@@ -350,6 +351,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       const list = await quietly(() => api.models(name));
       if (list !== null) dispatch({ type: "modelList", provider: name, list });
     }
+  }
+
+  /** Claude Code's models; one the Mac cannot give keeps its last list. */
+  async function loadClaudeModels(): Promise<void> {
+    const list = await quietly(() => api.models());
+    if (list !== null) dispatch({ type: "modelList", provider: CLAUDE, list });
   }
 
   /** The engines and their models; `refresh` asks the engines for their login now. */
@@ -718,6 +725,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       if (event.type === "extensions.updated") void settings.extensionsChanged();
       // Whether an engine can run chats follows its login and its install (B107).
       if (ENGINE_EVENTS.has(event.type)) void loadProviders();
+      if (event.type === ENGINE_MODELS) void loadClaudeModels();
       if (event.type === "configuration.changed") void settings.configurationChanged(event.payload);
     },
 
