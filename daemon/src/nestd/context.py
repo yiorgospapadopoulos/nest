@@ -879,6 +879,7 @@ class AppContext:
             busy_chats=sessions.busy_count,
             port=lambda: context.serving_port(),
             setup=update_setup or UpdateSetup(),
+            engines_wait=local.engine_updates_wait,
         )
         context = cls(
             paths=paths,
