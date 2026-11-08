@@ -20,19 +20,21 @@ import { catalogFor, modelSections, sectionKey } from "../../store/selectors.ts"
 import { effortLabel, PERMISSIONS } from "../chat/options.ts";
 import { Loading, Section, SegRow, type Choice } from "./rows.tsx";
 import { StuckChats } from "./StuckChats.tsx";
+import { WorktreeDefaults } from "./WorktreeDefaults.tsx";
 
 const MODES: Choice<SessionMode>[] = [
   { value: "in_place", label: "Current branch" },
   { value: "worktree", label: "New worktree" },
 ];
 
-/** New chats and stuck chats (B81); each change is saved to the Mac at once. */
+/** New chats, worktrees and stuck chats (B81); each change is saved to the Mac at once. */
 export function AgentsPage() {
   const { state } = useStore();
   const defaults = state.agentDefaults;
   return (
     <>
       {defaults === null ? <Loading title="New chats" /> : <Choices defaults={defaults} />}
+      <WorktreeDefaults />
       <StuckChats />
     </>
   );

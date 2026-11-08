@@ -7,7 +7,7 @@ import {
   reviewCommentsDetail,
   reviewOf,
   str,
-  toolArg,
+  toolCall,
 } from "../../api/payloads.ts";
 import type { Approval, GroupEntry, Pixie, StuckFlag, StuckReason } from "../../api/types.ts";
 
@@ -54,8 +54,7 @@ export function approvalLine(approval: Approval, root: string | null): NeedsLine
       return { kind: "Review comments", detail: reviewCommentsDetail(approval) };
     case "permission": {
       const tool = str(approval.payload.tool) ?? "Tool";
-      const arg = toolArg(obj(approval.payload.input), root);
-      return { kind: "Permission", detail: `${tool} ${arg}`.trim() };
+      return { kind: "Permission", detail: toolCall(tool, obj(approval.payload.input), root) };
     }
   }
 }

@@ -53,6 +53,7 @@ from nestd.api.routes import (
     stuck,
     updates,
     usage,
+    worktrees,
 )
 from nestd.api.static import install_static
 from nestd.context import AppContext
@@ -85,6 +86,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             if loops:
                 await ctx.claude_chats.start()
                 await ctx.branch_watch.start()
+                await ctx.merged_worktrees.start()
                 await ctx.usage_refresher.start()
                 await ctx.prs.monitor.start()
                 await ctx.search.start()
@@ -122,6 +124,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             await ctx.search.stop()
             await ctx.prs.monitor.stop()
             await ctx.usage_refresher.stop()
+            await ctx.merged_worktrees.stop()
             await ctx.branch_watch.stop()
             await ctx.claude_chats.stop()
             await ctx.sessions.shutdown()
@@ -178,6 +181,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         storage,
         stuck,
         limits,
+        worktrees,
         engine,
         agents,
         clients,

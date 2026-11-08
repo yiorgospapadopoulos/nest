@@ -11,7 +11,7 @@ from pathlib import Path
 from secrets import token_hex
 from typing import Protocol
 
-from nestd.config.models import RepoConfig
+from nestd.config.models import RepoConfig, WorktreeDefaults
 from nestd.errors import ConflictError, InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
@@ -19,16 +19,18 @@ from nestd.gitops.hardened import remote_names, run_checkout_git, run_hardened_g
 from nestd.gitops.runner import GitError
 from nestd.paths import AppPaths
 from nestd.repos.service import RepoUnreadableError
+from nestd.worktrees.at_risk import AtRisk, at_risk
+from nestd.worktrees.options import (
+    SUBMODULES_COMMAND,
+    WorktreeOptions,
+    options_for,
+)
+from nestd.worktrees.ownership import WORKTREE_PREFIX, is_nest_worktree, mark
 from nestd.worktrees.setup import LinkResult, SetupResult, link_files, run_commands
 
 BRANCH_PREFIX = "agent/"
 MAX_SLUG_LENGTH = 40
 SHORT_ID_LENGTH = 8
-# New worktrees live where Claude Code keeps its own (D028), named so they are told apart.
-WORKTREE_PREFIX = "nest-"
-# Worktrees made before the rename to Nest (B43) are still its own.
-OWNED_WORKTREE_PREFIXES = (WORKTREE_PREFIX, "harness-")
-EXCLUDE_LINE = "/.claude/worktrees/"
 # What `git branch -d` says when it refuses a branch with work it cannot find elsewhere.
 NOT_MERGED = "not fully merged"
 # What `git worktree add` says of a branch checked out elsewhere, naming where.
@@ -45,10 +47,6 @@ class BranchExistsError(ConflictError):
     pass
 
 
-def claude_worktrees_dir(repo_path: Path) -> Path:
-    return repo_path / ".claude" / "worktrees"
-
-
 @dataclass(frozen=True)
 class Worktree:
     path: Path
@@ -56,9 +54,11 @@ class Worktree:
     base_ref: str
 
 
-def branch_name(title: str) -> str:
-    """`agent/<slug>-<6 hex>`, the slug cut at a word boundary to at most 40 characters."""
-    return f"{BRANCH_PREFIX}{_slug(title) or 'task'}-{token_hex(3)}"
+def branch_name(title: str, prefix: str = BRANCH_PREFIX) -> str:
+    """`<prefix><slug>-<6 hex>`, such as `agent/fix-login-1a2b3c`, the slug cut at a word
+    boundary to at most 40 characters.
+    """
+    return f"{prefix}{_slug(title) or 'task'}-{token_hex(3)}"
 
 
 def issue_branch_name(number: int, title: str) -> str:
@@ -102,11 +102,14 @@ class WorktreeManager:
         on_removed: RemovedHook | None = None,
         bus: EventBus | None = None,
         runs: WorktreeRuns | None = None,
+        defaults: Callable[[], WorktreeDefaults] = WorktreeDefaults,
     ) -> None:
         """With `bus`, each worktree added or removed is announced as the repo's branches
         changing (B96). `runs` gives setup commands the worktree's ports, starts its run
-        after setup and stops it before it is removed (B108).
+        after setup and stops it before it is removed (B108). `defaults` reads the
+        `[worktrees]` settings as they are now (B141).
         """
+        self._defaults = defaults
         self._runs = runs
         self._paths = paths
         self._on_removed = on_removed
@@ -124,21 +127,23 @@ class WorktreeManager:
         base: str | None = None,
         folder: str | None = None,
     ) -> Worktree:
-        """A new branch checked out in `<repo>/.claude/worktrees/nest-<short id>`, or in
-        `folder` there (`free_folder`, for a chat's further worktrees): named `branch`
-        (checked with `check_new_branch`) or after the title, starting at commit `base` or
-        else at the default branch.
+        """A new branch checked out in `nest-<short id>` in the project's worktrees folder
+        (`options`), or in `folder` there (`free_folder`, for a chat's further worktrees):
+        named `branch` (checked with `check_new_branch`) or after the title, starting at
+        commit `base` or else at the default branch.
 
-        The worktrees folder is added to the repo's local exclude file first, so neither
-        `git status` in the checkout nor a commit picks the worktrees up.
+        A worktrees folder inside the project is added to the repo's local exclude file
+        first, so neither `git status` in the checkout nor a commit picks the worktrees up.
         """
-        await _exclude_worktrees(repo)
+        options = self.options(repo)
+        await _exclude_worktrees(repo, options.folder)
         name = folder or f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
-        path = claude_worktrees_dir(repo.path) / name
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path = options.folder / name
+        await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
         base = base or await _base_commit(repo)
-        branch = branch or branch_name(title)
+        branch = branch or branch_name(title, options.branch_prefix)
         await run_checkout_git(["worktree", "add", "-q", "-b", branch, str(path), base], repo.path)
+        await mark(path)
         await self._branches_changed(repo)
         return Worktree(path=path, branch=branch, base_ref=base)
 
@@ -149,11 +154,13 @@ class WorktreeManager:
         place as `create`'s (B96); its work is compared with commit `base`. git refuses a
         branch checked out elsewhere already.
         """
-        await _exclude_worktrees(repo)
-        path = claude_worktrees_dir(repo.path) / f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
-        path.parent.mkdir(parents=True, exist_ok=True)
+        folder = self.options(repo).folder
+        await _exclude_worktrees(repo, folder)
+        path = folder / f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
+        await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
         async with self._checking_out:
             await _add_worktree(repo, path, branch)
+        await mark(path)
         await self._branches_changed(repo)
         return Worktree(path=path, branch=branch, base_ref=base)
 
@@ -162,11 +169,16 @@ class WorktreeManager:
         `-2`, `-3` and so on) that is not on disk and not in `taken`, names it had before.
         """
         base = f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
+        folder = self.options(repo).folder
         name, number = base, 1
-        while name in taken or (claude_worktrees_dir(repo.path) / name).exists():
+        while name in taken or (folder / name).exists():
             number += 1
             name = f"{base}-{number}"
         return name
+
+    def options(self, repo: RepoConfig) -> WorktreeOptions:
+        """The project's worktree choices as the settings are now (B141)."""
+        return options_for(repo, self._defaults())
 
     async def has_branch(self, repo: RepoConfig, name: str) -> bool:
         """Whether `repo` has the local branch `name`."""
@@ -264,8 +276,11 @@ class WorktreeManager:
         self, repo: RepoConfig, worktree_path: Path, session_id: str
     ) -> SetupResult:
         runs = self._runs
+        submodules = self.options(repo).submodules and await asyncio.to_thread(
+            (worktree_path / ".gitmodules").is_file
+        )
         result = await run_commands(
-            repo.worktree.setup,
+            [SUBMODULES_COMMAND, *repo.worktree.setup] if submodules else repo.worktree.setup,
             worktree_path,
             self._paths.logs_dir / f"setup-{session_id}.log",
             repo.worktree.setup_timeout_seconds,
@@ -339,15 +354,14 @@ class WorktreeManager:
             logger.warning("cleaning up after the worktree %s failed (%s)", path, error)
 
     def owns(self, repo: RepoConfig, path: Path) -> bool:
-        """Whether the worktree is where Nest puts its own: `<repo>/.claude/worktrees/nest-*`
-        (`harness-*` before B43), or the data dir's worktrees of earlier versions.
-        Claude Code's own worktrees next to them are not.
+        """Whether the worktree is Nest's own (`is_nest_worktree`), or one of the data dir's
+        worktrees of earlier versions. Claude Code's own worktrees next to them are not.
+        Blocks.
         """
         target = path.resolve()
         legacy = self._paths.worktrees_dir.resolve()
-        return (target.is_relative_to(legacy) and target != legacy) or (
-            target.parent == claude_worktrees_dir(repo.path.resolve())
-            and target.name.startswith(OWNED_WORKTREE_PREFIXES)
+        return (target.is_relative_to(legacy) and target != legacy) or is_nest_worktree(
+            repo.path, target
         )
 
     @staticmethod
@@ -368,6 +382,19 @@ class WorktreeManager:
         except GitError:
             return None
         return output.strip()
+
+    async def at_risk(self, repo: RepoConfig, worktree: Worktree) -> AtRisk:
+        """What removing the worktree would lose (B141): its changes, untracked files and
+        commits not on the project's default branch, or else not on the commit it started
+        from. A folder that is gone holds nothing. Raises GitError when git cannot tell.
+        """
+        if not await asyncio.to_thread(worktree.path.is_dir):
+            return AtRisk(None)
+        branch = repo.default_branch
+        if branch is not None and await _has_branch(repo, branch):
+            return await at_risk(worktree.path, f"refs/heads/{branch}", branch)
+        base = worktree.base_ref or None
+        return await at_risk(worktree.path, base, base and base[:SHORT_ID_LENGTH])
 
     async def has_work(self, worktree: Worktree) -> bool:
         """Whether the worktree holds changes (untracked files included) or commits since
@@ -412,20 +439,33 @@ async def _add_worktree(repo: RepoConfig, path: Path, branch: str) -> None:
         await run_hardened_git(["symbolic-ref", "HEAD", f"refs/heads/{branch}"], path)
 
 
-async def _exclude_worktrees(repo: RepoConfig) -> None:
-    """Add EXCLUDE_LINE to the repo's local exclude file unless it is there already."""
+async def _exclude_worktrees(repo: RepoConfig, folder: Path) -> None:
+    """Add the worktrees folder to the repo's local exclude file unless it is there already
+    or outside the project, such as `/.claude/worktrees/`.
+    """
+    inside = await asyncio.to_thread(_inside, repo.path, folder)
+    if inside is None:
+        return
     output = await run_hardened_git(["rev-parse", "--git-path", "info/exclude"], repo.path)
-    await asyncio.to_thread(_add_exclude_line, repo.path / output.strip())
+    await asyncio.to_thread(_add_exclude_line, repo.path / output.strip(), f"/{inside}/")
 
 
-def _add_exclude_line(exclude: Path) -> None:
+def _inside(repo_path: Path, folder: Path) -> str | None:
+    """The folder relative to the project, if it is in it."""
+    target, root = folder.resolve(), repo_path.resolve()
+    if target == root or not target.is_relative_to(root):
+        return None
+    return target.relative_to(root).as_posix()
+
+
+def _add_exclude_line(exclude: Path, line: str) -> None:
     text = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
-    if EXCLUDE_LINE in (line.strip() for line in text.splitlines()):
+    if line in (existing.strip() for existing in text.splitlines()):
         return
     if text and not text.endswith("\n"):
         text += "\n"
     exclude.parent.mkdir(parents=True, exist_ok=True)
-    exclude.write_text(f"{text}{EXCLUDE_LINE}\n", encoding="utf-8")
+    exclude.write_text(f"{text}{line}\n", encoding="utf-8")
 
 
 def _is_worktree(path: Path) -> bool:

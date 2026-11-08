@@ -143,6 +143,10 @@ class WorktreeChange(BaseModel):
     delete_branch: str | None = None
     # The called pixie's session that recorded it, on its caller (B127).
     by: str | None = None
+    # What the user agreed to lose with a removal (B141): files and commit shas. Anything
+    # more when it applies keeps the worktree.
+    confirmed_files: list[str] = Field(default_factory=list[str])
+    confirmed_commits: list[str] = Field(default_factory=list[str])
 
 
 class PendingWorktree(BaseModel):

@@ -69,6 +69,42 @@ type MaxRunning = Annotated[int, Field(ge=1, le=20)]
 type MaxPerDay = Annotated[int, Field(ge=1, le=100)]
 
 
+def _worktree_folder(value: object) -> object:
+    """A folder for worktrees: absolute, or under the home folder with `~` (B141)."""
+    if not isinstance(value, str):
+        return value
+    folder = value.strip()
+    if not Path(folder).expanduser().is_absolute() or "\0" in folder:
+        msg = f"the worktrees folder {value!r} must be an absolute path or start with ~"
+        raise ValueError(msg)
+    return folder
+
+
+_PREFIX_CHARACTERS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,39}")
+
+
+def _branch_prefix(value: object) -> object:
+    """The start of a branch name, such as "agent/" or "gp-": letters, digits and . _ - /
+    in parts git takes for a branch; empty for none (B141).
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    parts = value.split("/")
+    if (
+        _PREFIX_CHARACTERS.fullmatch(value) is None
+        or ".." in value
+        or any(part.startswith(".") or part.endswith(".lock") for part in parts)
+        or "" in parts[:-1]
+    ):
+        msg = f"{value!r} cannot start a branch name"
+        raise ValueError(msg)
+    return value
+
+
+type WorktreeFolder = Annotated[str, BeforeValidator(_worktree_folder)]
+type BranchPrefix = Annotated[str, BeforeValidator(_branch_prefix)]
+
+
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -353,6 +389,22 @@ class PortSettings(_Strict):
         return self
 
 
+class WorktreeDefaults(_Strict):
+    """`[worktrees]` (B141): how Nest makes and keeps worktrees, unless a project's
+    `[worktree]` says otherwise.
+    """
+
+    # None: in each project at `.claude/worktrees`, where Claude Code keeps its own (D028).
+    # Else a folder holding one folder per project, named after it.
+    folder: WorktreeFolder | None = None
+    # Starts the name of each branch Nest names itself.
+    branch_prefix: BranchPrefix = "agent/"
+    # Remove Nest's worktrees that hold nothing off the base branch and no open chat uses.
+    clean_merged: bool = False
+    # Check out each new worktree's submodules.
+    submodules: bool = False
+
+
 class Settings(_Strict):
     server: ServerSettings = Field(default_factory=ServerSettings)
     agents: AgentDefaults = Field(default_factory=AgentDefaults)
@@ -367,6 +419,7 @@ class Settings(_Strict):
     artifacts: ArtifactSettings = Field(default_factory=ArtifactSettings)
     configuration: ConfigurationSettings = Field(default_factory=ConfigurationSettings)
     ports: PortSettings = Field(default_factory=PortSettings)
+    worktrees: WorktreeDefaults = Field(default_factory=WorktreeDefaults)
 
     @model_validator(mode="before")
     @classmethod
@@ -396,6 +449,12 @@ class WorktreeConfig(_Strict):
     setup: list[str] = Field(default_factory=list[str])
     # Applies to each setup command separately.
     setup_timeout_seconds: int = Field(default=900, ge=1)
+    # The project's own choices of `[worktrees]`; None follows it (B141). The folder here
+    # holds the project's worktrees itself.
+    folder: WorktreeFolder | None = None
+    branch_prefix: BranchPrefix | None = None
+    clean_merged: bool | None = None
+    submodules: bool | None = None
 
     @field_validator("link")
     @classmethod

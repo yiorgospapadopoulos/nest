@@ -22,6 +22,7 @@ from nestd.config.models import (
     StuckSettings,
     TaskTemplate,
     UsageSettings,
+    WorktreeDefaults,
 )
 from nestd.paths import AppPaths
 
@@ -85,6 +86,11 @@ def save_stuck(paths: AppPaths, stuck: StuckSettings) -> StuckSettings:
 def save_limits(paths: AppPaths, limits: LimitSettings) -> LimitSettings:
     """Replace the `[limits]` section of settings.toml, keeping every other section."""
     return _save_section(paths, "limits", _dump(limits)).limits
+
+
+def save_worktrees(paths: AppPaths, worktrees: WorktreeDefaults) -> WorktreeDefaults:
+    """Replace the `[worktrees]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "worktrees", _dump(worktrees)).worktrees
 
 
 def save_storage(paths: AppPaths, storage: StorageSettings) -> StorageSettings:

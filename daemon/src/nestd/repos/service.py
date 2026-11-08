@@ -277,7 +277,8 @@ class RepoService:
     async def edit(self, name: str, changes: dict[str, object]) -> RepoConfig:
         """Set some project settings: the `icon` keys, the default branch and push URL of a
         git repo, and the `[worktree]` keys (`default`, `link`, `setup`,
-        `setup_timeout_seconds`), checked as when the config file is loaded, then save and
+        `setup_timeout_seconds`, and B141's `folder`, `branch_prefix`, `clean_merged`,
+        `submodules`), checked as when the config file is loaded, then save and
         announce the repo to other devices (IMP-09, B36, D104).
         """
         repo = self.registered(name)

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Response, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from nestd.api.deps import Context, RequireDevice
-from nestd.config.models import Color, Mascot
+from nestd.config.models import BranchPrefix, Color, Mascot, WorktreeFolder
 from nestd.events import types
 from nestd.repos.branch_map import BranchMap, read_branch_map
 from nestd.repos.fetching import RefreshReport
@@ -30,8 +30,8 @@ _GIT_URL = r"^([A-Za-z][A-Za-z0-9+.-]*://\S+|([^@\s/:]+@)?[^\s/:]+:\S+|/\S+)$"
 
 class UpdateRepo(BaseModel):
     """Project settings to set. `link` and `setup` left out (or null) are unchanged;
-    `default`, `icon` and `icon_color` left out are unchanged, and null clears them
-    (BUG-102, B36).
+    `default`, `icon`, `icon_color` and the worktree choices of B141 left out are
+    unchanged, and null clears them (BUG-102, B36).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -53,13 +53,30 @@ class UpdateRepo(BaseModel):
     remote_url: Annotated[str, StringConstraints(pattern=_GIT_URL)] | None = None
     # How long each setup command may run in a new worktree.
     setup_timeout_seconds: Annotated[int, Field(ge=1, le=86400)] | None = None
+    # The project's own worktree choices; null follows `[worktrees]` (B141). The folder
+    # holds the project's worktrees itself.
+    folder: WorktreeFolder | None = None
+    branch_prefix: BranchPrefix | None = None
+    clean_merged: bool | None = None
+    submodules: bool | None = None
 
     def changes(self) -> dict[str, object]:
         sent = self.model_dump(exclude_unset=True)
         return {key: value for key, value in sent.items() if value is not None or key in _CLEARABLE}
 
 
-_CLEARABLE = frozenset({"default", "icon", "icon_color", "remote_url"})
+_CLEARABLE = frozenset(
+    {
+        "default",
+        "icon",
+        "icon_color",
+        "remote_url",
+        "folder",
+        "branch_prefix",
+        "clean_merged",
+        "submodules",
+    }
+)
 
 
 class RepoOrder(BaseModel):

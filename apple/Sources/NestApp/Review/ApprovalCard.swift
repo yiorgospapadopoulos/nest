@@ -65,8 +65,12 @@ struct ApprovalCard: View {
     }
 }
 
-/// The command in mono, Claude's prompt and why it asks, and Approve, Reject, Always allow.
+/// The command in mono, Claude's prompt and why it asks, and Approve, Reject, Always allow
+/// unless the daemon offers none.
 private struct PermissionBody: View {
+    /// A reason over many lines, such as what a worktree to remove still holds, scrolls.
+    static let reasonHeight: CGFloat = 200
+
     let approval: Approval
     let style: ApprovalCard.Style
     @Environment(Shell.self) private var shell
@@ -87,12 +91,17 @@ private struct PermissionBody: View {
                         .lineSpacing(1.5)
                 }
                 if let reason = permission.reason {
-                    Text(reason)
-                        .font(.ui(TypeSize.ui))
-                        .foregroundStyle(Palette.t3)
-                        .lineSpacing(1.5)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
+                    ScrollView {
+                        Text(reason)
+                            .font(.ui(TypeSize.ui))
+                            .foregroundStyle(Palette.t3)
+                            .lineSpacing(1.5)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: Self.reasonHeight)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
                 }
             }
             // A long rule moves Always allow under Approve and Reject before they stack.
@@ -138,16 +147,18 @@ private struct PermissionBody: View {
     }
 
     /// Names exactly what it allows; a long command is cut in the middle, whole in the help.
-    private var always: some View {
-        Button {
-            shell.allow(approval, always: true)
-        } label: {
-            Text(approval.permission?.alwaysAllowTitle ?? "Always allow")
-                .lineLimit(1)
-                .truncationMode(.middle)
+    @ViewBuilder private var always: some View {
+        if approval.permission?.always ?? true {
+            Button {
+                shell.allow(approval, always: true)
+            } label: {
+                Text(approval.permission?.alwaysAllowTitle ?? "Always allow")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .buttonStyle(.nest(.plain))
+            .help(approval.permission?.alwaysAllowHelp ?? "Allow without asking again")
         }
-        .buttonStyle(.nest(.plain))
-        .help(approval.permission?.alwaysAllowHelp ?? "Allow without asking again")
     }
 }
 

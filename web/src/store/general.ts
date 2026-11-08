@@ -15,7 +15,16 @@ export const GENERAL_REPO: RepoConfig = {
   remote_url: null,
   icon: null,
   icon_color: null,
-  worktree: { default: null, link: [], setup: [], setup_timeout_seconds: 0 },
+  worktree: {
+    default: null,
+    link: [],
+    setup: [],
+    setup_timeout_seconds: 0,
+    folder: null,
+    branch_prefix: null,
+    clean_merged: null,
+    submodules: null,
+  },
 };
 
 /** The project named `name`: a registered one or General; undefined when it is gone. */

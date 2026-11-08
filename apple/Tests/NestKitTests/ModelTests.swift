@@ -130,6 +130,19 @@ import Testing
         #expect(config.isDefault == nil)
     }
 
+    /// B141: a project's own worktree choices; missing or null follows the default.
+    @Test func decodesTheProjectsOwnWorktreeChoices() throws {
+        let json = #"""
+            {"link": [], "setup": [], "setup_timeout_seconds": 900, "folder": "~/wt/a",
+             "branch_prefix": "gp-", "clean_merged": true, "submodules": null}
+            """#
+        let config = try NestJSON.decoder.decode(WorktreeConfig.self, from: Data(json.utf8))
+        #expect(
+            config
+                == WorktreeConfig(folder: "~/wt/a", branchPrefix: "gp-", cleanMerged: true))
+        #expect(Fixture.repos[0].worktree.folder == nil)
+    }
+
     @Test func decodesConnectors() {
         let connectors = Fixture.connectors
         #expect(connectors.map(\.id) == ["claude.ai Gmail", "plugin:engineering:github", "serena"])
@@ -218,6 +231,26 @@ import Testing
             JSONValue.self, json: #"{"tool": "Bash", "input": {}, "always_rule": "  "}"#)
         #expect(approval.permission?.alwaysAllowTitle == "Always allow Bash")
         #expect(approval.permission?.suggestedRule == nil)
+    }
+
+    /// B141: removing a worktree that holds work offers no Always allow, and reads as the
+    /// action and the folder name.
+    @Test func aWorktreeRemovalOffersNoAlwaysAllow() throws {
+        var approval = Fixture.approval("ap-perm")
+        #expect(approval.permission?.always == true)
+        approval.payload = Fixture.decode(
+            JSONValue.self,
+            json: #"""
+                {"tool": "worktree", "input": {"action": "remove", "worktree": "/r/.claude/worktrees/nest-1a2b3c4d"},
+                 "title": "Remove the worktree nest-1a2b3c4d?", "reason": "Untracked files:\n  notes.txt",
+                 "always_rule": null, "always": false}
+                """#)
+        let permission = try #require(approval.permission)
+        #expect(permission.always == false)
+        #expect(permission.reason == "Untracked files:\n  notes.txt")
+        #expect(
+            ToolSummary.argument(tool: permission.tool, input: permission.input)
+                == "remove nest-1a2b3c4d")
     }
 
     @Test func questionPayloadKeepsRecommendedFlags() throws {

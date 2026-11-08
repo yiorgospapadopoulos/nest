@@ -149,7 +149,7 @@ function PermissionDetail({ approval, session }: DetailProps) {
     <>
       <div className="cmdbox">{view.command}</div>
       {view.why !== null && <div className="why">{view.why}</div>}
-      {view.reason !== null && <div className="why">{view.reason}</div>}
+      {view.reason !== null && <div className="why lines">{view.reason}</div>}
       <div className="acts">
         <button className="b b-pri" disabled={busy} onClick={() => void decide("allow")}>
           Approve
@@ -157,9 +157,11 @@ function PermissionDetail({ approval, session }: DetailProps) {
         <button className="b" disabled={busy} onClick={() => void decide("deny")}>
           Reject
         </button>
-        <button className="b qb2" disabled={busy} onClick={() => void decide("allow", true)}>
-          Always allow {view.always}
-        </button>
+        {view.canAlways && (
+          <button className="b qb2" disabled={busy} onClick={() => void decide("allow", true)}>
+            Always allow {view.always}
+          </button>
+        )}
       </div>
     </>
   );

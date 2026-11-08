@@ -272,6 +272,24 @@ changed = 2026-11-05
 block = "B119"
 
 [[features]]
+id = "worktree-safety"
+group = "git"
+name = "Asks before work is lost"
+text = "Before a worktree goes, Nest looks for uncommitted changes, untracked files and commits not on the main branch. If it finds any, it names them and removes nothing until you say yes."
+where = "Needs you"
+added = 2026-11-08
+block = "B141"
+
+[[features]]
+id = "worktree-options"
+group = "git"
+name = "Worktrees set up your way"
+text = "Choose where worktrees go, how their branches are named and whether submodules come along. Merged worktrees can clean themselves up. Set it for every project or just one."
+where = "Settings > Agents, Project settings"
+added = 2026-11-08
+block = "B141"
+
+[[features]]
 id = "branch-map"
 group = "git"
 name = "Branch map"

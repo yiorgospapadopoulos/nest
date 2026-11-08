@@ -96,6 +96,7 @@ final class FakeAPI: NestAPI {
         var largeAttachments: [LargeAttachment] = []
         var pixieSettings = PixieSettings()
         var limitSettings = LimitSettings()
+        var worktreeSettings = WorktreeSettings()
         var notificationRules = NotificationRules()
         var pixieSkills: [PixieSkillChoice] = []
         var github = GitHubAccount(
@@ -265,6 +266,18 @@ final class FakeAPI: NestAPI {
             }
             if let seconds = patch.setupTimeoutSeconds {
                 state.repos[index].worktree.setupTimeoutSeconds = seconds
+            }
+            if patch.changesFolder {
+                state.repos[index].worktree.folder = patch.folder
+            }
+            if patch.changesBranchPrefix {
+                state.repos[index].worktree.branchPrefix = patch.branchPrefix
+            }
+            if patch.changesCleanMerged {
+                state.repos[index].worktree.cleanMerged = patch.cleanMerged
+            }
+            if patch.changesSubmodules {
+                state.repos[index].worktree.submodules = patch.submodules
             }
             return state.repos[index]
         }
@@ -1301,6 +1314,17 @@ final class FakeAPI: NestAPI {
     func updateLimitSettings(_ settings: LimitSettings) async throws -> LimitSettings {
         try call("updateLimitSettings") { state in
             state.limitSettings = settings
+            return settings
+        }
+    }
+
+    func worktreeSettings() async throws -> WorktreeSettings {
+        try call("worktreeSettings") { $0.worktreeSettings }
+    }
+
+    func updateWorktreeSettings(_ settings: WorktreeSettings) async throws -> WorktreeSettings {
+        try call("updateWorktreeSettings") { state in
+            state.worktreeSettings = settings
             return settings
         }
     }

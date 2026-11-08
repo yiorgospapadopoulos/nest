@@ -45,6 +45,14 @@ public enum ToolSummary {
     /// The argument of a tool call that is only described, such as a permission prompt's.
     public static func argument(tool: String, input: JSONValue) -> String {
         func text(_ key: String) -> String? { input[key]?.stringValue }
+        // Nest's own worktree tool: its action and the worktree's folder name (B141).
+        if tool == "worktree" {
+            let folder = text("worktree").flatMap {
+                $0.split(separator: "/").last.map(String.init)
+            }
+            return [text("action"), folder].compactMap { $0 }.filter { !$0.isEmpty }
+                .joined(separator: " ")
+        }
         switch kind(of: tool) {
         case .search where text("pattern") != nil:
             return (["\"\(text("pattern")!)\""] + [text("path")].compactMap { $0 })

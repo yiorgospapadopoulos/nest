@@ -371,6 +371,12 @@ export interface WorktreeConfig {
   link: string[];
   setup: string[];
   setup_timeout_seconds: number;
+  // This project's own choices (B141); null follows the worktree settings. The folder
+  // holds this project's worktrees directly.
+  folder: string | null;
+  branch_prefix: string | null;
+  clean_merged: boolean | null;
+  submodules: boolean | null;
 }
 
 export interface SelectedPlace {
@@ -769,6 +775,11 @@ export interface RepoPatch {
   default_branch?: string;
   remote_url?: string | null;
   setup_timeout_seconds?: number;
+  // Null goes back to the worktree settings.
+  folder?: string | null;
+  branch_prefix?: string | null;
+  clean_merged?: boolean | null;
+  submodules?: boolean | null;
 }
 
 export type NotifyKind =
@@ -1327,6 +1338,15 @@ export interface StuckSettings {
 /** What Nest lets agents do on their own (`/api/limits/settings`, D160). */
 export interface LimitSettings {
   can_push: boolean;
+}
+
+/** How Nest makes and tidies worktrees, for every project (`/api/worktrees/settings`, B141). */
+export interface WorktreeSettings {
+  // Null keeps them inside each project, at .claude/worktrees; else <folder>/<project>/.
+  folder: string | null;
+  branch_prefix: string;
+  clean_merged: boolean;
+  submodules: boolean;
 }
 
 /** What new pixies start with, and the habit switches (`/api/pixie-settings`, D104). */

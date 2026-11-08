@@ -66,8 +66,27 @@ export function worktreePatch(old: WorktreeConfig, next: WorktreeConfig): RepoPa
     ...(old.default === next.default ? {} : { default: next.default }),
     ...(same(old.link, next.link) ? {} : { link: next.link }),
     ...(same(old.setup, next.setup) ? {} : { setup: next.setup }),
+    ...(old.folder === next.folder ? {} : { folder: next.folder }),
+    ...(old.branch_prefix === next.branch_prefix ? {} : { branch_prefix: next.branch_prefix }),
+    ...(old.clean_merged === next.clean_merged ? {} : { clean_merged: next.clean_merged }),
+    ...(old.submodules === next.submodules ? {} : { submodules: next.submodules }),
   };
 }
+
+/** A typed folder or prefix, trimmed; null when left empty, which follows the default. */
+export function ownText(text: string): string | null {
+  const typed = text.trim();
+  return typed === "" ? null : typed;
+}
+
+export type OwnChoice = "default" | "on" | "off";
+
+/** A project's own switch, where null follows the default. */
+export const ownChoice = (value: boolean | null): OwnChoice =>
+  value === null ? "default" : value ? "on" : "off";
+
+export const ownValue = (choice: OwnChoice): boolean | null =>
+  choice === "default" ? null : choice === "on";
 
 export type ProjectIcon = Pick<RepoConfig, "icon" | "icon_color">;
 

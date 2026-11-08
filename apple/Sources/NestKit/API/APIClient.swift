@@ -560,6 +560,16 @@ public struct APIClient: NestAPI {
         try await call("PUT", ["limits", "settings"], body: settings)
     }
 
+    public func worktreeSettings() async throws -> WorktreeSettings {
+        try await get("worktrees", "settings")
+    }
+
+    public func updateWorktreeSettings(_ settings: WorktreeSettings) async throws
+        -> WorktreeSettings
+    {
+        try await call("PUT", ["worktrees", "settings"], body: settings)
+    }
+
     public func notificationRules() async throws -> NotificationRules {
         try await get("notifications", "settings")
     }

@@ -17,6 +17,10 @@ const config = (change: Partial<WorktreeConfig> = {}): WorktreeConfig => ({
   link: [],
   setup: [],
   setup_timeout_seconds: 900,
+  folder: null,
+  branch_prefix: null,
+  clean_merged: null,
+  submodules: null,
   ...change,
 });
 
