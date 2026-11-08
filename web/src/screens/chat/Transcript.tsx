@@ -53,6 +53,7 @@ import { chatScopes } from "../artifacts/view.ts";
 import { AutopilotReportCard, DecisionLine } from "./Autopilot.tsx";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { PixieCard } from "./PixieCard.tsx";
+import { NamedFiles } from "./NamedFiles.tsx";
 import { ResultImages, Sent } from "./ResultImages.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import { changesFiles } from "./rewind.ts";
@@ -237,104 +238,106 @@ export function Transcript({
   );
 
   return (
-    <div className="ch-txw">
-      <div
-        className={virtual ? "ch-tx virt" : "ch-tx"}
-        ref={box}
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          const metrics = {
-            offset: el.scrollTop,
-            viewport: el.clientHeight,
-            content: el.scrollHeight,
-          };
-          if (follow.current.update(metrics)) el.scrollTop = el.scrollHeight;
-          setAway(follow.current.showsJump);
-        }}
-      >
-        {history === "loading" && items.length === 0 && <p className="note">Loading...</p>}
-        {history === "failed" && (
-          <div className="note">
-            The messages could not be loaded.{" "}
-            <button className="lnk" onClick={onRetry}>
-              Retry
-            </button>
-          </div>
-        )}
-        {loaded && items.length === 0 && !working && (
-          <div className="tx-empty">
-            <Icon name="spark" />
-            <b>No messages yet</b>
-          </div>
-        )}
-        {/* Not a live region: it holds the ticking timer and streamed text. */}
-        <div className="tx">
-          <CallContext value={calls}>
-            {virtual ? (
-              <VirtualItems
-                items={items}
-                follow={follow}
-                focus={focus}
-                focused={focused}
-                onHit={showHit}
-                renderItem={itemOf}
-              />
-            ) : (
-              items.map(itemOf)
-            )}
-          </CallContext>
-          {live && (
-            <div className="m-a">
-              <Markdown text={live} />
+    <NamedFiles session={session.id}>
+      <div className="ch-txw">
+        <div
+          className={virtual ? "ch-tx virt" : "ch-tx"}
+          ref={box}
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            const metrics = {
+              offset: el.scrollTop,
+              viewport: el.clientHeight,
+              content: el.scrollHeight,
+            };
+            if (follow.current.update(metrics)) el.scrollTop = el.scrollHeight;
+            setAway(follow.current.showsJump);
+          }}
+        >
+          {history === "loading" && items.length === 0 && <p className="note">Loading...</p>}
+          {history === "failed" && (
+            <div className="note">
+              The messages could not be loaded.{" "}
+              <button className="lnk" onClick={onRetry}>
+                Retry
+              </button>
             </div>
           )}
-          {runs.map((run) => (
-            <LocalBash key={run.id} run={run} />
-          ))}
-          <ReviewWaitingLine sessionId={session.id} />
-          {working && <WorkingLine thinking={thinking} thought={thought} start={start} />}
+          {loaded && items.length === 0 && !working && (
+            <div className="tx-empty">
+              <Icon name="spark" />
+              <b>No messages yet</b>
+            </div>
+          )}
+          {/* Not a live region: it holds the ticking timer and streamed text. */}
+          <div className="tx">
+            <CallContext value={calls}>
+              {virtual ? (
+                <VirtualItems
+                  items={items}
+                  follow={follow}
+                  focus={focus}
+                  focused={focused}
+                  onHit={showHit}
+                  renderItem={itemOf}
+                />
+              ) : (
+                items.map(itemOf)
+              )}
+            </CallContext>
+            {live && (
+              <div className="m-a">
+                <Markdown text={live} />
+              </div>
+            )}
+            {runs.map((run) => (
+              <LocalBash key={run.id} run={run} />
+            ))}
+            <ReviewWaitingLine sessionId={session.id} />
+            {working && <WorkingLine thinking={thinking} thought={thought} start={start} />}
+          </div>
         </div>
+        <p className="sr" role="status">
+          {spoken}
+        </p>
+        {sheet?.kind === "actions" && (
+          <MessageActions
+            onClose={close}
+            onEdit={canRewind ? () => void edit(sheet.event) : undefined}
+            onRewind={
+              canRewind
+                ? () => {
+                    setSheet({ kind: "rewind", event: sheet.event });
+                  }
+                : undefined
+            }
+            onFork={canFork ? () => void fork(sheet.event) : undefined}
+          />
+        )}
+        {sheet?.kind === "rewind" && (
+          <RewindSheet
+            sessionId={session.id}
+            eventId={sheet.event}
+            onClose={close}
+            onRestore={(restore) => void rewind(sheet.event, restore)}
+          />
+        )}
+        {sheet?.kind === "edit" && (
+          <EditSheet
+            preview={sheet.preview}
+            onClose={close}
+            onEdit={(restore) => void rewind(sheet.event, restore)}
+          />
+        )}
+        {ask}
+        {away && (
+          <button className="jump gl" onClick={jump}>
+            <Icon name="chev" />
+            Jump to latest
+          </button>
+        )}
       </div>
-      <p className="sr" role="status">
-        {spoken}
-      </p>
-      {sheet?.kind === "actions" && (
-        <MessageActions
-          onClose={close}
-          onEdit={canRewind ? () => void edit(sheet.event) : undefined}
-          onRewind={
-            canRewind
-              ? () => {
-                  setSheet({ kind: "rewind", event: sheet.event });
-                }
-              : undefined
-          }
-          onFork={canFork ? () => void fork(sheet.event) : undefined}
-        />
-      )}
-      {sheet?.kind === "rewind" && (
-        <RewindSheet
-          sessionId={session.id}
-          eventId={sheet.event}
-          onClose={close}
-          onRestore={(restore) => void rewind(sheet.event, restore)}
-        />
-      )}
-      {sheet?.kind === "edit" && (
-        <EditSheet
-          preview={sheet.preview}
-          onClose={close}
-          onEdit={(restore) => void rewind(sheet.event, restore)}
-        />
-      )}
-      {ask}
-      {away && (
-        <button className="jump gl" onClick={jump}>
-          <Icon name="chev" />
-          Jump to latest
-        </button>
-      )}
-    </div>
+    </NamedFiles>
   );
 }
 

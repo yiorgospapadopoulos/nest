@@ -237,6 +237,7 @@ export interface Api {
   remember(sessionId: string, text: string, scope: MemoryScope): Promise<MemoryReply>;
   // A stored file, such as an image in a tool result, as data.
   attachment(id: string): Promise<Blob>;
+  namedFile(sessionId: string, path: string): Promise<Blob>;
   attachmentThere(id: string): Promise<void>;
   // The dev server of the chat's folder (B108); start and restart answer 409 when the chat
   // has no run command.
@@ -767,6 +768,13 @@ export class HttpApi implements Api {
   async attachment(id: string) {
     const path = `/api/attachments/${encodeURIComponent(id)}`;
     const response = await this.request(path, {});
+    if (!response.ok) throw failure(response.status, parse(await response.text()));
+    return response.blob();
+  }
+
+  async namedFile(sessionId: string, path: string) {
+    const query = new URLSearchParams({ path });
+    const response = await this.request(`${session(sessionId)}/file?${query.toString()}`, {});
     if (!response.ok) throw failure(response.status, parse(await response.text()));
     return response.blob();
   }

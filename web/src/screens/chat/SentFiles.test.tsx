@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { JsonObject, NestEvent } from "../../api/types.ts";
@@ -87,19 +87,34 @@ describe("images and files sent with a message", () => {
     expect(screen.getByRole("button", { name: /kept\.pdf/ })).toHaveTextContent("2.4 MB");
   });
 
-  it("opens a file through the API, not a bare link", async () => {
+  it("opens a sent file in the viewer through the API, and saves it from there", async () => {
     const api = fakeApi();
-    api.attachment.mockResolvedValue(new Blob(["pdf"]));
+    api.attachment.mockResolvedValue(new Blob(["line one\nline two\n"]));
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockReturnValue();
-    const { user } = await openChat([said([pdf("f3")])], api);
+    const { user } = await openChat(
+      [said([{ id: "f3", filename: "app.log", media_type: "text/plain", size: 18 }])],
+      api,
+    );
+
+    await user.click(screen.getByRole("button", { name: /app\.log/ }));
+
+    const sheet = await screen.findByRole("dialog", { name: "app.log" });
+    expect(api.attachment).toHaveBeenCalledWith("f3");
+    expect(await within(sheet).findByText("line two")).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("app.log");
+  });
+
+  it("says when the file of a row has gone since", async () => {
+    const api = fakeApi();
+    api.attachmentThere.mockResolvedValue(undefined);
+    api.attachment.mockRejectedValue(new ApiError(404, "no"));
+    const { user } = await openChat([said([pdf("f5")])], api);
 
     await user.click(screen.getByRole("button", { name: /notes\.pdf/ }));
 
-    await waitFor(() => {
-      expect(click).toHaveBeenCalledTimes(1);
-    });
-    expect(api.attachment).toHaveBeenCalledWith("f3");
-    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("notes.pdf");
+    const sheet = await screen.findByRole("dialog", { name: "notes.pdf" });
+    expect(await within(sheet).findByText("This file is not there any more.")).toBeInTheDocument();
   });
 
   it("shows a message of files alone with no empty bubble", async () => {

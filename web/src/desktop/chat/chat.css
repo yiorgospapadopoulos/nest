@@ -2849,3 +2849,18 @@ button.dc-line:disabled {
     -webkit-text-fill-color: currentColor;
   }
 }
+
+/* The file viewer's header and body (B144). */
+.fv-h h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fv-b {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px;
+  background: var(--soft);
+}

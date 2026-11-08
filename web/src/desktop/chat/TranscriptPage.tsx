@@ -190,7 +190,7 @@ function ChatTranscript({
   );
   if (session === undefined) return <Waiting />;
   return (
-    <FileLinks folder={workRoot(session)}>
+    <FileLinks folder={workRoot(session)} session={session.id}>
       <div className="dc-page">
         <Transcript
           session={session}
@@ -253,7 +253,7 @@ function WorkTranscript({ target, post }: { target: WorkTarget; post: PanePost }
     host,
   };
   return (
-    <FileLinks folder={workRoot(state.sessions[session])}>
+    <FileLinks folder={workRoot(state.sessions[session])} session={session}>
       <RowsContext value={rows}>
         <div className="dc-page">
           <div className="dc-tx">

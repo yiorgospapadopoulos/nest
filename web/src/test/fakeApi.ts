@@ -131,6 +131,7 @@ export function fakeApi(): FakeApi {
     shell: vi.fn<Api["shell"]>(),
     remember: vi.fn<Api["remember"]>(),
     attachment: vi.fn<Api["attachment"]>(),
+    namedFile: vi.fn<Api["namedFile"]>(),
     attachmentThere: vi.fn<Api["attachmentThere"]>(),
     run: vi.fn<Api["run"]>().mockResolvedValue(runStatus()),
     runControl: vi.fn<Api["runControl"]>().mockResolvedValue(runStatus()),

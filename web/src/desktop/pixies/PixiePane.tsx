@@ -91,7 +91,7 @@ export function PixiePane({ id, chrome, focused }: Props) {
         <PixieHeaderParts pixie={pixie} session={session} />
       </HeaderFrame>
       <div className="dc-body">
-        <FileLinks folder={workRoot(session)}>
+        <FileLinks folder={workRoot(session)} session={session?.id ?? null}>
           {session === undefined ? (
             <div className="dc-tx dpx-hi-wrap">{chat === null && <SayHi pixie={pixie} />}</div>
           ) : (

@@ -1229,6 +1229,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return quietly(() => api.attachment(id).catch(goneOnMissing));
     },
 
+    /** A file a chat's message names, from its folder (B144); "gone" when it is not there. */
+    namedFile(sessionId: string, path: string): Promise<Blob | "gone" | null> {
+      return quietly(() => api.namedFile(sessionId, path).catch(goneOnMissing));
+    },
+
     /** Whether a sent file was deleted; a failed check says no. */
     async sentFileGone(id: string): Promise<boolean> {
       return (await quietly(() => api.attachmentThere(id).catch(goneOnMissing))) === "gone";

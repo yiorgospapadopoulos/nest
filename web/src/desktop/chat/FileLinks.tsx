@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useStore } from "../../store/context.ts";
-import { OpenFileContext } from "../../ui/openFile.ts";
+import { useNamedFiles } from "../../ui/namedFiles.ts";
+import { CopyTextContext, OpenFileContext, ReadFileContext } from "../../ui/openFile.ts";
 import { loopbackOrigin } from "../bridge.ts";
 import { useBridge } from "../context.ts";
+import { FileSheet } from "./FileSheet.tsx";
 
 /** Whether the daemon runs on this computer, so that a chat's paths are paths here. */
 function useLocalDaemon(): boolean {
@@ -26,14 +28,24 @@ function useLocalDaemon(): boolean {
 }
 
 /**
- * Lets the messages inside open the files they name, in the text editor. Only with a folder
- * for the chat, in the desktop app, and on the daemon's own computer: elsewhere they stay text.
+ * Lets the messages inside open the files they name (B144): in the viewer for a chat the
+ * daemon knows, which also shows the images they name, with the text editor one click away
+ * on the daemon's own computer; in the text editor alone for a chat only Claude Code knows.
  */
-export function FileLinks({ folder, children }: { folder: string | null; children: ReactNode }) {
+export function FileLinks({
+  folder,
+  session = null,
+  children,
+}: {
+  folder: string | null;
+  session?: string | null;
+  children: ReactNode;
+}) {
   const bridge = useBridge();
   const { actions } = useStore();
   const local = useLocalDaemon();
-  const open = useCallback(
+  const named = useNamedFiles(session);
+  const editor = useCallback(
     (path: string) => {
       if (folder === null) return;
       bridge.openTextFile(path, folder).catch(() => {
@@ -42,7 +54,28 @@ export function FileLinks({ folder, children }: { folder: string | null; childre
     },
     [bridge, actions, folder],
   );
+  const editable = local && folder !== null;
+  // In a pane of the Mac app the page cannot reach the clipboard itself.
+  const copy = useCallback(
+    async (text: string) => {
+      await (bridge.pane?.({ kind: "copy", text }) ?? navigator.clipboard.writeText(text));
+    },
+    [bridge],
+  );
   return (
-    <OpenFileContext value={local && folder !== null ? open : null}>{children}</OpenFileContext>
+    <OpenFileContext value={named.open ?? (editable ? editor : null)}>
+      <CopyTextContext value={copy}>
+        <ReadFileContext value={named.read}>
+          {children}
+          {named.viewing !== null && (
+            <FileSheet
+              source={named.viewing}
+              onClose={named.close}
+              onEditor={editable ? editor.bind(null, named.viewing.path) : undefined}
+            />
+          )}
+        </ReadFileContext>
+      </CopyTextContext>
+    </OpenFileContext>
   );
 }
