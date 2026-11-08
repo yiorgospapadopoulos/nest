@@ -647,7 +647,9 @@ async def test_send_now_starts_after_a_turn_only_a_background_agent_was_working_
 async def test_stop_leaves_a_turn_the_engine_ends_itself_to_the_engine(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("nestd.sessions.turns.STOP_ANSWER_SECONDS", 0.01)
+    # Long enough for the engine to answer first on a busy machine; the wait after the
+    # stop outlasts it, so a second ending would show.
+    monkeypatch.setattr("nestd.sessions.turns.STOP_ANSWER_SECONDS", 0.3)
     env.provider.script(reply("one"))
     created = await env.create()
     await env.reach(created.id, SessionState.IDLE)
@@ -657,7 +659,7 @@ async def test_stop_leaves_a_turn_the_engine_ends_itself_to_the_engine(
     await working.wait()
     await env.manager.interrupt(created.id)
     await env.reach(created.id, SessionState.INTERRUPTED)
-    await asyncio.sleep(0.03)
+    await asyncio.sleep(0.5)
 
     states = await env.states(created.id)
     assert states.count("interrupted") == 1
