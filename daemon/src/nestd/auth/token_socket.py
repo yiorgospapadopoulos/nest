@@ -90,7 +90,7 @@ class TokenSocket:
         self._server = await asyncio.start_unix_server(self._answer, path=self._path)
         self._path.chmod(0o600)
         self._identity = _identity(self._path)
-        logger.info("serving this Mac's device token on %s", self._path)
+        logger.info("serving this computer's device token on %s", self._path)
 
     async def stop(self) -> None:
         server, self._server = self._server, None
