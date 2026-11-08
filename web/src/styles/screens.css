@@ -422,6 +422,13 @@
   color: var(--t2);
   line-height: 1.4;
 }
+/* A reason over several lines, such as what a worktree to remove still holds. */
+.why.lines {
+  max-height: 16em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .why.prsum {
   white-space: pre-line;
   margin-bottom: 4px;

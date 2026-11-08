@@ -35,7 +35,8 @@ from nestd.events.models import Event
 from nestd.repos.service import RepoService
 from nestd.sessions.models import ChatImport
 from nestd.sessions.store import SessionStore
-from nestd.worktrees.manager import OWNED_WORKTREE_PREFIXES, claude_worktrees_dir
+from nestd.worktrees.options import claude_worktrees_dir
+from nestd.worktrees.ownership import OWNED_WORKTREE_PREFIXES
 
 logger = logging.getLogger(__name__)
 

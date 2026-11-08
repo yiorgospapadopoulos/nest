@@ -15,18 +15,23 @@ import { choiceItems } from "../parts1/choices.ts";
 import { Dropdown } from "../rows.tsx";
 import { STUCK_THRESHOLDS, stuckChoices, stuckLabel } from "../parts1/words.ts";
 import { SettingsRow, SettingsSection } from "../rows.tsx";
+import { WorktreesSection } from "./WorktreesSection.tsx";
 
 const MODES: { value: SessionMode; label: string }[] = [
   { value: "in_place", label: "Current branch" },
   { value: "worktree", label: "New worktree" },
 ];
 
-/** The Mac's Agents (AgentPages.swift): what new chats start with, then when one is stuck. */
+/**
+ * The Mac's Agents (AgentPages.swift): what new chats start with, how worktrees are made,
+ * then when a chat is stuck.
+ */
 export function AgentsPage() {
   const { state } = useStore();
   return (
     <>
       <NewChatsSection defaults={state.agentDefaults} />
+      <WorktreesSection settings={state.settings.worktrees} />
       <StuckSection settings={state.settings.stuck} />
     </>
   );

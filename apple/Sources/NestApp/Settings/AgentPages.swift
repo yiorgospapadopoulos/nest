@@ -67,6 +67,7 @@ private struct PixieReportLevelRow: View {
 struct AgentsPage: View {
     var body: some View {
         NewChatsSection()
+        WorktreesSection()
         StuckSection()
     }
 }
@@ -130,6 +131,48 @@ private struct NewChatsSection: View {
 
     private func change(_ action: @escaping @MainActor () async throws -> Void) {
         shell.settingsChange("Could not change the agent defaults", action)
+    }
+}
+
+/// How Nest makes and tidies worktrees in every project; a project can choose its own
+/// (B141).
+private struct WorktreesSection: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let store = shell.model.worktreeSettings
+        let settings = store.settings ?? WorktreeSettings()
+        SettingsSection(title: "Worktrees") {
+            TextSettingRow(
+                label: "Worktrees folder", value: settings.folder, unset: "Inside each project",
+                message:
+                    "Each project gets a folder in it. Leave it empty to keep them inside each project.",
+                placeholder: "~/worktrees"
+            ) { text in change { $0.folder = WorktreeConfig.ownText(text) } }
+            TextSettingRow(
+                label: "Branch name prefix", value: store.settings?.branchPrefix, unset: "-",
+                message: "New worktree branches start with this.", placeholder: "agent/"
+            ) { text in
+                change { $0.branchPrefix = text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            }
+            SettingsRow(label: "Check out submodules") {
+                Switch(isOn: settings.submodules) { change { $0.submodules.toggle() } }
+                    .accessibilityLabel("Check out submodules")
+            }
+            SettingsRow(label: "Remove merged worktrees") {
+                Switch(isOn: settings.cleanMerged) { change { $0.cleanMerged.toggle() } }
+                    .accessibilityLabel("Remove merged worktrees")
+            }
+        }
+        .disabled(store.settings == nil)
+        .task { try? await store.load() }
+    }
+
+    private func change(_ edit: @escaping (inout WorktreeSettings) -> Void) {
+        let store = shell.model.worktreeSettings
+        shell.settingsChange("Could not change the worktree settings") {
+            try await store.update(edit)
+        }
     }
 }
 

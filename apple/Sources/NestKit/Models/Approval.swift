@@ -112,10 +112,23 @@ public struct PermissionRequest: Decodable, Sendable, Hashable {
     /// `Bash(npm test:*)`, else the exact call, such as `Bash(rm -rf build)` (B59). Null
     /// in older events and for other providers.
     public var alwaysRule: String?
+    /// False when the daemon offers no "Always allow", such as for removing a worktree that
+    /// still holds work (B141). Missing in older events, which offer it.
+    public var always: Bool
 
     enum CodingKeys: String, CodingKey {
-        case tool, input, title, reason
+        case tool, input, title, reason, always
         case alwaysRule = "always_rule"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tool = try container.decode(String.self, forKey: .tool)
+        input = try container.decode(JSONValue.self, forKey: .input)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
+        alwaysRule = try container.decodeIfPresent(String.self, forKey: .alwaysRule)
+        always = try container.decodeIfPresent(Bool.self, forKey: .always) ?? true
     }
 
     /// The suggested rule, unless blank.

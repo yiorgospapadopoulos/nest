@@ -133,6 +133,40 @@ public final class LimitSettingsStore {
     }
 }
 
+/// Settings > Agents: how Nest makes and tidies worktrees in every project (B141).
+@MainActor @Observable
+public final class WorktreeSettingsStore {
+    /// Nil until loaded.
+    public private(set) var settings: WorktreeSettings?
+
+    let api: any NestAPI
+
+    public init(api: any NestAPI) {
+        self.api = api
+    }
+
+    public func load() async throws {
+        settings = try await api.worktreeSettings()
+    }
+
+    /// Shows the change at once and restores the old settings if the daemon refuses it.
+    public func update(_ change: (inout WorktreeSettings) -> Void) async throws {
+        if settings == nil {
+            try await load()
+        }
+        guard let previous = settings else { return }
+        var changed = previous
+        change(&changed)
+        settings = changed
+        do {
+            settings = try await api.updateWorktreeSettings(changed)
+        } catch {
+            settings = previous
+            throw error
+        }
+    }
+}
+
 /// Settings > Notifications: the pixie report level the daemon keeps for the phone (B85) and
 /// the ntfy channel (B130).
 @MainActor @Observable

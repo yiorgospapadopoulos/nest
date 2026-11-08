@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button, TextField } from "../../ui/controls.tsx";
 import { useOverlay, useRestoreFocus } from "../../ui/floating.ts";
+import { SettingsRow, Value } from "../rows.tsx";
 import "../../sheets/sheets.css";
 import "../config/config.css";
 import "./project.css";
@@ -69,6 +70,54 @@ export function AddField({
         Add
       </Button>
     </form>
+  );
+}
+
+/** A row with a short text in mono, or `unset` while there is none, and Change. */
+export function TextRow({
+  label,
+  value,
+  unset,
+  message,
+  placeholder,
+  disabled = false,
+  onSave,
+}: {
+  label: string;
+  value: string | null;
+  unset: string;
+  // The line under the alert's title.
+  message: string;
+  placeholder: string;
+  disabled?: boolean;
+  onSave: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <SettingsRow label={label}>
+      {value === null ? <span className="dkp-none">{unset}</span> : <Value text={value} mono />}
+      <Button
+        aria-label={`Change ${label}`}
+        disabled={disabled}
+        onClick={() => {
+          setEditing(true);
+        }}
+      >
+        Change
+      </Button>
+      {editing && (
+        <TextAlert
+          title={label}
+          message={message}
+          placeholder={placeholder}
+          initial={value ?? ""}
+          onSave={onSave}
+          onClose={() => {
+            setEditing(false);
+          }}
+        />
+      )}
+    </SettingsRow>
   );
 }
 

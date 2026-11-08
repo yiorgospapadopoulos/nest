@@ -599,6 +599,22 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             response: #"{"can_push": true}"#
         ) { _ = try await $0.updateLimitSettings(LimitSettings(canPush: true)) },
         RouteCase(
+            "GET", "/api/worktrees/settings",
+            response:
+                #"{"folder": "~/wt", "branch_prefix": "gp-", "clean_merged": true, "submodules": false}"#
+        ) {
+            let settings = try await $0.worktreeSettings()
+            #expect(
+                settings
+                    == WorktreeSettings(folder: "~/wt", branchPrefix: "gp-", cleanMerged: true))
+        },
+        RouteCase(
+            "PUT", "/api/worktrees/settings",
+            body: #"{"branch_prefix":"agent/","clean_merged":false,"#
+                + #""folder":null,"submodules":true}"#,
+            response: Fixture.json(WorktreeSettings())
+        ) { _ = try await $0.updateWorktreeSettings(WorktreeSettings(submodules: true)) },
+        RouteCase(
             "GET", "/api/notifications/settings", response: #"{"pixie_report_level": "info"}"#
         ) { _ = try await $0.notificationRules() },
         RouteCase(
@@ -977,6 +993,27 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.updateRepo(
                 "todo-ui",
                 RepoPatch(from: ProjectIcon(color: "#3DDC84"), to: ProjectIcon()))
+        },
+        // B141: only the choices that changed; null follows the default again.
+        RouteCase(
+            "PATCH", "/api/repos/todo-ui", body: #"{"folder":null,"submodules":false}"#,
+            response: repoJSON
+        ) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(
+                    from: WorktreeConfig(folder: "~/wt", branchPrefix: "gp-"),
+                    to: WorktreeConfig(branchPrefix: "gp-", submodules: false)))
+        },
+        RouteCase(
+            "PATCH", "/api/repos/todo-ui", body: #"{"branch_prefix":null,"clean_merged":null}"#,
+            response: repoJSON
+        ) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(
+                    from: WorktreeConfig(branchPrefix: "gp-", cleanMerged: true),
+                    to: WorktreeConfig()))
         },
         RouteCase("GET", "/api/repos/todo-ui/link-suggestions", response: #"[".env"]"#) {
             _ = try await $0.linkSuggestions("todo-ui")

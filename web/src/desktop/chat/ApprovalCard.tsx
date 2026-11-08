@@ -89,7 +89,7 @@ function PermissionBody({ approval }: { approval: Approval }) {
         {view.tool === "Bash" ? `Bash ${view.command}` : view.command}
       </div>
       {view.why !== null && <p className="dc-ask-t">{view.why}</p>}
-      {view.reason !== null && <p className="dc-ask-why">{view.reason}</p>}
+      {view.reason !== null && <p className="dc-ask-why lines">{view.reason}</p>}
       <ActionRow>
         <Button kind="primary" disabled={busy} onClick={() => void decide("allow")}>
           Approve
@@ -97,15 +97,17 @@ function PermissionBody({ approval }: { approval: Approval }) {
         <Button disabled={busy} onClick={() => void decide("deny")}>
           Reject
         </Button>
-        <Button
-          kind="plain"
-          disabled={busy}
-          title={`Allow ${view.always} without asking again`}
-          className="dc-always"
-          onClick={() => void decide("allow", true)}
-        >
-          {`Always allow ${view.always}`}
-        </Button>
+        {view.canAlways && (
+          <Button
+            kind="plain"
+            disabled={busy}
+            title={`Allow ${view.always} without asking again`}
+            className="dc-always"
+            onClick={() => void decide("allow", true)}
+          >
+            {`Always allow ${view.always}`}
+          </Button>
+        )}
         {busy && <Fireflies size={9} />}
       </ActionRow>
     </>

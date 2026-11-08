@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
+from nestd.approvals.models import ApprovalKind
 from nestd.providers.base import AgentTool, ToolRefusedError
 from tests.api_client import Api, running_api
 from tests.async_support import until
@@ -150,6 +151,37 @@ async def test_a_called_pixie_removes_its_callers_worktree_when_the_turn_ends(
     assert git(repo, "branch", "--list", str(branch)) == ""
     [called] = await scene.called_sessions()
     assert called["cwd"] == str(repo)
+
+
+async def test_a_called_pixie_asks_the_caller_before_removing_work(scene: Scene) -> None:
+    """Such as `@closer-merge` finding a file nobody committed (B141): the card is the
+    calling chat's, and a no keeps the worktree.
+    """
+    pixie = Pixie(scene.api, {"action": "remove"})
+    path = await opened(scene)
+    (path / "notes.txt").write_text("mine\n", encoding="utf-8")
+
+    calling = asyncio.create_task(scene.caller.call(pixie="coder", task="Finish it"))
+    approvals = scene.api.ctx.approvals
+
+    async def asked() -> bool:
+        return await approvals.pending(scene.caller.chat_id, ApprovalKind.PERMISSION) is not None
+
+    await soon(until(asked))
+    item = await approvals.pending(scene.caller.chat_id, ApprovalKind.PERMISSION)
+    assert item is not None
+    assert "notes.txt" in str(item.payload["reason"])
+    await approvals.resolve(item.id, {"behavior": "deny"})
+    await soon(pixie.recorded.wait())
+    assert pixie.refusal is not None
+    assert pixie.refusal.startswith(f"The user kept the worktree {path}")
+    pixie.go.set()
+    await soon(calling)
+    await turn_ended(scene)
+    await settled(scene.api, scene.caller.chat_id)
+
+    assert await no_pending(scene)
+    assert (path / "notes.txt").read_text(encoding="utf-8") == "mine\n"
 
 
 async def test_a_background_pixie_keeps_its_folder_until_it_is_done(scene: Scene) -> None:

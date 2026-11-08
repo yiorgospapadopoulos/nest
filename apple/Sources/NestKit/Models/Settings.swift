@@ -109,6 +109,41 @@ public struct LimitSettings: Codable, Sendable, Hashable {
     }
 }
 
+/// `GET/PUT /api/worktrees/settings`: how Nest makes and tidies worktrees in every project,
+/// unless a project chooses its own (B141).
+public struct WorktreeSettings: Codable, Sendable, Hashable {
+    /// Holds one folder per project; nil keeps them inside each project.
+    public var folder: String?
+    public var branchPrefix: String
+    public var cleanMerged: Bool
+    public var submodules: Bool
+
+    public init(
+        folder: String? = nil, branchPrefix: String = "agent/", cleanMerged: Bool = false,
+        submodules: Bool = false
+    ) {
+        self.folder = folder
+        self.branchPrefix = branchPrefix
+        self.cleanMerged = cleanMerged
+        self.submodules = submodules
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case folder, submodules
+        case branchPrefix = "branch_prefix"
+        case cleanMerged = "clean_merged"
+    }
+
+    /// The whole section is sent, so a folder left empty goes as null.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(folder, forKey: .folder)
+        try container.encode(branchPrefix, forKey: .branchPrefix)
+        try container.encode(cleanMerged, forKey: .cleanMerged)
+        try container.encode(submodules, forKey: .submodules)
+    }
+}
+
 /// `GET/PUT /api/pixie-settings`: what new pixies start with, and the habits' switches.
 public struct PixieSettings: Codable, Sendable, Hashable {
     /// The Claude model new Claude pixies start on; nil only before the daemon resolved

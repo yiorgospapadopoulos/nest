@@ -14,10 +14,13 @@ chat's turn it applies if none is left, and otherwise goes on waiting, as the la
 report starts or joins a turn whose end applies it. A pixie that is stopped or fails takes
 back what it recorded.
 
-Judging whether a worktree's work is merged is the agent's job, with git, when the user
-asks; Nest removes what it is told to. It keeps its own rules: a worktree another open
-chat uses stays, only its own worktrees are removed, and the branch stays unless the
-agent asks to delete it, which only git's own merged check lets happen.
+Before a removal is recorded, Nest checks what it would lose (B141): uncommitted changes,
+untracked files and commits not on the base branch. If there is any, the tool call waits
+for the user's yes on a card naming them, which no permission rule, mode or Autopilot
+answers, and a no keeps the worktree. When the removal applies, anything found that the
+user was not shown keeps it too. Its other rules stay: a worktree another open chat uses
+stays, only its own worktrees are removed, and the branch stays unless the agent asks to
+delete it, which only git's own merged check lets happen.
 """
 
 import asyncio
@@ -53,6 +56,7 @@ from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import CallBridge
 from nestd.sessions.updates import announce_changes
 from nestd.sessions.workspace import run_setup, uninterrupted, workspace_payload
+from nestd.worktrees.at_risk import AtRisk
 from nestd.worktrees.manager import Worktree, WorktreeManager
 from nestd.worktrees.setup import LinkResult
 
@@ -77,6 +81,9 @@ _LEFT_BEHIND: dict[str, object] = {
 # Removes the worktree unless Nest did not make it or another open chat uses it.
 type RemoveWorktree = Callable[[RepoConfig, Session, Worktree], Awaitable[bool]]
 type BackgroundRunning = Callable[[str], bool]
+# Asks the user on the card `payload` describes, for the run of the session named; True
+# for a yes (B141).
+type ConfirmRemoval = Callable[[str, dict[str, JsonValue], str], Awaitable[bool]]
 
 
 class MoveRefusedError(ConflictError):
@@ -96,10 +103,12 @@ class WorktreeMoves:
         clock: Clock,
         remove: RemoveWorktree,
         background: BackgroundRunning,
+        confirm: ConfirmRemoval | None = None,
     ) -> None:
         """`background` says whether the chat's agent has background tasks running, which
-        end with its run.
+        end with its run. Without `confirm`, a removal that would lose work is refused.
         """
+        self._confirm = confirm
         self._store = store
         self._bus = bus
         self._repos = repos
@@ -155,7 +164,21 @@ class WorktreeMoves:
         await self._require_removable(repo, session, path)
         current = session.worktree_path is not None and await _same(path, session.worktree_path)
         branch = await self._branch_to_delete(repo, path) if delete_branch else None
-        change = WorktreeChange(action="remove", path=path, delete_branch=branch, by=by)
+        risk = await self._risk(repo, session, path)
+        if not risk.empty and not await self._confirmed(by or session_id, path, risk, branch):
+            msg = (
+                f"The user kept the worktree {path}: it has {risk.summary()}. Do not remove it"
+                " unless the user asks again."
+            )
+            raise MoveRefusedError(msg)
+        change = WorktreeChange(
+            action="remove",
+            path=path,
+            delete_branch=branch,
+            by=by,
+            confirmed_files=list(risk.files),
+            confirmed_commits=[commit.sha for commit in risk.commits],
+        )
         await self._record(session, change)
         when = (
             "When this turn ends and any background agents are done"
@@ -318,6 +341,40 @@ class WorktreeMoves:
         msg = f"The worktree {path} is on no branch, so there is none to delete."
         raise MoveRefusedError(msg)
 
+    async def _risk(self, repo: RepoConfig, session: Session, path: Path) -> AtRisk:
+        """What removing the worktree would lose; refused when git cannot tell."""
+        if session.worktree_path is not None and await _same(path, session.worktree_path):
+            base = session.base_ref
+        else:
+            base = (await self._store.worktree_bases(repo.name)).get(path)
+        try:
+            return await self._worktrees.at_risk(repo, Worktree(path, "", base or ""))
+        except GitError as error:
+            reason = _reason(error)
+            msg = f"Nest could not check the worktree {path} for work, so it stays: {reason}"
+            raise MoveRefusedError(msg) from None
+
+    async def _confirmed(
+        self, run_session_id: str, path: Path, risk: AtRisk, branch: str | None
+    ) -> bool:
+        """The user's yes to losing `risk` with the worktree, asked on a card."""
+        if self._confirm is None:
+            return False
+        question = f"Remove the worktree {path.name}? It has {risk.summary()}."
+        stays = (
+            "Its branch stays." if branch is None else f"{branch} goes too if git finds it merged."
+        )
+        payload: dict[str, JsonValue] = {
+            "tool": "worktree",
+            "input": {"action": "remove", "worktree": str(path)},
+            "title": question,
+            "reason": f"{risk.details()}\n{stays}",
+            "always_rule": None,
+            # This card is answered each time: no Always allow (B141).
+            "always": False,
+        }
+        return await self._confirm(run_session_id, payload, question)
+
     async def _require_removable(self, repo: RepoConfig, session: Session, path: Path) -> None:
         if not await asyncio.to_thread(self._worktrees.owns, repo, path):
             msg = f"Nest did not make the worktree {path}, so it stays."
@@ -371,6 +428,13 @@ class WorktreeMoves:
         path = change.path
         assert path is not None  # noqa: S101 (recorded with the tool's call)
         await self._require_removable(repo, session, path)
+        risk = await self._risk(repo, session, path)
+        if not risk.covered_by(change.confirmed_files, change.confirmed_commits):
+            msg = (
+                f"the worktree {path.name} has {risk.summary()}, more than the user agreed to"
+                " lose, so it stays. Ask the user before removing it again"
+            )
+            raise MoveRefusedError(msg)
         current = session.worktree_path is not None and await _same(path, session.worktree_path)
         if current:
             await self._end_run(live, session)

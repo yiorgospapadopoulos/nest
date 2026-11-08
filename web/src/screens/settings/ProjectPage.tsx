@@ -12,6 +12,7 @@ import { MASCOTS } from "../pixies/options.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { ProjectConfiguration } from "./ProjectConfiguration.tsx";
 import { Row, Section, SegRow, SelectRow, type Choice } from "./rows.tsx";
+import { TextRow } from "./TextRow.tsx";
 import { withCurrent } from "./choices.ts";
 
 type Tab = "General" | "Configuration" | "Chats" | "Worktrees" | "Look" | "Artifacts";
@@ -21,6 +22,13 @@ const WORK_IN: Choice<boolean | null>[] = [
   { value: null, label: "Follow default" },
   { value: false, label: "Current branch" },
   { value: true, label: "New worktree" },
+];
+
+// A project's own worktree switch; null follows the worktree settings.
+const OWN: Choice<boolean | null>[] = [
+  { value: null, label: "Follow default" },
+  { value: true, label: "On" },
+  { value: false, label: "Off" },
 ];
 
 // Setup command time limits offered, in minutes.
@@ -242,35 +250,65 @@ function Worktrees({ repo }: { repo: RepoConfig }) {
   const save = (patch: RepoPatch) => actions.updateRepo(repo, patch);
   const minutes = Math.round(repo.worktree.setup_timeout_seconds / 60);
   return (
-    <Section title="When Nest makes a worktree">
-      <div className="srow col">
-        <span className="slab">Linked files</span>
-        <ChipList
-          label="Linked files"
-          items={repo.worktree.link}
-          empty="None"
-          save={(link) => save({ link })}
+    <>
+      <Section title="When Nest makes a worktree">
+        <div className="srow col">
+          <span className="slab">Linked files</span>
+          <ChipList
+            label="Linked files"
+            items={repo.worktree.link}
+            empty="None"
+            save={(link) => save({ link })}
+          />
+        </div>
+        <div className="srow col">
+          <span className="slab">Setup commands</span>
+          <ChipList
+            label="Setup commands"
+            items={repo.worktree.setup}
+            empty="None"
+            save={(setup) => save({ setup })}
+          />
+        </div>
+        <SelectRow
+          label="Setup time limit"
+          value={minutes}
+          choices={withCurrent(SETUP_MINUTES, minutes).map((m) => ({
+            value: m,
+            label: m === 1 ? "1 minute" : `${String(m)} minutes`,
+          }))}
+          onChange={(m) => void save({ setup_timeout_seconds: m * 60 })}
         />
-      </div>
-      <div className="srow col">
-        <span className="slab">Setup commands</span>
-        <ChipList
-          label="Setup commands"
-          items={repo.worktree.setup}
-          empty="None"
-          save={(setup) => save({ setup })}
+        <TextRow
+          label="Worktrees folder"
+          value={repo.worktree.folder}
+          unset="Follow default"
+          onSave={(text) => void save({ folder: text === "" ? null : text })}
         />
-      </div>
-      <SelectRow
-        label="Setup time limit"
-        value={minutes}
-        choices={withCurrent(SETUP_MINUTES, minutes).map((m) => ({
-          value: m,
-          label: m === 1 ? "1 minute" : `${String(m)} minutes`,
-        }))}
-        onChange={(m) => void save({ setup_timeout_seconds: m * 60 })}
-      />
-    </Section>
+        <TextRow
+          label="Branch name prefix"
+          value={repo.worktree.branch_prefix}
+          unset="Follow default"
+          onSave={(text) => void save({ branch_prefix: text === "" ? null : text })}
+        />
+        <SegRow
+          label="Check out submodules"
+          wide
+          value={repo.worktree.submodules}
+          choices={OWN}
+          onChange={(submodules) => void save({ submodules })}
+        />
+      </Section>
+      <Section title="Clean up">
+        <SegRow
+          label="Remove merged worktrees"
+          wide
+          value={repo.worktree.clean_merged}
+          choices={OWN}
+          onChange={(clean_merged) => void save({ clean_merged })}
+        />
+      </Section>
+    </>
   );
 }
 

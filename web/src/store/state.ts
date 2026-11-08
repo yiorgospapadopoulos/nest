@@ -33,6 +33,7 @@ import type {
   InstalledPlugin,
   Marketplace,
   LimitSettings,
+  WorktreeSettings,
   PixieDefaults,
   StorageSettings,
   StuckSettings,
@@ -119,6 +120,7 @@ export interface SettingsState {
   storage: StorageSettings | null;
   pixies: PixieDefaults | null;
   limits: LimitSettings | null;
+  worktrees: WorktreeSettings | null;
   github: GithubAccount | null;
   claude: ClaudeAccount | null;
   install: InstallProgress | null;
@@ -161,6 +163,7 @@ export const NO_SETTINGS: SettingsState = {
   storage: null,
   pixies: null,
   limits: null,
+  worktrees: null,
   github: null,
   claude: null,
   install: null,

@@ -290,6 +290,9 @@ public protocol NestAPI: Sendable {
     func updatePixieSettings(_ settings: PixieSettings) async throws -> PixieSettings
     func limitSettings() async throws -> LimitSettings
     func updateLimitSettings(_ settings: LimitSettings) async throws -> LimitSettings
+    func worktreeSettings() async throws -> WorktreeSettings
+    /// Replaces the whole section; answers what was saved.
+    func updateWorktreeSettings(_ settings: WorktreeSettings) async throws -> WorktreeSettings
     /// The daemon's notification rules (B85: the pixie report level).
     func notificationRules() async throws -> NotificationRules
     /// Replaces the whole section; answers what was saved.

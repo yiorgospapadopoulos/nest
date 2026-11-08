@@ -64,6 +64,12 @@ export function placeTitle(place: SettingsPlace): string {
 
 const STUCK = ["Waiting on a prompt", "No new output", "Same call repeated", "One turn running"];
 const USAGE_UNITS = ["Day", "Week", "Month", "Year"];
+const WORKTREES = [
+  "Worktrees folder",
+  "Branch name prefix",
+  "Check out submodules",
+  "Remove merged worktrees",
+];
 
 const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = {
   general: [
@@ -119,7 +125,16 @@ const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = 
     "Topic",
     "Link address",
   ],
-  agents: ["New chats", "Model", "Thinking", "Permissions", "Work in", "Stuck chats", ...STUCK],
+  agents: [
+    "New chats",
+    "Model",
+    "Thinking",
+    "Permissions",
+    "Work in",
+    ...WORKTREES,
+    "Stuck chats",
+    ...STUCK,
+  ],
   usage: [
     "Limits",
     "5 hour",
@@ -212,6 +227,8 @@ const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = 
     "Linked files",
     "Setup commands",
     "Setup time limit",
+    ...WORKTREES,
+    "Clean up",
     "Artifacts",
     "Look",
     "Tab icon",
