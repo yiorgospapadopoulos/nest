@@ -28,20 +28,36 @@ function EngineRow({
   account: EngineAccount | undefined;
 }) {
   const { add, signIn } = useSignIn();
+  const bridge = useBridge();
+  // Once a sign-in started: a browser can open behind Nest (GNOME does), so the row says
+  // where it goes on, and can bring the page back or start again (B136). Claude Code opens
+  // its own page, so for it there is no address to open.
+  const [started, setStarted] = useState(false);
+  const [page, setPage] = useState<string | null>(null);
+  const start = () => {
+    const opened = (url: string | null) => {
+      setStarted(true);
+      setPage(url);
+    };
+    if (account === undefined) add(provider, opened);
+    else signIn(account.id, opened);
+  };
+  if (account?.signed_in === true) {
+    return (
+      <div className="su-row">
+        <b>{title}</b>
+        <StepMark mark="ok" />
+      </div>
+    );
+  }
   return (
     <div className="su-row">
       <b>{title}</b>
-      {account?.signed_in === true ? (
-        <StepMark mark="ok" />
+      {started && <span className="su-quiet">Finish signing in in your browser.</span>}
+      {page !== null ? (
+        <Button onClick={() => void bridge.openExternal(page)}>Open again</Button>
       ) : (
-        <Button
-          onClick={() => {
-            if (account === undefined) add(provider);
-            else signIn(account.id);
-          }}
-        >
-          Sign in
-        </Button>
+        <Button onClick={start}>{started ? "Sign in again" : "Sign in"}</Button>
       )}
     </div>
   );

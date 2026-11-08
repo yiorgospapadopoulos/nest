@@ -6,6 +6,7 @@ import { engineAccount } from "../../test/accounts.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
 import { acpProvider, claudeProvider, engineUpdates } from "../../test/fixtures.ts";
+import { defined } from "../../test/defined.ts";
 import { memoryStorage } from "../../test/render.tsx";
 import { browserBridge, type Bridge } from "../bridge.ts";
 import { DesktopApp } from "../DesktopApp.tsx";
@@ -217,6 +218,23 @@ describe("the guide's steps", () => {
     });
     // ntfy is in Settings only (B130).
     expect(screen.queryByRole("switch", { name: "Send to ntfy" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the setup guide after the Linux checks (B136)", () => {
+  it("says a sign-in goes on in the browser, as the page can open behind Nest", async () => {
+    const api = firstRun([check("engine")]);
+    const account = engineAccount({ signed_in: false, active: false });
+    api.accounts.mockResolvedValue({ accounts: [account] });
+    api.signInAccount.mockResolvedValue({ account, auth_url: null, login_command: null });
+    const { user } = renderGuide(api);
+    await screen.findByRole("heading", { name: "Sign in to an engine" });
+
+    await user.click(defined((await screen.findAllByRole("button", { name: "Sign in" }))[0]));
+
+    expect(await screen.findByText("Finish signing in in your browser.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Sign in again" }));
+    expect(api.signInAccount).toHaveBeenCalledTimes(2);
   });
 });
 
