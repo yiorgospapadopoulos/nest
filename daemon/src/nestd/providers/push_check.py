@@ -28,32 +28,52 @@ GH_COMMANDS = frozenset(
     }
 )
 
+_ROOT_FLAGS = frozenset({"--help", "-h", "--version"})
+# `gh extension` actions that only list; the rest run or install an extension.
+_EXTENSION_READS = frozenset({"list", "ls", "search", None})
+
 
 def gh_refusal(args: Sequence[str]) -> str | None:
-    """Why Nest's `gh` refuses `gh <args>`; None runs it."""
-    command = next((arg for arg in args if not arg.startswith("-")), None)
+    """Why Nest's `gh` refuses `gh <args>`; None runs it. gh takes no flags before its
+    command but help and version, so a flag there could hide which command runs.
+    """
+    at = next((i for i, arg in enumerate(args) if not arg.startswith("-")), len(args))
+    if any(flag not in _ROOT_FLAGS for flag in args[:at]):
+        return f"{DENY_REASON} (Nest reads no flag before gh's command)"
+    command = args[at] if at < len(args) else None
     if command is not None and command not in GH_COMMANDS:
         return f"{DENY_REASON} (gh {command} is not one of gh's own commands)"
+    action = next((arg for arg in args[at + 1 :] if not arg.startswith("-")), None)
+    if command == "extension" and action not in _EXTENSION_READS:
+        return f"{DENY_REASON} (gh extension {action} runs or installs code)"
     return DENY_REASON if is_git_write(shlex.join(["gh", *args])) else None
 
 
+# What Codex's PreToolUse hook answers to refuse a call (Claude's form).
+DENY: dict[str, object] = {
+    "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": DENY_REASON,
+    }
+}
+
+
 def hook_answer(event: object) -> dict[str, object] | None:
-    """The deny for a subagent's tool call that pushes or writes a pull request."""
-    if not isinstance(event, dict) or "agent_id" not in event:
-        return None
+    """The deny for a subagent's tool call that pushes or writes a pull request. Only a
+    subagent's events come here, so one that cannot be read is refused.
+    """
+    if not isinstance(event, dict):
+        return DENY
     fields = cast(dict[str, object], event)
+    if "agent_id" not in fields:
+        return None
     tool, tool_input = fields.get("tool_name"), fields.get("tool_input")
     if not isinstance(tool, str) or not isinstance(tool_input, dict):
         return None
     if not tool_writes(tool, cast(dict[str, object], tool_input)):
         return None
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": DENY_REASON,
-        }
-    }
+    return DENY
 
 
 def main(argv: Sequence[str], stdin: TextIO, stdout: TextIO, stderr: TextIO) -> int:
@@ -68,7 +88,7 @@ def main(argv: Sequence[str], stdin: TextIO, stdout: TextIO, stderr: TextIO) -> 
             try:
                 event: object = json.load(stdin)
             except ValueError:
-                return 0
+                event = None
             answer = hook_answer(event)
             if answer is not None:
                 json.dump(answer, stdout)

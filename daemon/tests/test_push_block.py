@@ -4,6 +4,7 @@ Nest's real helper scripts, with a stand-in for the user's own gh."""
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,9 +14,11 @@ from nestd.providers.push_block import (
     CODEX_HOOK,
     GH,
     NO_PUSH_ENV,
+    _scripts,  # pyright: ignore[reportPrivateUsage]
     codex_hook_hash,
     push_block,
 )
+from nestd.providers.push_check import DENY
 
 
 def _run(
@@ -144,6 +147,10 @@ async def test_a_script_cannot_open_a_pull_request_through_gh(tmp_path: Path) ->
         (("auth", "token"), False),
         # An alias or an extension: what it runs cannot be read.
         (("prc",), False),
+        (("extension", "exec", "pusher"), False),
+        (("extension", "list"), True),
+        # A flag before the command could hide which command runs.
+        (("--repo", "o/r", "prc"), False),
     ],
 )
 async def test_nests_gh_runs_the_users_gh_only_for_reads(
@@ -200,6 +207,20 @@ async def test_codexs_hook_refuses_only_a_subagents_push(
         assert answer["permissionDecisionReason"] == DENY_REASON
     else:
         assert result.stdout == ""
+
+
+@pytest.mark.parametrize("python", ["missing", "present"])
+def test_codexs_hook_refuses_a_subagents_call_it_cannot_check(tmp_path: Path, python: str) -> None:
+    """Fail closed: a check that cannot start, or an event it cannot read, is a refusal."""
+    interpreter = str(tmp_path / "no-python") if python == "missing" else sys.executable
+    hook = tmp_path / CODEX_HOOK
+    hook.write_text(_scripts(tmp_path, interpreter)[CODEX_HOOK], encoding="utf-8")
+    hook.chmod(0o755)
+    event = _hook_event("git status", agent_id="019a") if python == "missing" else '{"agent_id": '
+
+    result = _run(tmp_path, str(hook), stdin=event)
+
+    assert json.loads(result.stdout) == DENY
 
 
 def test_codex_trusts_the_hook_by_the_hash_nest_gives() -> None:

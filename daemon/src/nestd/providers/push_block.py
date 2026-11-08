@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nestd.gitops.runner import GitError, run_git
+from nestd.providers.push_check import DENY
 
 PUSH_OFF_URL = "nest-pushing-is-off://"
 _EVERY_URL = (f"url.{PUSH_OFF_URL}.pushInsteadOf", "")
@@ -186,9 +187,13 @@ exit 127
         CODEX_HOOK: f"""#!/bin/sh
 # Nest's PreToolUse hook for a Codex chat's subagents (push_block, B127): only their
 # events name an agent_id, and only those need the check.
+# If the check cannot run, the call is refused.
 input=$(cat)
 case $input in
-*'"agent_id"'*) printf '%s' "$input" | exec {check} hook ;;
+*'"agent_id"'*)
+\tprintf '%s' "$input" | {check} hook && exit 0
+\tprintf '%s' {shlex.quote(json.dumps(DENY))}
+\t;;
 esac
 """,
     }
