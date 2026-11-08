@@ -76,7 +76,7 @@ from nestd.sessions.models import (
 from nestd.sessions.moves import WorktreeMoves
 from nestd.sessions.namer import NAME_WAITS, ChatNamer
 from nestd.sessions.ports import PortsSource
-from nestd.sessions.prompts import SessionPrompts
+from nestd.sessions.prompts import Choice, SessionPrompts
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rewinds import NO_CHECKPOINT, NO_PIXIE_RESTORE, Rewinds
 from nestd.sessions.rules import (
@@ -1490,6 +1490,14 @@ class SessionManager:
         """The user's own yes to removing a worktree with work, asked for the run of
         `run_session_id` as its permission prompts are (B141).
         """
+        return await self.choose(run_session_id, payload, notice) != "deny"
+
+    async def choose(
+        self, run_session_id: str, payload: dict[str, JsonValue], notice: str
+    ) -> Choice:
+        """The user's own answer on a card for the run of `run_session_id`, which no rule,
+        mode, Autopilot or pixie answers, such as letting a chat use an app (B150).
+        """
 
         async def keep_mode(_session_id: str, _mode: PermissionMode) -> None:
             return None
@@ -1497,7 +1505,7 @@ class SessionManager:
         prompts = SessionPrompts(
             run_session_id, self._approvals, self._store, self._on_waiting, keep_mode, self._calls
         )
-        return await prompts.confirm(payload, notice)
+        return await prompts.choose(payload, notice)
 
     def _handler_for(self, live: LiveSession) -> ApprovalHandler:
         async def on_mode(_session_id: str, mode: PermissionMode) -> None:
