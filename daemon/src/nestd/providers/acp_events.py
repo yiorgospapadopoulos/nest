@@ -300,6 +300,8 @@ class AcpStream:
         self._calls: dict[str, ToolCall] = {}
         self._text: list[str] = []
         self._text_id = ""
+        # The agent's latest message of the prompt, a plan to review in plan mode (B145).
+        self.last_text = ""
         self._thought: list[str] = []
         self._thought_id = ""
         self._thought_started = 0.0
@@ -466,6 +468,7 @@ class AcpStream:
         body = "".join(self._text)
         self._text = []
         if body:
+            self.last_text = body
             await self._sink.message([TextBlock(text=body)], None)
 
     async def _end_thought(self) -> None:

@@ -223,3 +223,47 @@ async def test_a_pixie_on_an_acp_engine_keeps_its_skill_list(api: Api) -> None:
     assert created.status_code == 201
     assert created.json()["skills"] == ["review"]
     assert "pixie_skills" not in ACP_UNSUPPORTED
+
+
+class Reviewed(Asked):
+    def __init__(self, decision: PlanDecision) -> None:
+        super().__init__(None)
+        self.plans: list[str] = []
+        self._decision = decision
+
+    async def review_plan(self, request: PlanRequest) -> PlanDecision:
+        self.plans.append(request.plan)
+        return self._decision
+
+
+async def test_an_approved_plan_leaves_the_engines_plan_mode_and_goes_on(tmp_path: Path) -> None:
+    """B145: ACP cannot ask to approve a plan, so the agent's last message in plan mode is
+    the plan the user reviews; approved, the engine leaves plan mode and implements it.
+    """
+    agent = FakeAgent(load("opencode-text", tmp_path))
+    chunk: dict[str, JsonValue] = {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {"type": "text", "text": "1. Do"},
+    }
+    # Each script goes before those already given: the second prompt's comes first.
+    agent.script("session/prompt", [Step("answer", {"result": {"stopReason": "end_turn"}})])
+    agent.script(
+        "session/prompt",
+        [Step("push", update(chunk)), Step("answer", {"result": {"stopReason": "end_turn"}})],
+    )
+    handler = Reviewed(PlanDecision(approved=True, mode="acceptEdits"))
+    run, sink = await open_run(agent, tmp_path, handler, permission_mode="plan")
+
+    await turn(run, sink, "Plan it")
+
+    assert handler.plans == ["1. Do"]
+    first, second = agent.requests("session/prompt")
+    assert second["prompt"] == [{"type": "text", "text": "Implement the plan."}]
+    modes = [
+        r["value"] for r in agent.requests("session/set_config_option") if r["configId"] == "mode"
+    ]
+    assert modes == ["plan", "build"]
+    assert ("permission_mode", "acceptEdits") in sink.calls
+    assert len(results(sink)) == 1
+    assert first["prompt"][-1] == {"type": "text", "text": "Plan it"}  # type: ignore[index]
+    await run.close()

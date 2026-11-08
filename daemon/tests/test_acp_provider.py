@@ -14,7 +14,9 @@ from pydantic import JsonValue
 from nestd.providers.acp import AcpLaunch, AcpProvider, AcpRun, AcpToolsUnsupportedError, probe
 from nestd.providers.acp_engines import GEMINI, GEMINI_SYSTEM_SETTINGS_ENV, OPENCODE, AcpEngine
 from nestd.providers.base import (
+    HISTORY_CUT,
     AgentTool,
+    ForkPoint,
     PermissionDecision,
     PermissionRequest,
     PlanDecision,
@@ -557,6 +559,35 @@ async def test_resume_uses_session_resume_when_the_engine_has_it(tmp_path: Path)
     [prompt] = agent.requests("session/prompt")
     assert prompt["prompt"] == [{"type": "text", "text": "And now?"}]
     assert ("provider_session_id", RECORDED_SESSION) in sink.calls
+    await run.close()
+
+
+async def test_a_cut_conversation_is_a_new_session_the_chat_takes_on_its_first_message(
+    tmp_path: Path,
+) -> None:
+    """D174: ACP cannot cut a session, so a rewind or fork opens a new one; it becomes the
+    chat's only when the message with the kept part goes, so a run closed before that
+    opens the cut again.
+    """
+    agent = FakeAgent(load("opencode-text", tmp_path))
+    run, sink, _ = await open_run(
+        agent, tmp_path, model=FREE_MODEL, resume_id=RECORDED_SESSION, resume_at=HISTORY_CUT
+    )
+
+    assert agent.requests("session/resume") == []
+    assert [kind for kind, _ in sink.calls] == []
+    await turn(run, sink, "Reply with exactly the word: pong")
+
+    assert len(agent.requests("session/new")) == 1
+    assert sink.calls[:2] == [
+        ("provider_session_id", run.session_id),
+        ("checkpoint", HISTORY_CUT),
+    ]
+    assert run.session_id != RECORDED_SESSION
+    provider = AcpProvider(OPENCODE, launcher=None, transport=agent)  # type: ignore[arg-type]
+    assert await provider.fork_point(tmp_path, run.session_id, HISTORY_CUT) == ForkPoint(
+        HISTORY_CUT
+    )
     await run.close()
 
 
