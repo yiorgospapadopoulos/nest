@@ -82,6 +82,8 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "issues": {"show": "all"},
         # No dev server command: its chats show no Run control (B108).
         "run": None,
+        # No GitHub triggers (B148).
+        "triggers": [],
     }
     assert registered.status_code == 201
     assert registered.json() == expected

@@ -185,6 +185,31 @@
             [".env", "node_modules/"]
         }
 
+        func createTrigger(_ repo: String, _ body: ChatTriggerBody) async throws
+            -> ChatTrigger
+        {
+            ChatTrigger(id: UUID().uuidString, body)
+        }
+
+        func updateTrigger(_ repo: String, _ id: String, _ body: ChatTriggerBody)
+            async throws -> ChatTrigger
+        {
+            ChatTrigger(id: id, body)
+        }
+
+        func switchTrigger(_ repo: String, _ id: String, on: Bool) async throws
+            -> ChatTrigger
+        {
+            ChatTrigger(
+                id: id,
+                ChatTriggerBody(
+                    name: "Fix failing CI", prompt: "Fix it.", enabled: on, events: [.ciFailed]))
+        }
+
+        func deleteTrigger(_ repo: String, _ id: String) async throws {}
+
+        func triggerActivity(_ repo: String) async throws -> [TriggerActivity] { [] }
+
         func reorderRepos(_ order: [String]) async throws -> [Repo] {
             try await repos().sorted {
                 (order.firstIndex(of: $0.name) ?? order.count)

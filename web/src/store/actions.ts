@@ -8,6 +8,8 @@ import {
   type PushStatus,
 } from "../pwa/push.ts";
 import type {
+  ChatTriggerBody,
+  TriggerActivity,
   AgentDefaults,
   AgentWork,
   Approval,
@@ -693,6 +695,23 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       if (done === null) return false;
       dispatch({ type: "habitRemoved", pixieId, id });
       return true;
+    },
+    /** A project's GitHub triggers (B148); the project comes back as `repo.updated`. */
+    async saveTrigger(repo: string, id: string | null, body: ChatTriggerBody): Promise<boolean> {
+      const saved = await attempt(() =>
+        id === null ? api.createTrigger(repo, body) : api.updateTrigger(repo, id, body),
+      );
+      return saved !== null;
+    },
+    async setTriggerOn(repo: string, id: string, enabled: boolean): Promise<boolean> {
+      return (await attempt(() => api.updateTrigger(repo, id, { enabled }))) !== null;
+    },
+    async deleteTrigger(repo: string, id: string): Promise<boolean> {
+      return (await attempt(() => api.deleteTrigger(repo, id).then(() => true))) !== null;
+    },
+    /** What each trigger did last; null when the Mac cannot answer. */
+    triggerActivity(repo: string): Promise<TriggerActivity[] | null> {
+      return quietly(() => api.triggerActivity(repo));
     },
     /** Run now: queued at once, whatever the usage. */
     async runHabit(pixieId: string, id: string): Promise<boolean> {

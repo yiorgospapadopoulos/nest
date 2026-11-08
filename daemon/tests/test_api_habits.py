@@ -85,6 +85,7 @@ async def test_habit_crud(api: Api) -> None:
         "prompt",
         "schedule",
         "triggers",
+        "github",
         "max_minutes",
         "enabled",
         "created_at",

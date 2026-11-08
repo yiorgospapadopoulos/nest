@@ -163,6 +163,8 @@ final class Shell {
     var configurationFolds: Set<String> = ["claude:plugins"]
     /// The Add server, Edit server or New skill form over Settings (B97).
     var configurationForm: ConfigurationForm?
+    /// A project's trigger being added or edited, over Settings (B148).
+    var triggerForm: TriggerForm?
     /// The Add local model sheet over Settings (B106).
     var addLocal: AddLocalFlow?
     /// Opens the window by scene id; the window sets it once it shows.
@@ -1923,7 +1925,8 @@ final class Shell {
     var settingsSheetOpen: Bool {
         let configuration = model.configuration
         return configuration.editor != nil || configuration.copy != nil
-            || configurationForm != nil || addLocal != nil || setupSheet != nil
+            || configurationForm != nil || triggerForm != nil || addLocal != nil
+            || setupSheet != nil
     }
 
     // MARK: Setup (B130)
@@ -2026,6 +2029,8 @@ final class Shell {
             configuration.cancelCopy()
         } else if configurationForm != nil {
             configurationForm = nil
+        } else if triggerForm != nil {
+            triggerForm = nil
         } else if setupSheet != nil {
             setupSheet = nil
         } else {

@@ -15,6 +15,14 @@ public protocol NestAPI: Sendable {
     func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo
     /// Gitignored files in the checkout worth linking into worktrees.
     func linkSuggestions(_ name: String) async throws -> [String]
+    /// A project's GitHub triggers (B148); the project itself comes back as `repo.updated`.
+    func createTrigger(_ repo: String, _ body: ChatTriggerBody) async throws -> ChatTrigger
+    func updateTrigger(_ repo: String, _ id: String, _ body: ChatTriggerBody) async throws
+        -> ChatTrigger
+    func switchTrigger(_ repo: String, _ id: String, on: Bool) async throws -> ChatTrigger
+    func deleteTrigger(_ repo: String, _ id: String) async throws
+    /// What each of the project's triggers did last.
+    func triggerActivity(_ repo: String) async throws -> [TriggerActivity]
     /// Saves the project order every device shows (D090); answers the repos in that order.
     func reorderRepos(_ order: [String]) async throws -> [Repo]
     /// The repo's open GitHub issues, newest updated first: all, or the user's; nil leaves

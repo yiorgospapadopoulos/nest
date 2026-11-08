@@ -54,6 +54,32 @@ public struct APIClient: NestAPI {
         try await get("repos", name, "link-suggestions")
     }
 
+    public func createTrigger(_ repo: String, _ body: ChatTriggerBody) async throws
+        -> ChatTrigger
+    {
+        try await call("POST", ["repos", repo, "triggers"], body: body)
+    }
+
+    public func updateTrigger(_ repo: String, _ id: String, _ body: ChatTriggerBody)
+        async throws -> ChatTrigger
+    {
+        try await call("PATCH", ["repos", repo, "triggers", id], body: body)
+    }
+
+    public func switchTrigger(_ repo: String, _ id: String, on: Bool) async throws
+        -> ChatTrigger
+    {
+        try await call("PATCH", ["repos", repo, "triggers", id], body: TriggerSwitch(enabled: on))
+    }
+
+    public func deleteTrigger(_ repo: String, _ id: String) async throws {
+        try await perform("DELETE", ["repos", repo, "triggers", id])
+    }
+
+    public func triggerActivity(_ repo: String) async throws -> [TriggerActivity] {
+        try await get("repos", repo, "triggers", "activity")
+    }
+
     public func reorderRepos(_ order: [String]) async throws -> [Repo] {
         try await call("PUT", ["repos", "order"], body: RepoOrderRequest(order: order))
     }

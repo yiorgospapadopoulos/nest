@@ -436,6 +436,7 @@ _JSON_COLUMNS = (
     "stuck",
     "limit_pause",
     "issue",
+    "started_by_trigger",
     "review",
     "merge_when_ready",
     "stack",

@@ -110,3 +110,26 @@
   margin: -6px 0 16px;
   text-align: left;
 }
+
+/* The Triggers tab's sheet (B148). */
+.dkp-trigger {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+.dkp-trigger > .dkc-seg {
+  justify-self: start;
+}
+.dkp-trigger-h {
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.dkp-trigger-prompt {
+  min-height: 72px;
+  font-family: inherit;
+}
+.dkp-delete {
+  margin-right: auto;
+}

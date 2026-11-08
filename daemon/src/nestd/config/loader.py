@@ -56,6 +56,8 @@ def save_repo(paths: AppPaths, repo: RepoConfig) -> None:
     data = _dump(repo)
     if repo.git:
         del data["git"]  # only plain folders write `git = false` (D041)
+    if not data["triggers"]:
+        del data["triggers"]
     _write_toml(paths.repos_dir / f"{repo.name}.toml", data)
 
 

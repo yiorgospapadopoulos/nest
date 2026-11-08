@@ -154,12 +154,14 @@ public enum ProjectSettingsTab: String, Sendable, CaseIterable {
     case configuration = "Configuration"
     case chats = "Chats"
     case worktrees = "Worktrees"
+    /// GitHub events that start a chat in the project (B148).
+    case triggers = "Triggers"
     case look = "Look"
     case artifacts = "Artifacts"
 
-    /// A plain folder has no worktrees.
+    /// A plain folder has no worktrees or triggers.
     public static func tabs(git: Bool) -> [ProjectSettingsTab] {
-        git ? allCases : allCases.filter { $0 != .worktrees }
+        git ? allCases : allCases.filter { $0 != .worktrees && $0 != .triggers }
     }
 }
 

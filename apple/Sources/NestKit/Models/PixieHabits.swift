@@ -97,9 +97,11 @@ public struct PixieHabit: Codable, Sendable, Hashable, Identifiable {
     public var lastRun: HabitRun?
     /// Its runs go on Autopilot (B120); missing on daemons before it.
     public var autopilot: Bool?
+    /// Events on GitHub that run it (B148); missing on daemons before it.
+    public var github: [GitHubWatch]?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, prompt, schedule, triggers, enabled, autopilot
+        case id, name, prompt, schedule, triggers, enabled, autopilot, github
         case pixieID = "pixie_id"
         case maxMinutes = "max_minutes"
         case createdAt = "created_at"

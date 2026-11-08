@@ -248,6 +248,8 @@ export interface Session {
   autopilot: AutopilotRun | null;
   // The GitHub issue the chat was started from (B101).
   issue: IssueRef | null;
+  // The project's GitHub trigger that started the chat (B148); missing on older daemons.
+  started_by_trigger?: TriggerRef | null;
   // The pull request's review comments and which went to the agent (B101); null until read.
   review: PrReview | null;
   // Whether the chat can change worktree (B119). The next three are missing on daemons
@@ -459,6 +461,8 @@ export interface RepoConfig {
   // Null is the default colour.
   icon_color: string | null;
   worktree: WorktreeConfig;
+  // GitHub events that start a chat in the project (B148); missing on older daemons.
+  triggers?: ChatTrigger[];
 }
 
 export interface DiffLine {
@@ -1240,6 +1244,56 @@ export type HabitSchedule =
 
 export type HabitTrigger = "stuck" | "failed" | "review_ready" | "ci_failed";
 
+// Events on GitHub that start habits and chats (B148).
+export type GitHubEventKind =
+  "issue_opened" | "pr_opened" | "comment" | "review" | "ci_failed" | "ci_passed";
+// Whose events count: people with write access to the repository (the default), anyone
+// but bots, or every one.
+export type TriggerAuthors = "members" | "humans" | "everyone";
+
+/** Labels apply to issues and pull requests, branches to CI runs and pull requests. */
+// A type, not an interface, so a project with its triggers stays a JSON value in events.
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type EventFilter = {
+  events: GitHubEventKind[];
+  labels: string[];
+  branches: string[];
+  authors: TriggerAuthors;
+};
+
+/** A habit's GitHub trigger; no projects is every project on GitHub. */
+export type GitHubWatch = EventFilter & {
+  projects: string[];
+};
+
+/** A project's trigger: each matching event starts a chat in its own worktree. */
+export type ChatTrigger = EventFilter & {
+  id: string;
+  name: string;
+  prompt: string;
+  enabled: boolean;
+};
+
+export type ChatTriggerBody = Omit<ChatTrigger, "id">;
+
+/** What a project's trigger did last. */
+export interface TriggerActivity {
+  trigger_id: string;
+  outcome: "started" | "queued" | "skipped" | "failed";
+  reason: string | null;
+  at: string;
+  title: string;
+  url: string;
+  session_id: string | null;
+}
+
+export interface TriggerRef {
+  id: string;
+  name: string;
+  event_title: string;
+  event_url: string;
+}
+
 export type HabitOutcome =
   "queued" | "running" | "reported" | "quiet" | "failed" | "stalled" | "timed_out" | "skipped";
 
@@ -1266,6 +1320,8 @@ export interface Habit {
   prompt: string;
   schedule: HabitSchedule | null;
   triggers: HabitTrigger[];
+  // Missing on daemons before B148.
+  github?: GitHubWatch[];
   max_minutes: number;
   enabled: boolean;
   // Its runs go on Autopilot (B120).
@@ -1282,6 +1338,7 @@ export interface HabitBody {
   prompt: string;
   schedule?: HabitSchedule | null;
   triggers?: HabitTrigger[];
+  github?: GitHubWatch[];
   max_minutes?: number;
   enabled?: boolean;
   autopilot?: boolean;

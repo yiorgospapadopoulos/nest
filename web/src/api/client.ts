@@ -122,6 +122,9 @@ import type {
   StoredAttachment,
   StuckSettings,
   UsageSettings,
+  ChatTrigger,
+  ChatTriggerBody,
+  TriggerActivity,
 } from "./types.ts";
 
 // The apps a project's folder opens in (daemon/src/nestd/local_apps/openers.py): VS Code, the
@@ -175,6 +178,11 @@ export interface Api {
   openRepo(name: string, app: RepoApp): Promise<null>;
   // Gitignored files in the project's checkout worth linking into its worktrees.
   linkSuggestions(name: string): Promise<string[]>;
+  // A project's GitHub triggers (B148); the list itself comes with the project.
+  createTrigger(repo: string, body: ChatTriggerBody): Promise<ChatTrigger>;
+  updateTrigger(repo: string, id: string, body: Partial<ChatTriggerBody>): Promise<ChatTrigger>;
+  deleteTrigger(repo: string, id: string): Promise<null>;
+  triggerActivity(repo: string): Promise<TriggerActivity[]>;
   sessions(archived: boolean): Promise<Session[]>;
   session(id: string): Promise<SessionDetail>;
   sessionEvents(id: string): Promise<NestEvent[]>;
@@ -597,6 +605,26 @@ export class HttpApi implements Api {
 
   linkSuggestions(name: string) {
     return this.json<string[]>("GET", `${repo(name)}/link-suggestions`);
+  }
+
+  createTrigger(name: string, body: ChatTriggerBody) {
+    return this.json<ChatTrigger>("POST", `${repo(name)}/triggers`, body);
+  }
+
+  updateTrigger(name: string, id: string, body: Partial<ChatTriggerBody>) {
+    return this.json<ChatTrigger>(
+      "PATCH",
+      `${repo(name)}/triggers/${encodeURIComponent(id)}`,
+      body,
+    );
+  }
+
+  deleteTrigger(name: string, id: string) {
+    return this.json<null>("DELETE", `${repo(name)}/triggers/${encodeURIComponent(id)}`);
+  }
+
+  triggerActivity(name: string) {
+    return this.json<TriggerActivity[]>("GET", `${repo(name)}/triggers/activity`);
   }
 
   sessions(archived: boolean) {

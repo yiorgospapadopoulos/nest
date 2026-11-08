@@ -619,6 +619,47 @@ public final class AppStore {
         settingSaves[name] != nil
     }
 
+    /// Saves a project's GitHub trigger, a new one when `id` is nil (B148). The project shows
+    /// it at once; the daemon's `repo.updated` follows.
+    public func saveTrigger(_ repo: String, id: String?, _ body: ChatTriggerBody) async throws {
+        let saved =
+            if let id {
+                try await api.updateTrigger(repo, id, body)
+            } else {
+                try await api.createTrigger(repo, body)
+            }
+        editTriggers(of: repo) { triggers in
+            if let index = triggers.firstIndex(where: { $0.id == saved.id }) {
+                triggers[index] = saved
+            } else {
+                triggers.append(saved)
+            }
+        }
+    }
+
+    public func switchTrigger(_ repo: String, id: String, on: Bool) async throws {
+        let saved = try await api.switchTrigger(repo, id, on: on)
+        editTriggers(of: repo) { triggers in
+            triggers = triggers.map { $0.id == id ? saved : $0 }
+        }
+    }
+
+    public func deleteTrigger(_ repo: String, id: String) async throws {
+        try await api.deleteTrigger(repo, id)
+        editTriggers(of: repo) { $0.removeAll { $0.id == id } }
+    }
+
+    /// What each of the project's triggers did last, by trigger id.
+    public func triggerActivity(of repo: String) async throws -> [String: TriggerActivity] {
+        let found = try await api.triggerActivity(repo)
+        return Dictionary(found.map { ($0.triggerID, $0) }, uniquingKeysWith: { $1 })
+    }
+
+    private func editTriggers(of repo: String, _ change: (inout [ChatTrigger]) -> Void) {
+        guard let index = repos.firstIndex(where: { $0.name == repo }) else { return }
+        change(&repos[index].triggers)
+    }
+
     /// Gitignored files of the project worth linking, not linked yet.
     public func linkSuggestions(for name: String) async throws -> [String] {
         let linked = Set(repo(name)?.worktree.link ?? [])

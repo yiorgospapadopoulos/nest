@@ -12,6 +12,7 @@ from nestd.issues.models import IssueRef
 from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
 from nestd.prs.models import MergeRequest, PrGuide, PrReview, PrStatus, Stack
 from nestd.stuck.models import StuckFlag
+from nestd.triggers.models import TriggerRef
 
 # A pixie's chat has no project; its `repo` names the pixie instead (D072).
 PIXIE_REPO_PREFIX = "pixie:"
@@ -111,9 +112,12 @@ class NewSession(BaseModel):
     called_by: str | None = None
     # The GitHub issue a project chat was started from (B101).
     issue: IssueRef | None = None
+    # The project's GitHub trigger that started the chat, and the event (B148).
+    started_by_trigger: TriggerRef | None = None
     # A chat that outlives its worktree (B119): merging leaves it open, deleting it keeps
     # its worktrees, and its agent moves it between worktrees with its tool. Set when a
-    # chat is created, never on a pixie's chat, a habit run or a chat a pixie started.
+    # chat is created, never on a pixie's chat, a habit run or a chat a pixie or a GitHub
+    # trigger started.
     movable: bool = False
 
 
