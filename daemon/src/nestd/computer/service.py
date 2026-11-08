@@ -204,6 +204,7 @@ class ComputerService:
         self, session_id: str, key: str, action: Action, consequential: bool
     ) -> tuple[ActResult, View | None]:
         session = await self._ready(session_id, key)
+        self._require_seen(session.id, key, action)
         element = self._element(session.id, key, action)
         if action.kind in ("set_value", "type") and element is not None and is_secret(element):
             raise RefusedError(
@@ -367,6 +368,24 @@ class ComputerService:
             )
         except TimeoutError:
             raise RefusedError(UNANSWERED) from None
+
+    def _require_seen(self, session_id: str, key: str, action: Action) -> None:
+        """Elements and windows only from this chat's own last look at this target, so an id
+        of another app's window cannot act there; typing and keys need a look first too."""
+        view = self._views.get((session_id, key))
+        needs_look = action.element is not None or action.kind in ("type", "key", "click")
+        if view is None:
+            if needs_look:
+                raise RefusedError(f"Look at {self._name(key)} with computer_view first.")
+            return
+        if action.element is not None and all(e.id != action.element for e in view.elements):
+            raise RefusedError(
+                f"{action.element} is not in the last look at {self._name(key)}. Look again with"
+                " computer_view."
+            )
+        windows = {view.window, *(w for w, _ in view.windows)}
+        if action.window is not None and action.window not in windows:
+            raise RefusedError(f"{action.window} is not a window of {self._name(key)}.")
 
     def _element(self, session_id: str, key: str, action: Action) -> Element | None:
         view = self._views.get((session_id, key))

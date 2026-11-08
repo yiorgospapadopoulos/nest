@@ -624,6 +624,9 @@ class BrowserBackend:
             spec = (name, code, ord(name.upper()), name)
         else:
             raise TargetError(f"Unknown key {action.key!r}.")
+        if len(name) == 1:
+            # A character key types like `type` does, so it is refused in a secret field.
+            await self._refuse_focused_secure(cdp)
         modifiers = sum(MODIFIER_BITS[m] for m in action.modifiers)
         await self._press_key(cdp, spec, modifiers)
 

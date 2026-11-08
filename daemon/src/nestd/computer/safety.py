@@ -38,7 +38,10 @@ def risk(target: str, action: Action, element: Element | None, consequential: bo
     if action.kind == "menu":
         risky = next((item for item in action.menu if _RISKY.search(item)), None)
         return f'It chooses "{risky}".' if risky else None
-    if action.kind in ("press", "click") and element is not None:
+    if action.kind == "click":
+        # Nest cannot tell what is under a point, so a click by position always asks.
+        return "A click by position can press anything there."
+    if action.kind == "press" and element is not None:
         match = _RISKY.search(element.label)
         return f'It presses "{element.label}".' if match else None
     if action.kind == "key" and (action.key or "").lower() in _SEND_KEYS:

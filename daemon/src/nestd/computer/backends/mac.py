@@ -100,6 +100,9 @@ class MacBackend:
     async def view(self, key: str, window: str | None, screenshot: bool) -> View:
         app = await self._app(key)
         windows = windows_of(app)
+        if window is not None and all(w != window for w, _ in windows):
+            # Window ids are the helper's own, for every app: only this app's are read here.
+            raise TargetError(f"{window} is not a window of {app.get('name') or key}.")
         chosen = window or (windows[0][0] if windows else None)
         if chosen is None:
             return View(title=str(app.get("name", key)), note=f"No window is open. {HIDDEN_NOTE}")

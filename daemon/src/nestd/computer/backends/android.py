@@ -496,7 +496,7 @@ class AndroidBackend:
             case "set_value":
                 return await self._set_value(serial, action)
             case "type":
-                self._refuse_focused_secure(serial)
+                await self._refuse_focused_secure(serial)
                 await self._type(serial, action.text or "")
                 return ActResult(text="Typed the text.")
             case "key":
@@ -519,9 +519,17 @@ class AndroidBackend:
             raise TargetError("Take a screenshot first, so the point can be found.")
         return round(x * factor), round(y * factor)
 
-    def _refuse_focused_secure(self, serial: str) -> None:
-        screen = self._screens.get(serial)
-        if screen and any(node.focused and node.secure for node in screen.nodes.values()):
+    async def _refuse_focused_secure(self, serial: str) -> None:
+        """Read fresh, as the field with the keyboard may have changed since the last look;
+        a screen that cannot be read refuses."""
+        try:
+            screen = parse_dump(
+                await self._run("-s", serial, "exec-out", "uiautomator", "dump", "/dev/tty")
+            )
+        except (CommandError, TargetError) as error:
+            msg = "Nest could not check the field with the keyboard, so it types nothing."
+            raise TargetError(msg) from error
+        if any(node.focused and node.secure for node in screen.nodes.values()):
             raise SecureFieldError("The focused field is a secret field; ask the user to type it.")
 
     async def _set_value(self, serial: str, action: Action) -> ActResult:
@@ -550,6 +558,8 @@ class AndroidBackend:
             code = f"KEYCODE_{name.upper()}"
         else:
             raise TargetError(f"Unknown key {action.key!r}.")
+        if len(name) == 1:
+            await self._refuse_focused_secure(serial)
         await self._shell(serial, "input", "keyevent", code)
         return ActResult(text=f"Pressed {name}.")
 

@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from nestd.computer.backends.android import AndroidBackend, parse_dump, text_commands
-from nestd.computer.models import Action, SecureFieldError
+from nestd.computer.models import Action, SecureFieldError, TargetError
+from nestd.gitops.runner import CommandError
 
 DUMP = """<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0">
 <node index="0" text="" resource-id="" class="android.widget.FrameLayout"
@@ -55,6 +56,7 @@ class FakeAdb:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
         self.devices = ["emulator-5554"]
+        self.dump_fails = False
 
     async def __call__(self, argv: Sequence[str], cwd: Path) -> str:
         args = tuple(argv[1:])
@@ -66,6 +68,8 @@ class FakeAdb:
             return "List of devices attached\n" + "\n".join(rows) + "\n"
         if args[2:5] == ("emu", "avd", "name"):
             return {"emulator-5554": "Tablet\nOK\n"}.get(args[1], "Pixel_8\nOK\n")
+        if "uiautomator" in args and self.dump_fails:
+            raise CommandError(argv, 1, "device offline")
         if "exec-out" in args:
             return DUMP
         if "getprop" in args:
@@ -144,6 +148,19 @@ async def test_secret_fields_are_never_typed_into(sdk: dict[str, str]) -> None:
     with pytest.raises(SecureFieldError):
         await backend.act("android:emulator-5554", Action(kind="type", text="hunter2"))
     assert not [call for call in adb.shell() if "text" in call]
+
+
+async def test_typing_is_refused_when_the_screen_cannot_be_read_just_before(
+    sdk: dict[str, str],
+) -> None:
+    adb = FakeAdb()
+    backend = AndroidBackend(runner=adb, env=sdk)
+    await backend.view("android:emulator-5554", None, screenshot=False)
+    adb.dump_fails = True
+
+    with pytest.raises(TargetError, match="types nothing"):
+        await backend.act("android:emulator-5554", Action(kind="key", key="a"))
+    assert not [call for call in adb.shell() if "keyevent" in call]
 
 
 async def test_close_stops_only_the_emulator_it_started(sdk: dict[str, str]) -> None:

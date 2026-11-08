@@ -113,6 +113,8 @@ The daemon's `nestd/computer` package gives chats five tools (`computer_targets`
 
 Mac apps go through the helper app `Nest.app/Contents/Helpers/Nest Computer.app` (`apple/Sources/NestComputer`, bundle id `local.nest.computer`), which holds the Accessibility permission so the Python program agents' shells run never does. macOS checks Screen Recording for an app inside another app against the outer one, so window screenshots use Nest.app's Screen Recording. `make app` builds it and signs it with the same certificate as Nest.app, so macOS keeps its permissions across builds. The daemon starts it with `open` (so macOS counts it as its own app), finds Nest.app at `NEST_MAC_APP` or `/Applications/Nest.app`, and talks to it over a Unix socket at `<data>/computer/helper.sock` with JSON lines; the helper answers only the daemon's process and quits when the daemon does. It uses public macOS APIs only: accessibility actions and menus, window-created notifications, keys sent to the app's process, and `screencapture -l` for window screenshots (ScreenCaptureKit failed on macOS 27.2). macOS lists only the windows on the current desktop, so the helper also keeps windows it saw before or saw being opened.
 
+Known limit: the shared browser's DevTools port is on `127.0.0.1` and named in its profile folder, so another program running as you could drive that browser without Nest's cards.
+
 A test copy needs its own Nest.app copy with the helper inside, `NEST_MAC_APP` pointing at it, Accessibility for its helper and Screen Recording for the copy itself.
 
 ## Renamed from harness

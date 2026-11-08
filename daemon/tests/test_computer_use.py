@@ -103,6 +103,7 @@ class Cards:
 @dataclass
 class Scene:
     service: ComputerService
+    bus: EventBus
     store: SessionStore
     mac: FakeMac
     cards: Cards
@@ -116,6 +117,7 @@ class Scene:
 @pytest.fixture
 async def scene(db: Database, clock: FakeClock) -> Scene:
     store = SessionStore(db, clock)
+    bus = EventBus(db, clock)
     mac = FakeMac()
     cards = Cards()
     settings = [ComputerUseSettings(enabled=True)]
@@ -128,12 +130,12 @@ async def scene(db: Database, clock: FakeClock) -> Scene:
         [mac],
         settings=lambda: settings[0],
         store=store,
-        bus=EventBus(db, clock),
+        bus=bus,
         ask=cards,
         interrupt=interrupt,
         answer_seconds=0.05,
     )
-    return Scene(service, store, mac, cards, settings, interrupted)
+    return Scene(service, bus, store, mac, cards, settings, interrupted)
 
 
 async def test_every_chat_gets_the_tools_while_settings_has_it_on(scene: Scene) -> None:
@@ -279,7 +281,9 @@ async def test_one_chat_holds_an_app_until_its_turn_ends(scene: Scene) -> None:
 async def test_bringing_an_app_forward_asks_first(scene: Scene) -> None:
     scene.mac.needs_front = True
     chat = await scene.chat()
-    scene.cards.answers = ["allow", "deny", "allow"]
+    # Using the app; then each click by position, and bringing it forward, are asked.
+    scene.cards.answers = ["allow", "allow", "deny", "allow", "allow"]
+    await scene.service.view(chat.id, KEY, None, True)
 
     with pytest.raises(RefusedError, match="must be in front"):
         await scene.service.act(chat.id, KEY, Action(kind="click", x=5, y=5), False)
@@ -287,7 +291,25 @@ async def test_bringing_an_app_forward_asks_first(scene: Scene) -> None:
 
     await scene.service.act(chat.id, KEY, Action(kind="click", x=5, y=5), False)
     assert scene.mac.fronted == 1
+    assert scene.cards.asked[1]["reason"] == "A click by position can press anything there."
     assert scene.cards.asked[-1]["title"] == "Bring com.apple.TextEdit to the front?"
+
+
+async def test_only_what_the_chat_saw_of_this_app_can_be_acted_on(scene: Scene) -> None:
+    chat = await scene.chat()
+    scene.cards.answers = ["allow"]
+
+    with pytest.raises(RefusedError, match="computer_view first"):
+        await scene.service.act(chat.id, KEY, Action(kind="type", text="hi"), False)
+    await scene.service.view(chat.id, KEY, None, False)
+    # An id from another app's window, or one not in the last look, does nothing.
+    with pytest.raises(RefusedError, match="not in the last look"):
+        await scene.service.act(chat.id, KEY, Action(kind="press", element="e99"), False)
+    with pytest.raises(RefusedError, match="not a window"):
+        await scene.service.act(
+            chat.id, KEY, Action(kind="press", element="e1", window="w7"), False
+        )
+    assert scene.mac.acts == []
 
 
 async def test_stop_lets_go_stops_the_turn_and_asks_again_next_time(scene: Scene) -> None:
