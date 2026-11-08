@@ -228,7 +228,8 @@ public enum WebPaneBridge {
         "nest-web-pane-" + base.absoluteString.replacing(/[^A-Za-z0-9]+/) { _ in "-" }
     }
 
-    /// A content rule list that blocks every load but the daemon's own, sockets included.
+    /// A content rule list that blocks every load but the daemon's own, sockets included,
+    /// and pictures from the web, which a reply may show (B144, D173).
     public static func contentRules(base: URL) -> String {
         let origin = String(base.absoluteString.trimmingPrefix(/https?:\/\//))
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -241,6 +242,10 @@ public enum WebPaneBridge {
         let block: [String: Any] = [
             "trigger": ["url-filter": ".*"], "action": ["type": "block"],
         ]
+        let webImages: [String: Any] = [
+            "trigger": ["url-filter": "^https://", "resource-type": ["image"]],
+            "action": ["type": "ignore-previous-rules"],
+        ]
         let rules =
             [block]
             + allowed.map {
@@ -248,7 +253,7 @@ public enum WebPaneBridge {
                     "trigger": ["url-filter": "^" + $0],
                     "action": ["type": "ignore-previous-rules"],
                 ]
-            }
+            } + [webImages]
         let data = (try? JSONSerialization.data(withJSONObject: rules)) ?? Data("[]".utf8)
         return String(data: data, encoding: .utf8) ?? "[]"
     }
