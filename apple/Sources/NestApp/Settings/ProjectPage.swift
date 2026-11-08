@@ -20,6 +20,7 @@ struct ProjectPage: View {
             case .configuration: ProjectConfigurationTab(repo: repo)
             case .chats: ProjectChatsTab(repo: repo)
             case .worktrees: ProjectWorktreesTab(repo: repo)
+            case .triggers: ProjectTriggersTab(repo: repo)
             case .look: ProjectLookTab(repo: repo)
             case .artifacts: ProjectArtifactsTab(repo: repo)
             }

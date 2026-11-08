@@ -23,11 +23,13 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     /// The branch of a selected place that went, until the app has told the user and cleared
     /// it; `selectedPlace` is nil meanwhile.
     public var selectedPlaceGone: String?
+    /// GitHub events that start a chat in the project (B148); none from older daemons.
+    public var triggers: [ChatTrigger] = []
 
     public var id: String { name }
 
     enum CodingKeys: String, CodingKey {
-        case name, path, worktree, git, icon
+        case name, path, worktree, git, icon, triggers
         case defaultBranch = "default_branch"
         case currentBranch = "current_branch"
         case iconColor = "icon_color"
@@ -53,6 +55,7 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         remoteURL = try container.decodeIfPresent(String.self, forKey: .remoteURL)
         selectedPlace = try container.decodeIfPresent(SelectedPlace.self, forKey: .selectedPlace)
         selectedPlaceGone = try container.decodeIfPresent(String.self, forKey: .selectedPlaceGone)
+        triggers = try container.decodeIfPresent([ChatTrigger].self, forKey: .triggers) ?? []
     }
 
     private init(name: String) {

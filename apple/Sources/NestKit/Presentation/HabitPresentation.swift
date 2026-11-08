@@ -62,9 +62,13 @@ extension HabitRunOutcome {
 }
 
 extension PixieHabit {
-    /// "Weekdays at 09:00 · When a chat is stuck".
+    /// "Weekdays at 09:00 · When a chat is stuck · On GitHub when CI fails".
     public var summary: String {
-        HabitText.summary(schedule: schedule, triggers: triggers)
+        let github = TriggerText.github((github ?? []).flatMap(\.events))
+        return [HabitText.summary(schedule: schedule, triggers: triggers), github]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 }
 
@@ -193,6 +197,8 @@ public struct HabitDraft: Sendable, Hashable {
     public var minute = 0
     public var weekday = 0
     public var triggers: Set<HabitTrigger> = []
+    /// Its first GitHub trigger (B148).
+    public var github = GitHubDraft()
     public var maxMinutes = 20
     public var autopilot = false
 
@@ -202,6 +208,7 @@ public struct HabitDraft: Sendable, Hashable {
         name = habit.name
         prompt = habit.prompt
         triggers = Set(habit.triggers)
+        github = GitHubDraft(watches: habit.github)
         maxMinutes = habit.maxMinutes
         autopilot = habit.autopilot ?? false
         use(habit.schedule)
@@ -263,7 +270,7 @@ public struct HabitDraft: Sendable, Hashable {
         if name.count > 60 { return "A name has at most 60 characters" }
         if prompt.isEmpty { return "Say what it should check" }
         if prompt.count > 4000 { return "The instructions have at most 4000 characters" }
-        if schedule == nil && triggers.isEmpty {
+        if schedule == nil && triggers.isEmpty && github.events.isEmpty {
             return "Choose a schedule or at least one trigger"
         }
         return nil
@@ -272,7 +279,8 @@ public struct HabitDraft: Sendable, Hashable {
     public var create: CreateHabitRequest {
         CreateHabitRequest(
             name: trimmedName, prompt: trimmedPrompt, schedule: schedule,
-            triggers: orderedTriggers, maxMinutes: maxMinutes, autopilot: autopilot)
+            triggers: orderedTriggers, github: github.watches(keeping: nil),
+            maxMinutes: maxMinutes, autopilot: autopilot)
     }
 
     /// Only what changed from the habit.
@@ -285,6 +293,8 @@ public struct HabitDraft: Sendable, Hashable {
             request.clearsSchedule = schedule == nil
         }
         if orderedTriggers != habit.triggers { request.triggers = orderedTriggers }
+        let watches = github.watches(keeping: habit.github)
+        if watches != (habit.github ?? []) { request.github = watches }
         if maxMinutes != habit.maxMinutes { request.maxMinutes = maxMinutes }
         if autopilot != (habit.autopilot ?? false) { request.autopilot = autopilot }
         return request

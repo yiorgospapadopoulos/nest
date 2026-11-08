@@ -9,8 +9,8 @@ enum ConfigurationForm: Equatable {
     case skill(repo: String?)
 }
 
-/// The editor sheet, the copy popup and the forms, drawn over Settings with a
-/// scrim, as the main window draws its sheets.
+/// The editor sheet, the copy popup and the forms, a project trigger's among them (B148),
+/// drawn over Settings with a scrim, as the main window draws its sheets.
 struct ConfigurationModals: View {
     @Environment(Shell.self) private var shell
 
@@ -31,6 +31,9 @@ struct ConfigurationModals: View {
                 case .skill(let repo):
                     SkillFormSheet(repo: repo).padding(40)
                 }
+            } else if let form = shell.triggerForm {
+                scrim { shell.triggerForm = nil }
+                TriggerFormSheet(form: form).padding(40)
             }
         }
         .animation(.smooth(duration: 0.15), value: store.editor?.id)
