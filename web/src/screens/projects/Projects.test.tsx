@@ -4,7 +4,7 @@ import { ApiError } from "../../api/client.ts";
 import type { JsonValue, RepoConfig, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { approval, claudeChat, pixie, repo, session } from "../../test/fixtures.ts";
+import { applied, approval, claudeChat, pixie, repo, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 import { LONG_PRESS_MS } from "./rowGestures.ts";
 
@@ -17,7 +17,7 @@ function withChats(sessions: Session[], repos: (string | RepoConfig)[] = ["todo-
   api.updateSession.mockImplementation((id, body) => {
     const found = defined(sessions.find((s) => s.id === id));
     const archived = body.archived === undefined ? found.archived_at : body.archived ? "x" : null;
-    return Promise.resolve({ ...found, ...body, archived_at: archived });
+    return Promise.resolve({ ...found, ...applied(body), archived_at: archived });
   });
   return api;
 }

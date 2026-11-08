@@ -2,9 +2,22 @@
 // Model with a section per engine, so choosing a model chooses its engine (B91), and
 // Thinking and Permissions following that engine's models, with no Default entries (B94).
 import type { Effort, PermissionMode, Pixie, UpdatePixieBody } from "../../api/types.ts";
-import { effortLabel, PERMISSIONS } from "../../screens/chat/options.ts";
+import {
+  COMPACT_AT,
+  COMPACT_AT_TITLE,
+  compactAtChoice,
+  compactAtLabel,
+  effortLabel,
+  PERMISSIONS,
+} from "../../screens/chat/options.ts";
 import { isSelected, supportsAuto, thinkingLevels } from "../../store/catalog.ts";
-import { catalogFor, modelSections, modelTitle, pixieCanRunOn } from "../../store/selectors.ts";
+import {
+  catalogFor,
+  modelSections,
+  modelTitle,
+  pixieCanRunOn,
+  supportsFeature,
+} from "../../store/selectors.ts";
 import type { State } from "../../store/state.ts";
 import type { MenuEntry } from "../ui/menuItems.ts";
 import { AUTONOMY, PROJECT_ACCESS } from "./words.ts";
@@ -23,7 +36,10 @@ export interface PixieRow {
   items: () => MenuEntry[];
 }
 
-/** Model, Thinking, Permissions, Project files and Autonomy, each a value opening its choices. */
+/**
+ * Model, Thinking, Compact at (where the engine takes it), Permissions, Project files and
+ * Autonomy, each a value opening its choices.
+ */
 export function settingsRows(state: State, pixie: Pixie, save: Save): PixieRow[] {
   const catalog = catalogFor(state, pixie.provider);
   // The model its runs ask for: its own, or its engine's default (B94).
@@ -58,6 +74,25 @@ export function settingsRows(state: State, pixie: Pixie, save: Save): PixieRow[]
         })),
       ],
     },
+    ...(supportsFeature(state, "compact_window", pixie.provider)
+      ? [
+          {
+            title: COMPACT_AT_TITLE,
+            value: compactAtLabel(pixie.compact_at),
+            enabled: true,
+            items: (): MenuEntry[] => [
+              { type: "section", title: COMPACT_AT_TITLE },
+              ...COMPACT_AT.map((option) => ({
+                title: option.label,
+                checked: pixie.compact_at === option.value,
+                onSelect: () => {
+                  save({ compact_at: compactAtChoice(option.value) });
+                },
+              })),
+            ],
+          },
+        ]
+      : []),
     {
       title: "Permissions",
       value: permission?.label ?? pixie.permission_mode,

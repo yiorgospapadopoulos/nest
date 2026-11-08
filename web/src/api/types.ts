@@ -166,6 +166,8 @@ export interface Session {
   cwd: string | null;
   model: string | null;
   effort: Effort | null;
+  // Where the engine compacts the chat by itself; null: the engine's own (B146).
+  compact_at: number | null;
   permission_mode: PermissionMode;
   provider: string;
   base_ref: string | null;
@@ -649,6 +651,7 @@ export interface UpdateSessionBody {
   model?: string;
   // Applies when the agent next opens: from the next message of an idle chat.
   effort?: Effort;
+  compact_at?: CompactAtChoice;
   permission_mode?: PermissionMode;
   title?: string;
   pinned?: boolean;
@@ -886,6 +889,9 @@ export interface ModelList {
   default_model: string | null;
 }
 
+/** A size to compact at in tokens (100k to 1M), or the engine's own (B146). */
+export type CompactAtChoice = number | "auto";
+
 /** What an engine's chats cannot do (B91); clients hide it, the daemon refuses it. */
 export type ProviderFeature =
   | "rewind"
@@ -900,7 +906,8 @@ export type ProviderFeature =
   | "task_list"
   | "pixies"
   | "memory"
-  | "pixie_skills";
+  | "pixie_skills"
+  | "compact_window";
 
 /** Whether an engine can run chats on this Mac (B107); only "ready" can. */
 export type EngineState = "ready" | "not_installed" | "installing" | "install_failed";
@@ -967,6 +974,8 @@ export interface AgentDefaults {
   effort: Effort | null;
   permission_mode: PermissionMode | null;
   mode: SessionMode;
+  // Null: each engine's own (B146).
+  compact_at?: number | null;
 }
 
 /** Codex's own login on the Mac (`GET /api/accounts/codex`, B94); never a token. */
@@ -1006,6 +1015,8 @@ export interface PixieSettings {
   // Null: the engine's default model (on Claude, the agent defaults' model).
   model: string | null;
   effort: Effort | null;
+  // Null: the engine's own (B146).
+  compact_at: number | null;
   permission_mode: PermissionMode;
   autonomy: Autonomy;
   project_access: ProjectAccess;
@@ -1120,7 +1131,8 @@ export type CreatePixieBody = Partial<PixieSettings> & {
   soul?: string;
 };
 // Fields left out are unchanged; `team_id: null` leaves its team.
-export type UpdatePixieBody = Partial<PixieSettings> & {
+export type UpdatePixieBody = Partial<Omit<PixieSettings, "compact_at">> & {
+  compact_at?: CompactAtChoice;
   slug?: string;
   team_id?: string | null;
 };

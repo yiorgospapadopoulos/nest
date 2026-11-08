@@ -208,6 +208,24 @@ describe("agent defaults", () => {
     ]);
   });
 
+  it("saves where new chats compact, and Auto as the engine's own", async () => {
+    const api = withEngines();
+    api.agentDefaults.mockResolvedValue(agentDefaults({ model: "opus", compact_at: 400_000 }));
+    const { user } = await openAccount(api);
+    const card = await screen.findByRole("region", { name: "New chats" });
+    const compactAt = await within(card).findByLabelText("Compact at");
+    expect(compactAt).toHaveDisplayValue("400k");
+    expect(options(compactAt)).toEqual(["Auto", "100k", "300k", "400k", "700k", "1M"]);
+
+    await user.selectOptions(compactAt, "1000000");
+    await user.selectOptions(compactAt, "auto");
+
+    expect(api.saveAgentDefaults.mock.calls.map(([body]) => body)).toEqual([
+      agentDefaults({ model: "opus", compact_at: 1_000_000 }),
+      agentDefaults({ model: "opus", compact_at: null }),
+    ]);
+  });
+
   it("keeps a model, a level and a mode the list does not offer", async () => {
     const api = withEngines();
     api.agentDefaults.mockResolvedValue(

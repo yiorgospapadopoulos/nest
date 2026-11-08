@@ -17,7 +17,14 @@ import {
 } from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
 import { catalogFor, modelSections, sectionKey } from "../../store/selectors.ts";
-import { effortLabel, PERMISSIONS } from "../chat/options.ts";
+import {
+  COMPACT_AT_PICKS,
+  COMPACT_AT_TITLE,
+  compactAtPick,
+  effortLabel,
+  pickedCompactAt,
+  PERMISSIONS,
+} from "../chat/options.ts";
 import { Loading, Section, SegRow, type Choice } from "./rows.tsx";
 import { StuckChats } from "./StuckChats.tsx";
 import { WorktreeDefaults } from "./WorktreeDefaults.tsx";
@@ -167,6 +174,23 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
               {PERMISSIONS.find((o) => o.value === permission)?.label ?? permission}
             </option>
           )}
+        </select>
+      </div>
+      <div className="srow">
+        <label htmlFor="default-compact-at">{COMPACT_AT_TITLE}</label>
+        <select
+          id="default-compact-at"
+          className="ssel"
+          value={compactAtPick(defaults.compact_at ?? null)}
+          onChange={(event) => {
+            save({ compact_at: pickedCompactAt(event.target.value) });
+          }}
+        >
+          {COMPACT_AT_PICKS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </div>
       <SegRow

@@ -8,7 +8,13 @@ import {
 } from "../../../store/catalog.ts";
 import { useStore } from "../../../store/context.ts";
 import { catalogFor, modelSections } from "../../../store/selectors.ts";
-import { effortLabel, PERMISSIONS } from "../../../screens/chat/options.ts";
+import {
+  COMPACT_AT,
+  COMPACT_AT_TITLE,
+  compactAtLabel,
+  effortLabel,
+  PERMISSIONS,
+} from "../../../screens/chat/options.ts";
 import { Segmented } from "../../ui/controls.tsx";
 import type { MenuEntry } from "../../ui/menuItems.ts";
 import { choiceItems } from "../parts1/choices.ts";
@@ -108,6 +114,18 @@ function NewChatsSection({ defaults }: { defaults: AgentDefaults | null }) {
     })),
   ];
 
+  const compactAt = defaults?.compact_at ?? null;
+  const compactAtItems = (): MenuEntry[] => [
+    { type: "section", title: COMPACT_AT_TITLE },
+    ...COMPACT_AT.map((option) => ({
+      title: option.label,
+      checked: option.value === compactAt,
+      onSelect: () => {
+        save({ compact_at: option.value });
+      },
+    })),
+  ];
+
   const effort = defaults?.effort ?? null;
   return (
     <SettingsSection title="New chats">
@@ -134,6 +152,14 @@ function NewChatsSection({ defaults }: { defaults: AgentDefaults | null }) {
           label="Permissions"
           title={PERMISSIONS.find((o) => o.value === permission)?.label ?? permission}
           items={permissionItems}
+          disabled={!loaded}
+        />
+      </SettingsRow>
+      <SettingsRow label={COMPACT_AT_TITLE}>
+        <Dropdown
+          label={COMPACT_AT_TITLE}
+          title={loaded ? compactAtLabel(compactAt) : "-"}
+          items={compactAtItems}
           disabled={!loaded}
         />
       </SettingsRow>

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PixieActivity } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { detail, pixie, repo, session } from "../../test/fixtures.ts";
+import { applied, detail, pixie, repo, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
 
 const details = (api = fakeApi(), shown = pixie()) => openPixie(api, shown, "Details");
@@ -69,7 +69,7 @@ describe("Pixie Nest tools in its details (B41)", () => {
       (_id, body) =>
         new Promise((resolve) => {
           release = () => {
-            resolve({ ...shown, ...body });
+            resolve({ ...shown, ...applied(body) });
           };
         }),
     );
