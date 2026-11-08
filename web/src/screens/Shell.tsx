@@ -194,6 +194,9 @@ export function Shell() {
           onOpenClaudeChat={openClaudeChat}
           onOpenPixie={openPixie}
           onOpenWork={openWork}
+          onNewChatOnTop={(repo, onTop) => {
+            show({ draft: repo, onTop });
+          }}
         />
       )}
     </main>
@@ -222,5 +225,6 @@ function chatKey(target: ChatTarget): string {
   if ("workOf" in target) return `work:${target.workOf}:${JSON.stringify(target.who)}`;
   if ("claude" in target) return `claude:${target.claude}`;
   if ("pixie" in target) return `pixie:${target.pixie}`;
-  return "draft" in target ? `new:${target.draft}` : `session:${target.id}`;
+  if ("draft" in target) return `new:${target.draft}:${target.onTop ?? ""}`;
+  return `session:${target.id}`;
 }

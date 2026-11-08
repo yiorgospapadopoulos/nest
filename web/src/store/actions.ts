@@ -1004,6 +1004,52 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
+    /**
+     * Merge (squash) once the checks pass, or not (B149). A pull request that is ready now
+     * is merged at once.
+     */
+    async setMergeWhenReady(sessionId: string, enabled: boolean): Promise<boolean> {
+      const updated = await attempt(() =>
+        api.setAutoMerge(sessionId, enabled ? { enabled, method: "squash" } : { enabled }),
+      );
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      if (updated.pr?.state === "merged") toast(`Merged #${String(updated.pr.number)}`);
+      return true;
+    },
+
+    /**
+     * Moves a stacked chat's branch onto where the branch under it went and pushes it
+     * (B149); the daemon's refusal, such as a conflict, shows as the error.
+     */
+    async restack(sessionId: string, done: string, approval?: Approval): Promise<boolean> {
+      const updated = await attempt(() => api.restack(sessionId));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      if (approval !== undefined) {
+        dispatch({ type: "approval", approval: { ...approval, status: "resolved" } });
+      }
+      toast(done);
+      return true;
+    },
+
+    /** Starts writing the pull request's review guide; `session.updated` says when it is done. */
+    async writePrGuide(sessionId: string): Promise<boolean> {
+      const updated = await attempt(() => api.writePrGuide(sessionId));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      return true;
+    },
+
+    /** Posts the ready review guide on the pull request as a comment. */
+    async postPrGuide(sessionId: string): Promise<boolean> {
+      const updated = await attempt(() => api.postPrGuide(sessionId));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      toast("Review guide posted on GitHub");
+      return true;
+    },
+
     /** Whether new review comments go to the agent as they arrive (B101). */
     async setReviewAutoSend(sessionId: string, autoSend: boolean): Promise<boolean> {
       const updated = await attempt(() => api.setReviewAutoSend(sessionId, autoSend));
