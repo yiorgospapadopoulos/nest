@@ -4,9 +4,14 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime};
 
 use crate::env::{var, Env};
 
+/// The last swap, `<app file>\n<version it left>`, in the data folder.
+const SWAP_MARK: &str = "app-swap";
+/// A swap repeated sooner than this from the same version came back unchanged.
+const SWAP_AGAIN_AFTER: Duration = Duration::from_secs(600);
 /// Where release/install.sh puts the app, and its copy unpacked for systems with no FUSE.
 const APP_IMAGE: &str = "Nest.AppImage";
 const APP_DIR: &str = "Nest.AppDir";
@@ -232,6 +237,29 @@ fn opened(proc: &Path, install: &Install, own: u32, binary: &str) -> bool {
     })
 }
 
+fn swap_mark(file: &Path, own_version: &str) -> String {
+    format!("{}\n{own_version}", file.display())
+}
+
+/// Whether this app swapped to `file` from `own_version` minutes ago and still is that
+/// version: the file then is not the version the daemon names, and swapping again would
+/// only start the same app over and over (seen on 2026-11-08, B136).
+pub fn swapped_lately(data_dir: &Path, file: &Path, own_version: &str) -> bool {
+    let mark = data_dir.join(SWAP_MARK);
+    let recent = std::fs::metadata(&mark)
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|at| {
+            SystemTime::now().duration_since(at).unwrap_or_default() < SWAP_AGAIN_AFTER
+        });
+    recent && std::fs::read_to_string(&mark).is_ok_and(|text| text == swap_mark(file, own_version))
+}
+
+/// Notes a swap to `file` from `own_version`, for `swapped_lately`.
+pub fn note_swap(data_dir: &Path, file: &Path, own_version: &str) -> Result<(), String> {
+    std::fs::write(data_dir.join(SWAP_MARK), swap_mark(file, own_version))
+        .map_err(|error| failed("note the swap", error))
+}
+
 /// Swaps to `file` and leaves a waiting process to start it; the caller then exits.
 /// `scrub`: the variables Nest set for itself, which the new app must work out again.
 pub fn swap(file: &Path, install: &Install, scrub: &[String]) -> Result<(), String> {
@@ -454,5 +482,36 @@ mod tests {
         );
         assert!(!dir.path().join(".Nest.AppImage.new").exists());
         assert!(!dir.path().join(EXTRACTED).exists());
+    }
+
+    #[test]
+    fn a_swap_that_came_back_unchanged_is_not_made_again() {
+        let data = TempDir::new("swap-mark");
+        let file = data.path().join("daemon/0.1.1/app-file");
+        assert!(!swapped_lately(data.path(), &file, "0.1.0"));
+
+        note_swap(data.path(), &file, "0.1.0").unwrap();
+
+        assert!(swapped_lately(data.path(), &file, "0.1.0"));
+        // The new app came up as the version asked for, or another release is named.
+        assert!(!swapped_lately(data.path(), &file, "0.1.1"));
+        let other = data.path().join("daemon/0.1.2/app-file");
+        assert!(!swapped_lately(data.path(), &other, "0.1.0"));
+    }
+
+    #[test]
+    fn an_old_swap_does_not_block_a_new_one() {
+        let data = TempDir::new("swap-mark-old");
+        let file = data.path().join("daemon/0.1.1/app-file");
+        note_swap(data.path(), &file, "0.1.0").unwrap();
+        let long_ago = SystemTime::now() - SWAP_AGAIN_AFTER - Duration::from_secs(1);
+        std::fs::File::options()
+            .write(true)
+            .open(data.path().join(SWAP_MARK))
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+
+        assert!(!swapped_lately(data.path(), &file, "0.1.0"));
     }
 }

@@ -15,7 +15,7 @@
 //! | start_service | none | "started", or "not_installed" without a nest.service unit; main window only |
 //! | daemon_problem | none | what the daemon's log says stops it, in words for the user, or null; main window only |
 //! | app_version | none | this app's version; main window only |
-//! | swap_app | { path } (untrusted: a release's app file in the data folder) | null, with nothing done in a dev build or after the first call of a launch; else Nest restarts from it; main window only |
+//! | swap_app | { path } (untrusted: a release's app file in the data folder) | null, with nothing done in a dev build, after the first call of a launch, or when the same swap came back unchanged minutes ago; else Nest restarts from it; main window only |
 //! | install_state | none | { updating: { from_version, to_version, started_at } or null, release_url, released }, read from the data folder while the daemon may be down; main window only |
 //! | relaunch_app | { version } (the ready update's, whose app file is in the data folder) | false in a dev build; else true, after starting the helper that opens the new app once the daemon answers, and Nest quits; main window only |
 //! | uninstall_nest | { delete_data } | null: starts the released install's `nest uninstall` in a session of its own and quits; main window only |
@@ -221,11 +221,19 @@ pub async fn swap_app(
     let Some(install) = app_swap::locate(&env::process, &exe) else {
         return Ok(());
     };
-    let file = app_swap::app_file(&path, &daemon::data_dir(&env::process)?)?;
+    let data = daemon::data_dir(&env::process)?;
+    let file = app_swap::app_file(&path, &data)?;
+    let version = app.package_info().version.to_string();
+    if app_swap::swapped_lately(&data, &file, &version) {
+        return Ok(());
+    }
     let own_vars = state.own_vars.clone();
-    tauri::async_runtime::spawn_blocking(move || app_swap::swap(&file, &install, &own_vars))
-        .await
-        .map_err(message)??;
+    tauri::async_runtime::spawn_blocking(move || {
+        app_swap::note_swap(&data, &file, &version)?;
+        app_swap::swap(&file, &install, &own_vars)
+    })
+    .await
+    .map_err(message)??;
     app.exit(0);
     Ok(())
 }
