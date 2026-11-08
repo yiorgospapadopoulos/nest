@@ -695,10 +695,13 @@ function NoteRow({ title, text, ev }: { title: string | undefined; text: string;
     );
   }
   const habit = title === "Habit report";
+  const autopilot = title === "Autopilot";
+  const glyph = habit ? "bell" : autopilot ? "infinity" : "playCircle";
+  const heading = habit || autopilot ? title : "Resumed after the limit";
   return (
     <div className="dc-note" data-ev={ev}>
-      <Glyph name={habit ? "bell" : "playCircle"} size={10} />
-      <span className="dc-noteh">{habit ? "Habit report" : "Resumed after the limit"}</span>
+      <Glyph name={glyph} size={10} />
+      <span className="dc-noteh">{heading}</span>
       <span className="dc-notet clamp">{text}</span>
     </div>
   );
