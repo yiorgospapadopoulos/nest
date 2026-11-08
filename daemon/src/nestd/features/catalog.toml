@@ -736,3 +736,12 @@ text = "Storage shows how much room the engines, backups and logs take, next to 
 where = "Settings > Storage"
 added = 2026-11-07
 block = "B134"
+
+[[features]]
+id = "compact-at"
+group = "chats"
+name = "Choose when a chat compacts"
+text = "Pick how full a chat gets before it compacts by itself: Auto, or 100k to 1M tokens. Set a default for new chats, change it for one chat, or give each pixie its own. A model with a smaller window compacts at its own limit."
+where = "Settings > Agents > Compact at, or the context percentage next to the composer"
+added = 2026-11-08
+block = "B146"
