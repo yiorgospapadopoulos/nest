@@ -534,6 +534,26 @@
             return session
         }
 
+        func setAutoMerge(_ id: String, enabled: Bool) async throws -> Session {
+            var session = try await session(id)
+            session.mergeWhenReady = enabled ? MergeWhenReady() : nil
+            return session
+        }
+
+        func restack(_ id: String) async throws -> Session {
+            var session = try await session(id)
+            session.stack?.restack = nil
+            return session
+        }
+
+        func writeReviewGuide(_ id: String) async throws -> Session {
+            try await session(id)
+        }
+
+        func postReviewGuide(_ id: String) async throws -> Session {
+            try await session(id)
+        }
+
         func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {
             try decode(["launcher": "/tmp/claude.command"])
         }

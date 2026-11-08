@@ -81,6 +81,15 @@ public protocol NestAPI: Sendable {
     func reviewFeedback(_ id: String, ids: [String]?) async throws
     /// Whether new review comments go to the agent as they arrive; answers the session.
     func setReviewAutoSend(_ id: String, _ on: Bool) async throws -> Session
+    /// Merge when checks pass (B149): a pull request ready now merges at once.
+    func setAutoMerge(_ id: String, enabled: Bool) async throws -> Session
+    /// Rebases a stacked chat's branch onto its new base when that has not happened, then
+    /// pushes it for an open pull request (B149).
+    func restack(_ id: String) async throws -> Session
+    /// Starts writing the review guide; the session shows it writing, then ready or failed.
+    func writeReviewGuide(_ id: String) async throws -> Session
+    /// Posts the written guide as a comment on the pull request.
+    func postReviewGuide(_ id: String) async throws -> Session
 
     // MARK: Dev servers (B108)
 

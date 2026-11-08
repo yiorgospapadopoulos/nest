@@ -33,6 +33,8 @@ public struct NeedsYouLine: Sendable, Hashable {
                     "\($0.comments.count) on #\($0.number)"
                         + ($0.changesRequested ? ", changes requested" : "")
                 })
+        case .restack:
+            NeedsYouLine(kind: "Branch to move", detail: approval.restack?.headline)
         case .permission, .unknown:
             NeedsYouLine(
                 kind: "Permission",
