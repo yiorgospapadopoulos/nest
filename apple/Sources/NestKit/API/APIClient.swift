@@ -222,6 +222,23 @@ public struct APIClient: NestAPI {
             "PATCH", ["sessions", id, "pr", "review"], body: ReviewAutoSendRequest(autoSend: on))
     }
 
+    public func setAutoMerge(_ id: String, enabled: Bool) async throws -> Session {
+        try await call(
+            "PATCH", ["sessions", id, "pr", "auto-merge"], body: AutoMergeRequest(enabled: enabled))
+    }
+
+    public func restack(_ id: String) async throws -> Session {
+        try await call("POST", ["sessions", id, "restack"])
+    }
+
+    public func writeReviewGuide(_ id: String) async throws -> Session {
+        try await call("POST", ["sessions", id, "pr", "guide"])
+    }
+
+    public func postReviewGuide(_ id: String) async throws -> Session {
+        try await call("POST", ["sessions", id, "pr", "guide", "post"])
+    }
+
     // MARK: Dev servers (B108)
 
     public func runStatus(_ id: String) async throws -> RunStatus {

@@ -10,7 +10,7 @@ from nestd.autopilot.models import Autopilot, SetAutopilot
 from nestd.config.models import CompactAt, Effort, ModelChoice, PermissionMode, SessionMode
 from nestd.issues.models import IssueRef
 from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
-from nestd.prs.models import PrReview, PrStatus
+from nestd.prs.models import MergeRequest, PrGuide, PrReview, PrStatus, Stack
 from nestd.stuck.models import StuckFlag
 
 # A pixie's chat has no project; its `repo` names the pixie instead (D072).
@@ -180,6 +180,12 @@ class Session(NewSession):
     pr_summary: str | None = None
     # The pull request's review comments and which of them went to the agent (B101).
     review: PrReview | None = None
+    # Merge the pull request once its checks pass, as the user asked (B149).
+    merge_when_ready: MergeRequest | None = None
+    # The chat whose branch this one's starts from, and a rebase waiting (B149).
+    stack: Stack | None = None
+    # The review guide written for the pull request (B149).
+    pr_guide: PrGuide | None = None
     # Why the session looks stuck right now, if it does (D036).
     stuck: StuckFlag | None = None
     # Set while the chat is paused at the usage limit (B78).

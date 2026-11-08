@@ -40,6 +40,10 @@ public final class SessionsStore {
     public private(set) var resumingLimit: Set<String> = []
     /// Chats whose Autopilot change the daemon has not answered yet (B120).
     public private(set) var settingAutopilot: Set<String> = []
+    /// Chats whose branch is being rebased or pushed onto its new base (B149).
+    public private(set) var restacking: Set<String> = []
+    /// Chats whose review guide is being asked for or posted (B149).
+    public private(set) var guideBusy: Set<String> = []
 
     let api: any NestAPI
     let approvals: ApprovalsStore
@@ -304,6 +308,31 @@ public final class SessionsStore {
     /// arrive, rather than waiting in Needs you (B101).
     public func setReviewAutoSend(_ id: String, _ on: Bool) async throws {
         try await fetch { try await self.api.setReviewAutoSend(id, on) }
+    }
+
+    /// Merge when checks pass, on or off (B149).
+    public func setAutoMerge(_ id: String, _ on: Bool) async throws {
+        try await fetch { try await self.api.setAutoMerge(id, enabled: on) }
+    }
+
+    /// Moves a stacked chat's branch onto its new base, and pushes it for an open pull
+    /// request (B149).
+    public func restack(_ id: String) async throws {
+        restacking.insert(id)
+        defer { restacking.remove(id) }
+        try await fetch { try await self.api.restack(id) }
+    }
+
+    public func writeReviewGuide(_ id: String) async throws {
+        guideBusy.insert(id)
+        defer { guideBusy.remove(id) }
+        try await fetch { try await self.api.writeReviewGuide(id) }
+    }
+
+    public func postReviewGuide(_ id: String) async throws {
+        guideBusy.insert(id)
+        defer { guideBusy.remove(id) }
+        try await fetch { try await self.api.postReviewGuide(id) }
     }
 
     /// Reads the pull request from GitHub now.

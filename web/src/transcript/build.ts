@@ -191,14 +191,15 @@ export type TranscriptItem =
 
 /**
  * A pending approval answered in the transcript; a review shows above the composer, and
- * review comments in Needs you only, as the Mac keeps them out of the transcript (B101).
+ * review comments and a branch to move in Needs you only, as the Mac keeps them out of the
+ * transcript (B101, B149).
  */
 export type InlineAsk = Approval & {
-  kind: Exclude<Approval["kind"], "review" | "review_comments">;
+  kind: Exclude<Approval["kind"], "review" | "review_comments" | "restack">;
 };
 
 const isInline = (approval: Approval): approval is InlineAsk =>
-  approval.kind !== "review" && approval.kind !== "review_comments";
+  approval.kind !== "review" && approval.kind !== "review_comments" && approval.kind !== "restack";
 
 // States that end a turn; the others continue it or have nothing to do with turns.
 const TURN_ENDS = new Set<JsonValue | undefined>(["idle", "interrupted", "failed"]);
@@ -848,6 +849,8 @@ function resolvedText(approval: Approval | undefined, root: string | null): stri
     case "review_comments":
       if (r.action === "sent") return "Review comments sent to the agent";
       return r.dismissed === true ? "Review comments dismissed" : null;
+    case "restack":
+      return null;
   }
 }
 

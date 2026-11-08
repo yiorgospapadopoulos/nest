@@ -147,15 +147,19 @@ async def test_list_inbox_shows_pending_prompts_in_every_project(
     boss = await make_boss(ctx, provider)
     empty = await boss.call("list_inbox")
     asking = QuestionRequest(questions=(_question("Which database?", "Postgres", "SQLite"),))
-    provider.script(ask("Bash", reply("done")), question(asking, reply("ok")))
-    first = await ctx.sessions.create(CreateSession(repo="web", prompt="Deploy", mode="worktree"))
-    second = await ctx.sessions.create(CreateSession(repo="web", prompt="Pick", mode="worktree"))
-    provider.script(ask("Bash", reply("done")))
-    await ctx.sessions.create(CreateSession(repo="api", prompt="Elsewhere", mode="worktree"))
 
     async def pending(count: int) -> bool:
         return len(await ctx.approvals.list_approvals()) == count
 
+    # Each chat waits before the next starts, so each takes its own scripted turn.
+    provider.script(ask("Bash", reply("done")))
+    first = await ctx.sessions.create(CreateSession(repo="web", prompt="Deploy", mode="worktree"))
+    await until(lambda: pending(1))
+    provider.script(question(asking, reply("ok")))
+    second = await ctx.sessions.create(CreateSession(repo="web", prompt="Pick", mode="worktree"))
+    await until(lambda: pending(2))
+    provider.script(ask("Bash", reply("done")))
+    await ctx.sessions.create(CreateSession(repo="api", prompt="Elsewhere", mode="worktree"))
     await until(lambda: pending(3))
     # A pixie's own chat waits too, but pixies never act on pixie chats.
     helper = await ctx.pixies.create(CreatePixie(name="Helper"))

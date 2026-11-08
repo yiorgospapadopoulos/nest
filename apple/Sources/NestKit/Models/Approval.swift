@@ -13,6 +13,8 @@ public enum ApprovalKind: String, UnknownSafeEnum {
     case merge
     /// Review comments on the chat's pull request, waiting to go to the agent (B101).
     case reviewComments = "review_comments"
+    /// A stacked chat's branch to move onto a new base, then push (B149).
+    case restack
     case unknown
 }
 
@@ -64,6 +66,10 @@ public struct Approval: Codable, Sendable, Hashable, Identifiable {
 
     public var reviewComments: ReviewCommentsRequest? {
         kind == .reviewComments ? try? payload.decode(ReviewCommentsRequest.self) : nil
+    }
+
+    public var restack: RestackRequest? {
+        kind == .restack ? try? payload.decode(RestackRequest.self) : nil
     }
 
     /// The pixie call it was raised in: the tool use id the caller chat's pixie group lists

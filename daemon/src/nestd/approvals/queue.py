@@ -28,6 +28,7 @@ _NOTICE: dict[ApprovalKind, NotifyKind] = {
     ApprovalKind.MERGE: "ready_to_merge",
     # Notified with the other approvals, under the clients' Approvals setting (B101).
     ApprovalKind.REVIEW_COMMENTS: "needs_approval",
+    ApprovalKind.RESTACK: "needs_approval",
 }
 
 

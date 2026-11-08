@@ -291,6 +291,15 @@ public final class ApprovalsStore {
         return session
     }
 
+    /// Rebases and pushes the stacked chat's branch; the daemon resolves the approval. A
+    /// failed one leaves it pending.
+    @discardableResult
+    public func restack(_ approval: Approval) async throws -> Session {
+        let session = try await track(approval) { try await self.api.restack(approval.sessionID) }
+        remove(approval.id)
+        return session
+    }
+
     // MARK: Review comments (B101)
 
     /// The daemon sends all pending review comments to the chat and resolves the approval;

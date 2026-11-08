@@ -64,6 +64,7 @@ import type {
   Health,
   NestEvent,
   MergeBody,
+  AutoMergeBody,
   ModelList,
   NotificationSettings,
   Pixie,
@@ -246,6 +247,17 @@ export interface Api {
   runOutput(sessionId: string): Promise<RunOutput>;
   // Merges the pull request, then closes the session and removes its worktree.
   merge(sessionId: string, body: MergeBody): Promise<Session>;
+  // Merge once checks pass (B149); a pull request ready now is merged at once, with the
+  // same refusals as `merge`.
+  setAutoMerge(sessionId: string, body: AutoMergeBody): Promise<Session>;
+  // Moves a stacked chat's branch onto where the branch under it went, then pushes (B149).
+  // 409 `restack_failed` when the rebase cannot happen; 409 plain while the branch under it
+  // has to move first.
+  restack(sessionId: string): Promise<Session>;
+  // Starts writing the pull request's review guide (B149); 409 while one is written.
+  writePrGuide(sessionId: string): Promise<Session>;
+  // Posts the ready guide on the pull request (B149); 409 before one is ready.
+  postPrGuide(sessionId: string): Promise<Session>;
   uploadAttachment(file: File): Promise<Attachment>;
   connectors(): Promise<Connector[]>;
   usagePeriod(unit: PeriodUnit, date: string): Promise<UsagePeriod>;
@@ -801,6 +813,22 @@ export class HttpApi implements Api {
 
   merge(sessionId: string, body: MergeBody) {
     return this.json<Session>("POST", `${session(sessionId)}/merge`, body);
+  }
+
+  setAutoMerge(sessionId: string, body: AutoMergeBody) {
+    return this.json<Session>("PATCH", `${session(sessionId)}/pr/auto-merge`, body);
+  }
+
+  restack(sessionId: string) {
+    return this.json<Session>("POST", `${session(sessionId)}/restack`);
+  }
+
+  writePrGuide(sessionId: string) {
+    return this.json<Session>("POST", `${session(sessionId)}/pr/guide`);
+  }
+
+  postPrGuide(sessionId: string) {
+    return this.json<Session>("POST", `${session(sessionId)}/pr/guide/post`);
   }
 
   uploadAttachment(file: File) {

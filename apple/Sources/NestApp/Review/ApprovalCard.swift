@@ -29,6 +29,7 @@ struct ApprovalCard: View {
                 case .plan: PlanBody(approval: approval, style: style)
                 case .merge: MergeBody(approval: approval, style: style)
                 case .reviewComments: ReviewCommentsBody(approval: approval, style: style)
+                case .restack: RestackBody(approval: approval, style: style)
                 case .permission, .unknown: PermissionBody(approval: approval, style: style)
                 }
             }
@@ -60,6 +61,7 @@ struct ApprovalCard: View {
         case .plan: "Plan ready for review"
         case .merge: "Ready to merge"
         case .reviewComments: "Review comments"
+        case .restack: "Branch to move"
         case .permission, .unknown: "Permission needed"
         }
     }

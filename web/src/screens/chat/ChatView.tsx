@@ -33,12 +33,13 @@ import { PixieWorkView } from "./PixieWorkView.tsx";
 import { StartedBy } from "../pixies/StartedBy.tsx";
 
 // An open chat (optionally at an event, such as a search hit), a new one in a project that
-// starts with its first message, or a Claude Code chat shown read only until it is
+// starts with its first message (`onTop`: on a new worktree from that chat's branch, B149),
+// or a Claude Code chat shown read only until it is
 // continued in Nest, or a pixie's page (D072); or, in a chat, a subagent's transcript or a
 // pixie's or team's work (B46).
 export type ChatTarget =
   | { id: string; event?: number }
-  | { draft: string }
+  | { draft: string; onTop?: string }
   | { claude: string }
   | { pixie: string; tab?: PixieTab }
   | { agentOf: string; call: string }
@@ -51,6 +52,8 @@ interface Props {
   onOpenClaudeChat: (chatId: string) => void;
   onOpenPixie: (id: string) => void;
   onOpenWork: (sessionId: string, who: WorkOf) => void;
+  // A new chat in `repo` on a new worktree from `branch`.
+  onNewChatOnTop: (repo: string, branch: string) => void;
 }
 
 export function ChatView({
@@ -60,6 +63,7 @@ export function ChatView({
   onOpenClaudeChat,
   onOpenPixie,
   onOpenWork,
+  onNewChatOnTop,
 }: Props) {
   const { state } = useStore();
   // A pixie's chat shows on its page, also when opened by its address or an inbox card.
@@ -97,6 +101,7 @@ export function ChatView({
   return "draft" in target ? (
     <NewChat
       repo={target.draft}
+      onTop={target.onTop}
       onBack={onBack}
       onCreated={(session) => {
         onOpen(session.id);
@@ -112,6 +117,7 @@ export function ChatView({
       onOpenPixie={onOpenPixie}
       onOpenWork={onOpenWork}
       onOpenChat={onOpen}
+      onNewChatOnTop={onNewChatOnTop}
       nav={nav}
     />
   );
@@ -124,6 +130,7 @@ function SessionChat({
   onOpenPixie,
   onOpenWork,
   onOpenChat,
+  onNewChatOnTop,
   nav,
 }: {
   id: string;
@@ -132,6 +139,7 @@ function SessionChat({
   onOpenPixie: (id: string) => void;
   onOpenWork: (sessionId: string, who: WorkOf) => void;
   onOpenChat: (sessionId: string) => void;
+  onNewChatOnTop: (repo: string, branch: string) => void;
   nav: ChatNav;
 }) {
   const { state, actions } = useStore();
@@ -195,7 +203,13 @@ function SessionChat({
             <LocalTag name={localModelOf(state.local, session.model)?.name ?? "a local model"} />
           )}
           <IssueChip session={session} />
-          <PrChip session={session} />
+          <PrChip
+            session={session}
+            onOpenChat={onOpenChat}
+            onNewChatOnTop={(branch) => {
+              onNewChatOnTop(session.repo, branch);
+            }}
+          />
           {run !== null && <RunButton sessionId={id} status={run} onOpen={showOutput} />}
           <ArtifactsButton scopes={chatScopes(session)} />
           <button

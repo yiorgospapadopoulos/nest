@@ -4,7 +4,7 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel, ConfigDict
 
 from nestd.api.deps import Context, RequireDevice
-from nestd.prs.models import MergeRequest, PrListItem
+from nestd.prs.models import AutoMergeRequest, MergeRequest, PrListItem
 from nestd.sessions.models import SendResult, Session
 
 router = APIRouter(prefix="/api", dependencies=[RequireDevice])
@@ -73,3 +73,43 @@ async def merge(session_id: str, ctx: Context, body: MergeRequest | None = None)
     502 with gh's stderr and changes nothing.
     """
     return await ctx.prs.merge(session_id, body or MergeRequest())
+
+
+@router.patch("/sessions/{session_id}/pr/auto-merge")
+async def auto_merge(session_id: str, body: AutoMergeRequest, ctx: Context) -> Session:
+    """Merge the pull request once its checks pass (`enabled`), or stop waiting. One that is
+    ready now is merged now, with merge's errors. GitHub's own auto-merge is used when GitHub
+    waits for required checks or reviews; otherwise Nest merges when it sees the pull request
+    ready. 502 when gh cannot turn GitHub's auto-merge off.
+    """
+    return await ctx.prs.set_auto_merge(session_id, body)
+
+
+@router.post("/sessions/{session_id}/restack")
+async def restack(session_id: str, ctx: Context) -> Session:
+    """Move a stacked chat's branch onto its new base after the pull request under it merged:
+    rebase it when Nest could not by itself, then for an open pull request force-push it
+    (only while GitHub has what Nest last read there) and point the pull request at the new
+    base. 409 `restack_failed` with the reason when the rebase cannot happen, such as
+    conflicts or uncommitted changes; 409 when nothing waits or the branch under it moves
+    first; 502 when git or gh fails.
+    """
+    return await ctx.stacks.restack(session_id)
+
+
+@router.post("/sessions/{session_id}/pr/guide", status_code=status.HTTP_202_ACCEPTED)
+async def write_guide(session_id: str, ctx: Context) -> Session:
+    """Start writing a review guide for the pull request: one call on the chat's engine and
+    model, from the pull request's diff only, with no tools. The session's `pr_guide` reads
+    `writing`, then `ready` with its markdown artifact (a new version when written again) or
+    `failed` with the reason, published as `session.updated`. 409 while one is written.
+    """
+    return await ctx.guides.write(session_id)
+
+
+@router.post("/sessions/{session_id}/pr/guide/post")
+async def post_guide(session_id: str, ctx: Context) -> Session:
+    """Post the review guide, as its artifact reads now, on the pull request as a comment.
+    409 before a guide is ready; 502 when gh fails.
+    """
+    return await ctx.guides.post(session_id)

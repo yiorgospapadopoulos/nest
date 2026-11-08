@@ -55,6 +55,51 @@ export interface PrStatus {
   created_at: string | null;
   changed_at: string;
   updated_at: string;
+  // The branch it merges into. This and `auto_merge` are missing on daemons before B149.
+  base_branch?: string | null;
+  // Set while GitHub's own auto-merge is on (B149).
+  auto_merge?: { method: MergeMethod; enabled_at: string | null } | null;
+}
+
+export type MergeMethod = "squash" | "merge" | "rebase";
+
+/** The user asked Nest to merge the pull request once its checks pass (B149). */
+export interface MergeWhenReady {
+  method: MergeMethod;
+  delete_branch: boolean;
+}
+
+/** Moving a stacked chat's branch onto where the branch under it went (B149). */
+export interface Restack {
+  upstream: string;
+  onto: string;
+  fetch: string | null;
+  // The branch it moves onto.
+  base: string;
+  // Set once the branch was rebased and only a push is left.
+  rebased: string | null;
+  error: string | null;
+}
+
+/** A chat whose branch starts from another open chat's branch (B149). */
+export interface ChatStack {
+  // The session id of the chat under this one.
+  parent: string | null;
+  parent_branch: string | null;
+  // Set while the branch has to move.
+  restack: Restack | null;
+}
+
+/** A guide for reviewing the pull request, written as a markdown artifact (B149). */
+export interface PrGuide {
+  state: "writing" | "ready" | "failed";
+  // The pull request's head it was written for.
+  head_sha: string | null;
+  artifact_id: string | null;
+  error: string | null;
+  // Set once it was posted on the pull request.
+  comment_url: string | null;
+  written_at: string | null;
 }
 
 export type StuckReason = "waiting" | "silent" | "repeating" | "long_turn";
@@ -211,6 +256,10 @@ export interface Session {
   // Oldest first, never the current one.
   earlier_worktrees?: EarlierWorktree[];
   moved_at?: string | null;
+  // The next three are missing on daemons before B149.
+  merge_when_ready?: MergeWhenReady | null;
+  stack?: ChatStack | null;
+  pr_guide?: PrGuide | null;
 }
 
 /** A Claude Code or Codex chat of a registered repo that Nest does not own (D028, B113). */
@@ -351,7 +400,9 @@ export type ApprovalKind =
   | "plan"
   | "merge"
   // Pull request review comments waiting to go to the agent (B101).
-  | "review_comments";
+  | "review_comments"
+  // A stacked chat's branch has to move onto where the branch under it went (B149).
+  | "restack";
 export type ApprovalStatus = "pending" | "resolved" | "expired" | "superseded";
 
 export interface Approval {
@@ -823,8 +874,12 @@ export interface SearchResults {
 }
 
 export interface MergeBody {
-  method?: "squash" | "merge" | "rebase";
+  method?: MergeMethod;
   delete_branch?: boolean;
+}
+
+export interface AutoMergeBody extends MergeBody {
+  enabled: boolean;
 }
 
 export interface QuietHours {

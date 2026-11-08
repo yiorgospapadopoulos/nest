@@ -21,6 +21,8 @@ const FIRST = 3;
 
 interface Props {
   repo: string;
+  // Starts on a new worktree from this branch, another chat's (B149).
+  onTop?: string | undefined;
   onBack: () => void;
   onCreated: (session: Session) => void;
   nav: ChatNav;
@@ -34,14 +36,16 @@ interface Props {
  * a question in large type over the composer docked at the bottom. It starts with its first
  * message.
  */
-export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
+export function NewChat({ repo: name, onTop: startsOnTop, onBack, onCreated, nav, onOpen }: Props) {
   const { state } = useStore();
   const repo = repoNamed(state.repos, name);
   const [workIn, setWorkIn] = useState<NewChatPlace>({});
+  // The other chat's branch it starts from, until removed; the place picker then shows.
+  const [onTop, setOnTop] = useState(startsOnTop ?? null);
   const autopilot = useAutopilot(undefined);
   // A new worktree's optional branch name.
   const [typed, setTyped] = useState("");
-  const worktree = workIn.mode === "worktree";
+  const worktree = onTop !== null || workIn.mode === "worktree";
   const branch = typed.trim();
   // The issue the chat starts from, its first message (B101).
   const [issue, setIssue] = useState<IssueRef | null>(null);
@@ -129,6 +133,20 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
           </button>
         </div>
       )}
+      {onTop !== null && (
+        <div className="nc-is">
+          <span>On top of {onTop}</span>
+          <button
+            className="ib"
+            aria-label={`Remove on top of ${onTop}`}
+            onClick={() => {
+              setOnTop(null);
+            }}
+          >
+            <Icon name="x" />
+          </button>
+        </div>
+      )}
       {worktree && (
         <div className="nc-n">
           <BranchName value={typed} onChange={setTyped} />
@@ -137,14 +155,13 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
       <Composer
         repo={name}
         workIn={{
-          ...workIn,
+          ...(onTop === null ? workIn : { mode: "worktree", base: onTop }),
           ...(worktree && branch !== "" ? { branch } : {}),
           ...(issue === null ? {} : { issue: issue.number }),
         }}
         place={
-          repo?.git === true && (
-            <PlaceChoice repo={repo} autopilot={autopilot.on} onChange={choose} />
-          )
+          repo?.git === true &&
+          onTop === null && <PlaceChoice repo={repo} autopilot={autopilot.on} onChange={choose} />
         }
         autopilot={autopilot}
         placeholder="Ask, build, / for commands…"
