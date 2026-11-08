@@ -155,21 +155,40 @@ public struct WorktreeConfig: Codable, Sendable, Hashable {
     public var link: [String]
     public var setup: [String]
     public var setupTimeoutSeconds: Int
+    /// The project's own choices of `WorktreeSettings`, each nil following it (B141). The
+    /// folder here holds the project's worktrees itself.
+    public var folder: String?
+    public var branchPrefix: String?
+    public var cleanMerged: Bool?
+    public var submodules: Bool?
 
     public init(
         isDefault: Bool? = nil, link: [String] = [], setup: [String] = [],
-        setupTimeoutSeconds: Int = 900
+        setupTimeoutSeconds: Int = 900, folder: String? = nil, branchPrefix: String? = nil,
+        cleanMerged: Bool? = nil, submodules: Bool? = nil
     ) {
         self.isDefault = isDefault
         self.link = link
         self.setup = setup
         self.setupTimeoutSeconds = setupTimeoutSeconds
+        self.folder = folder
+        self.branchPrefix = branchPrefix
+        self.cleanMerged = cleanMerged
+        self.submodules = submodules
     }
 
     enum CodingKeys: String, CodingKey {
-        case link, setup
+        case link, setup, folder, submodules
         case isDefault = "default"
         case setupTimeoutSeconds = "setup_timeout_seconds"
+        case branchPrefix = "branch_prefix"
+        case cleanMerged = "clean_merged"
+    }
+
+    /// A typed folder or prefix, trimmed; nil when left empty, which follows the default.
+    public static func ownText(_ text: String) -> String? {
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return typed.isEmpty ? nil : typed
     }
 }
 
@@ -231,6 +250,16 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
     public var remoteURL: String?
     /// Each setup command's time limit, in seconds.
     public var setupTimeoutSeconds: Int?
+    /// The project's own worktree choices (B141): each changed one is then the new one, nil
+    /// following the default again.
+    public var changesFolder = false
+    public var folder: String?
+    public var changesBranchPrefix = false
+    public var branchPrefix: String?
+    public var changesCleanMerged = false
+    public var cleanMerged: Bool?
+    public var changesSubmodules = false
+    public var submodules: Bool?
 
     /// Changes only these; the rest stay as they are.
     public init(
@@ -252,6 +281,14 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
         isDefault = new.isDefault
         link = old.link == new.link ? nil : new.link
         setup = old.setup == new.setup ? nil : new.setup
+        changesFolder = old.folder != new.folder
+        folder = new.folder
+        changesBranchPrefix = old.branchPrefix != new.branchPrefix
+        branchPrefix = new.branchPrefix
+        changesCleanMerged = old.cleanMerged != new.cleanMerged
+        cleanMerged = new.cleanMerged
+        changesSubmodules = old.submodules != new.submodules
+        submodules = new.submodules
     }
 
     /// The parts of the icon that differ between the two.
@@ -265,10 +302,14 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
     public var isEmpty: Bool {
         !changesDefault && link == nil && setup == nil && !changesIcon && !changesIconColor
             && defaultBranch == nil && !changesRemoteURL && setupTimeoutSeconds == nil
+            && !changesFolder && !changesBranchPrefix && !changesCleanMerged
+            && !changesSubmodules
     }
 
     enum CodingKeys: String, CodingKey {
-        case link, setup, icon
+        case link, setup, icon, folder, submodules
+        case branchPrefix = "branch_prefix"
+        case cleanMerged = "clean_merged"
         case isDefault = "default"
         case iconColor = "icon_color"
         case defaultBranch = "default_branch"
@@ -295,6 +336,18 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
             try container.encode(remoteURL, forKey: .remoteURL)
         }
         try container.encodeIfPresent(setupTimeoutSeconds, forKey: .setupTimeoutSeconds)
+        if changesFolder {
+            try container.encode(folder, forKey: .folder)
+        }
+        if changesBranchPrefix {
+            try container.encode(branchPrefix, forKey: .branchPrefix)
+        }
+        if changesCleanMerged {
+            try container.encode(cleanMerged, forKey: .cleanMerged)
+        }
+        if changesSubmodules {
+            try container.encode(submodules, forKey: .submodules)
+        }
     }
 }
 

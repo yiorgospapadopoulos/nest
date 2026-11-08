@@ -47,6 +47,12 @@ public enum SettingsPage: Sendable, Hashable {
         "##.######.##", "#..######..#", "....#..#....", "............", "............",
     ]
 
+    /// The worktree rows Agents and each project both have (B141).
+    static let worktreeLabels = [
+        "Worktrees folder", "Branch name prefix", "Check out submodules",
+        "Remove merged worktrees",
+    ]
+
     /// What the page's rows are called, for the search field.
     public var labels: [String] {
         switch self {
@@ -73,8 +79,8 @@ public enum SettingsPage: Sendable, Hashable {
                 + NotificationPreferences.kindToggles.map(\.title)
                 + ["iPhone push", "ntfy", "Server", "Topic", "Link address"]
         case .agents:
-            ["New chats", "Model", "Thinking", "Permissions", "Work in", "Stuck chats"]
-                + StuckThreshold.allCases.map(\.title)
+            ["New chats", "Model", "Thinking", "Permissions", "Work in", "Worktrees"]
+                + Self.worktreeLabels + ["Stuck chats"] + StuckThreshold.allCases.map(\.title)
         case .usage:
             ["Limits", "5 hour", "Weekly", "Refresh"] + UsageUnit.allCases.map(\.title)
                 + [
@@ -112,9 +118,12 @@ public enum SettingsPage: Sendable, Hashable {
             [
                 "General", "Name", "Folder", "Kind", "Default branch", "Push to", "Remove",
                 "Chats", "Work in", "Worktrees", "Linked files", "Setup commands",
-                "Setup time limit", "Artifacts", "Look", "Tab icon", "Colour", "Chat background",
-                "Configuration", "Instructions", "Project skills", "MCP servers", ".mcp.json",
-            ]
+                "Setup time limit",
+            ] + Self.worktreeLabels
+                + [
+                    "Clean up", "Artifacts", "Look", "Tab icon", "Colour", "Chat background",
+                    "Configuration", "Instructions", "Project skills", "MCP servers", ".mcp.json",
+                ]
         case .addProject: ["Folder", "Add"]
         }
     }

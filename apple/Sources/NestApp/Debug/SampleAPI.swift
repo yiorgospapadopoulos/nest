@@ -40,6 +40,7 @@
         private var archiveDays: Int? = 30
         private var pixieDefaults = PixieSettings()
         private var limits = LimitSettings()
+        private var worktrees = WorktreeSettings()
         private var rules = NotificationRules()
         private var stuck = StuckSettings(
             waitingMinutes: 15, silentMinutes: 10, repeatedCalls: 4, turnMinutes: 60)
@@ -165,6 +166,18 @@
             }
             repo.worktree.setupTimeoutSeconds =
                 patch.setupTimeoutSeconds ?? repo.worktree.setupTimeoutSeconds
+            if patch.changesFolder {
+                repo.worktree.folder = patch.folder
+            }
+            if patch.changesBranchPrefix {
+                repo.worktree.branchPrefix = patch.branchPrefix
+            }
+            if patch.changesCleanMerged {
+                repo.worktree.cleanMerged = patch.cleanMerged
+            }
+            if patch.changesSubmodules {
+                repo.worktree.submodules = patch.submodules
+            }
             return repo
         }
 
@@ -1606,6 +1619,17 @@
 
         func updateLimitSettings(_ settings: LimitSettings) async throws -> LimitSettings {
             lock.withLock { limits = settings }
+            return settings
+        }
+
+        func worktreeSettings() async throws -> WorktreeSettings {
+            lock.withLock { worktrees }
+        }
+
+        func updateWorktreeSettings(_ settings: WorktreeSettings) async throws
+            -> WorktreeSettings
+        {
+            lock.withLock { worktrees = settings }
             return settings
         }
 

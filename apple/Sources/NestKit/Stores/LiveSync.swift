@@ -231,6 +231,7 @@ public final class AppModel {
     public let storage: StorageStore
     public let pixieSettings: PixieSettingsStore
     public let limitSettings: LimitSettingsStore
+    public let worktreeSettings: WorktreeSettingsStore
     public let notificationRules: NotificationRulesStore
     /// The setup checks and the bug report (B130).
     public let setup: SetupChecksStore
@@ -307,6 +308,7 @@ public final class AppModel {
         storage = StorageStore(api: api)
         pixieSettings = PixieSettingsStore(api: api)
         limitSettings = LimitSettingsStore(api: api)
+        worktreeSettings = WorktreeSettingsStore(api: api)
         notificationRules = NotificationRulesStore(api: api)
         setup = SetupChecksStore(api: api)
         accounts = AccountsStore(api: api)

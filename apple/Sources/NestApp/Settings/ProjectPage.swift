@@ -236,15 +236,51 @@ private struct ProjectWorktreesTab: View {
                     }
                 }
             }
+            TextSettingRow(
+                label: "Worktrees folder", value: config.folder, unset: "Follow default",
+                message: "Leave it empty to follow the default.", placeholder: "~/worktrees/project"
+            ) { text in
+                let folder = WorktreeConfig.ownText(text)
+                save { $0.folder = folder }
+            }
+            TextSettingRow(
+                label: "Branch name prefix", value: config.branchPrefix, unset: "Follow default",
+                message: "Leave it empty to follow the default.", placeholder: "agent/"
+            ) { text in
+                let prefix = WorktreeConfig.ownText(text)
+                save { $0.branchPrefix = prefix }
+            }
+            SettingsRow(label: "Check out submodules") {
+                OwnChoice(selection: config.submodules) { value in save { $0.submodules = value } }
+            }
         }
         .task(id: repo.name) {
             suggestions = (try? await shell.app.linkSuggestions(for: repo.name)) ?? []
+        }
+        SettingsSection(title: "Clean up") {
+            SettingsRow(label: "Remove merged worktrees") {
+                OwnChoice(selection: config.cleanMerged) { value in
+                    save { $0.cleanMerged = value }
+                }
+            }
         }
     }
 
     /// Each change applies to the settings as last saved, not as this view shows them.
     private func save(_ change: @escaping @Sendable (inout WorktreeConfig) -> Void) {
         shell.changeSettings(of: repo.name, change)
+    }
+}
+
+/// A project's own switch: Follow default (nil), On or Off (B141).
+private struct OwnChoice: View {
+    let selection: Bool?
+    let choose: (Bool?) -> Void
+
+    var body: some View {
+        Segmented(
+            options: [(nil, "Follow default"), (true, "On"), (false, "Off")],
+            selection: selection, select: choose)
     }
 }
 
