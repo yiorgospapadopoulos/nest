@@ -283,6 +283,10 @@
                 try await renderEngineUpdates(model, shell, controller, folder)
                 return
             }
+            if only == "b150" {
+                try await renderComputerUse(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -4000,6 +4004,41 @@
             model.activity.apply(try event(9_002, EventType.sessionQueued, ["queued": []]))
             model.sessions.insert(original)
             try await pair(controller, "limit-resumed", folder)
+        }
+
+        /// B150: Settings > Computer use with Screen Recording blocked, and a chat using
+        /// TextEdit with its switch on and the preview on the composer.
+        private static func renderComputerUse(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            let store = model.computer
+            try await store.loadSettings()
+            try await store.loadStatus()
+            try await pairSettings(controller, .computer, "b150-settings", folder)
+            shell.close()
+            guard model.sessions.session("c6") != nil else { return }
+            func event(_ type: String, _ payload: [String: Any]) throws -> Event {
+                try SampleData.decode([
+                    "id": NSNull(), "type": type, "ts": SampleData.iso(Date()),
+                    "session_id": "c6", "payload": payload,
+                ])
+            }
+            let key = "mac:com.apple.TextEdit"
+            store.apply(
+                try event(
+                    EventType.computerState, ["targets": [["key": key, "name": "TextEdit"]]]))
+            store.apply(
+                try event(
+                    EventType.computerFrame,
+                    ["target": key, "label": "TextEdit: Release notes 0.9.rtf", "seq": 1]))
+            await store.loadFrame(of: "c6")
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.openChat("c6", in: CGSize(width: 828, height: 790))
+                state.focusPane("c6")
+            }
+            try await pair(controller, "b150-composer", folder)
         }
 
         /// B79: the Artifacts view with Markdown, versions, HTML and nothing saved, the

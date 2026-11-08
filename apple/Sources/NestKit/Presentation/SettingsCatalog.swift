@@ -3,6 +3,8 @@ import Foundation
 /// A page of Settings (B81).
 public enum SettingsPage: Sendable, Hashable {
     case general, appearance, notifications, agents, usage, storage, pixies, accounts
+    /// Letting chats use apps on this Mac, simulators and the shared browser (B150).
+    case computer
     /// How fast and how costly Nest is, run on request (B115).
     case performance
     case devices
@@ -17,8 +19,8 @@ public enum SettingsPage: Sendable, Hashable {
 
     /// The pages before the projects, in order.
     public static let fixed: [SettingsPage] = [
-        .general, .appearance, .notifications, .agents, .usage, .performance, .storage, .pixies,
-        .accounts, .devices, .shortcuts, .configuration, .features,
+        .general, .appearance, .notifications, .agents, .computer, .usage, .performance, .storage,
+        .pixies, .accounts, .devices, .shortcuts, .configuration, .features,
     ]
 
     public var title: String {
@@ -27,6 +29,7 @@ public enum SettingsPage: Sendable, Hashable {
         case .appearance: "Appearance"
         case .notifications: "Notifications"
         case .agents: "Agents"
+        case .computer: "Computer use"
         case .usage: "Usage"
         case .performance: "Performance"
         case .storage: "Storage"
@@ -81,6 +84,11 @@ public enum SettingsPage: Sendable, Hashable {
         case .agents:
             ["New chats", "Model", "Thinking", "Permissions", "Work in", "Worktrees"]
                 + Self.worktreeLabels + ["Stuck chats"] + StuckThreshold.allCases.map(\.title)
+        case .computer:
+            [
+                "Let chats use apps", "Permissions", "Accessibility", "Screen Recording",
+                "Pixies may use it", "Always allowed", "Simulators and browser",
+            ] + [ComputerKind.ios, .android, .browser].map(\.title)
         case .usage:
             ["Limits", "5 hour", "Weekly", "Refresh"] + UsageUnit.allCases.map(\.title)
                 + [

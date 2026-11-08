@@ -156,6 +156,12 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var autopilot: AutopilotRun?
     /// The last run's report, until it is dismissed.
 
+    /// The computer-use targets the user let this chat use (B150); missing on daemons
+    /// before it: read them through `allowedComputerTargets`.
+    public var computerTargets: [String]?
+
+    public var allowedComputerTargets: [String] { computerTargets ?? [] }
+
     public var isArchived: Bool { archivedAt != nil }
 
     public var isLimitPaused: Bool { limitPause != nil }
@@ -208,6 +214,7 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case earlierWorktrees = "earlier_worktrees"
         case movedAt = "moved_at"
         case autopilot
+        case computerTargets = "computer_targets"
     }
 }
 

@@ -144,6 +144,10 @@ public enum EventType {
     public static let runOutput = "run.output"
     /// A performance run started or finished (B115); not stored.
     public static let perfRun = "perf.run"
+    /// What the chat holds now, empty once it let go (B150); stored.
+    public static let computerState = "computer.state"
+    /// A new screenshot of what the chat uses (B150); not stored.
+    public static let computerFrame = "computer.frame"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -246,6 +250,9 @@ public enum EventBody: Sendable, Hashable {
     case artifactAsk(ArtifactAskEvent)
     case runChanged(RunChanged)
     case runOutput(folder: String, text: String)
+    /// The targets the chat holds now; empty once it let them go (B150).
+    case computerState([ComputerTarget])
+    case computerFrame(ComputerFrame)
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -386,6 +393,9 @@ public enum EventBody: Sendable, Hashable {
             self = .runOutput(
                 folder: try field("folder", as: String.self),
                 text: try field("text", as: String.self))
+        case EventType.computerState:
+            self = .computerState(try field("targets", as: [ComputerTarget].self))
+        case EventType.computerFrame: self = .computerFrame(try payload.decode(ComputerFrame.self))
         default: self = .other
         }
     }

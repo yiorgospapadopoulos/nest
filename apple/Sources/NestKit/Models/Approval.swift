@@ -115,9 +115,11 @@ public struct PermissionRequest: Decodable, Sendable, Hashable {
     /// False when the daemon offers no "Always allow", such as for removing a worktree that
     /// still holds work (B141). Missing in older events, which offer it.
     public var always: Bool
+    /// Set on a computer use card (B150): what it asks about which target.
+    public var computer: ComputerAsk?
 
     enum CodingKeys: String, CodingKey {
-        case tool, input, title, reason, always
+        case tool, input, title, reason, always, computer
         case alwaysRule = "always_rule"
     }
 
@@ -129,6 +131,7 @@ public struct PermissionRequest: Decodable, Sendable, Hashable {
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
         alwaysRule = try container.decodeIfPresent(String.self, forKey: .alwaysRule)
         always = try container.decodeIfPresent(Bool.self, forKey: .always) ?? true
+        computer = try? container.decodeIfPresent(ComputerAsk.self, forKey: .computer)
     }
 
     /// The suggested rule, unless blank.

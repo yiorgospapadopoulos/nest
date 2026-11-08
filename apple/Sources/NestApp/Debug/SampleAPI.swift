@@ -38,6 +38,8 @@
         private var runs: [String: RunStatus] = [:]
         private var runOutputs: [String: String] = [:]
         private var archiveDays: Int? = 30
+        /// Settings > Computer use (B150), as S2 of its design shows it.
+        private var computerUse = ComputerUseSettings(enabled: true)
         private var pixieDefaults = PixieSettings()
         private var limits = LimitSettings()
         private var worktrees = WorktreeSettings()
@@ -2137,6 +2139,69 @@
                 id: "tailscale", title: "Tailscale and iPhone", state: .missing,
                 message: "Nest is shared. Pair your iPhone.", detail: "mac-mini.tail3f2a.ts.net",
                 stage: "pair")
+        }
+
+        func computerSettings() async throws -> ComputerUseSettings {
+            lock.withLock { computerUse }
+        }
+
+        func updateComputerSettings(_ settings: ComputerUseSettings) async throws
+            -> ComputerUseSettings
+        {
+            lock.withLock {
+                computerUse = settings
+                return settings
+            }
+        }
+
+        func computerStatus() async throws -> ComputerStatus {
+            ComputerStatus(
+                enabled: lock.withLock { computerUse.enabled },
+                kinds: [
+                    ComputerAvailability(kind: .mac, ready: true),
+                    ComputerAvailability(kind: .ios, ready: true),
+                    ComputerAvailability(
+                        kind: .android, ready: false, reason: "Not installed",
+                        link: "https://developer.android.com/studio"),
+                    ComputerAvailability(kind: .browser, ready: true),
+                ],
+                accessibility: true, screenRecording: false)
+        }
+
+        func askComputerPermission(_ permission: ComputerPermission) async throws -> Bool {
+            permission == .accessibility
+        }
+
+        func stopComputer(_ id: String) async throws -> Session {
+            try lock.withLock {
+                guard let index = sessionList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound(id)
+                }
+                sessionList[index].computerTargets = []
+                return sessionList[index]
+            }
+        }
+
+        /// A plain document window, as TextEdit shows the release notes.
+        func computerFrame(_ id: String) async throws -> Data? {
+            let size = NSSize(width: 640, height: 400)
+            let image = NSImage(size: size, flipped: true) { rect in
+                NSColor.white.setFill()
+                rect.fill()
+                NSColor(white: 0.95, alpha: 1).setFill()
+                NSRect(x: 0, y: 0, width: rect.width, height: 36).fill()
+                let title: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.boldSystemFont(ofSize: 24)
+                ]
+                let body: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 15)]
+                ("Nest 0.9" as NSString).draw(at: NSPoint(x: 40, y: 64), withAttributes: title)
+                ("Chats can now use apps on your Mac." as NSString).draw(
+                    at: NSPoint(x: 40, y: 110), withAttributes: body)
+                return true
+            }
+            guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff)
+            else { return nil }
+            return bitmap.representation(using: .png, properties: [:])
         }
 
         func setupReport(answers: [SetupCheck]) async throws -> SetupReport {

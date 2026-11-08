@@ -1119,6 +1119,41 @@ public struct APIClient: NestAPI {
         try await call("POST", ["setup", "tailscale", "share"])
     }
 
+    // MARK: Computer use (B150)
+
+    public func computerSettings() async throws -> ComputerUseSettings {
+        try await get("computer", "settings")
+    }
+
+    public func updateComputerSettings(_ settings: ComputerUseSettings) async throws
+        -> ComputerUseSettings
+    {
+        try await call("PUT", ["computer", "settings"], body: settings)
+    }
+
+    public func computerStatus() async throws -> ComputerStatus {
+        try await get("computer", "status")
+    }
+
+    public func askComputerPermission(_ permission: ComputerPermission) async throws -> Bool {
+        let answer: PermissionAnswer = try await call(
+            "POST", ["computer", "permissions", permission.rawValue])
+        return answer.granted
+    }
+
+    public func stopComputer(_ id: String) async throws -> Session {
+        try await call("POST", ["sessions", id, "computer", "stop"])
+    }
+
+    public func computerFrame(_ id: String) async throws -> Data? {
+        do {
+            let path = ["sessions", id, "computer", "frame"]
+            return try await send(try encodedRequest("GET", path, query: [], body: nil)).body
+        } catch APIError.notFound {
+            return nil
+        }
+    }
+
     // MARK: Plumbing
 
     private func get<T: Decodable>(_ path: String...) async throws -> T {

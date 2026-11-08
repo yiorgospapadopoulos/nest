@@ -28,6 +28,8 @@ public final class LiveSync {
     var island: IslandStore?
     /// Settings > Performance (B115), set by the app model.
     var performance: PerformanceStore?
+    /// Computer use (B150), set by the app model.
+    var computer: ComputerStore?
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
     let artifacts: ArtifactsStore
@@ -132,6 +134,8 @@ public final class LiveSync {
         await branchMaps.reload()
         await runs.reload()
         await island?.refresh()
+        computer?.reset()
+        try? await computer?.loadSettings()
     }
 
     /// The engines' logins and models, and the defaults the daemon may now resolve.
@@ -163,6 +167,7 @@ public final class LiveSync {
         updates.apply(event)
         island?.apply(event)
         performance?.apply(event)
+        computer?.apply(event)
         switch event.body {
         case .usageWarning(let warning):
             onUsageWarning?(warning)
@@ -243,6 +248,8 @@ public final class AppModel {
     public let features: FeaturesStore
     /// Settings > Performance (B115).
     public let performance: PerformanceStore
+    /// Computer use (B150).
+    public let computer: ComputerStore
     public let shortcuts: ShortcutsStore
     /// Artifacts the chats saved and the Artifacts view (B79).
     public let artifacts: ArtifactsStore
@@ -316,6 +323,7 @@ public final class AppModel {
         configuration = ConfigurationStore(api: api)
         features = FeaturesStore(api: api, store: preferences)
         performance = PerformanceStore(api: api)
+        computer = ComputerStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api, store: daemonPreferences ?? preferences)
@@ -335,6 +343,7 @@ public final class AppModel {
             activity: activity, chatPixies: chatPixies, pixies: pixies, now: now)
         live.island = island
         live.performance = performance
+        live.computer = computer
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [weak self, visibility] in
             visibility.resend()
