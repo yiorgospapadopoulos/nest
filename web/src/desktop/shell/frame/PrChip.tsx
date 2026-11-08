@@ -2,6 +2,7 @@ import { use, useEffect, useRef, useState, type ReactNode } from "react";
 import type { CheckState, PrState, PrStatus, Session } from "../../../api/types.ts";
 import {
   guideView,
+  offersGuide,
   MERGE_WHEN_READY,
   mergesWhenReady,
   mergeWhenReadyLine,
@@ -245,9 +246,7 @@ function PrDetails({
         </div>
       )}
       <RestackRow session={session} pr={pr} />
-      {(pr.state === "open" || session.pr_guide != null) && (
-        <GuideRow session={session} pr={pr} onClose={onClose} />
-      )}
+      {offersGuide(state, session, pr) && <GuideRow session={session} pr={pr} onClose={onClose} />}
       {onTop !== null && shell !== null && (
         <div className="fr-prbtns">
           <Button

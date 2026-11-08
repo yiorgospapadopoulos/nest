@@ -205,7 +205,9 @@ struct PRDetails: View {
                 ) {
                     shell.setAutoMerge(session, !merges)
                 }
-                ReviewGuideRows(chat: chat, pr: pr)
+                if shell.supports(.reviewGuide, chat: session) {
+                    ReviewGuideRows(chat: chat, pr: pr)
+                }
             }
             if let chat, chat.branch != nil, chat.mode == .worktree {
                 Button {

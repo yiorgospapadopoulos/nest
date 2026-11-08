@@ -2,8 +2,10 @@
 and the risks, written when the user asks.
 
 It is one call on the chat's own engine and model, in an empty folder of its own with no
-history and no tools, so it reaches neither the chat nor its files: it reads only the pull
-request's diff from GitHub, which is the agent's work and so untrusted text. The guide is
+history, and bare: no tools at all and none of the user's settings, MCP servers or plugins,
+so it reaches neither the chat nor its files and nothing in the diff can act. It reads only
+the pull request's diff from GitHub, which is the agent's work and so untrusted text. An
+engine that cannot run bare does not offer it (`review_guide`). The guide is
 saved as a markdown artifact of the chat, a new version each time it is written again, so
 every app shows it as it shows any artifact. Posting it on the pull request as a comment is
 a second click.
@@ -115,6 +117,7 @@ class ReviewGuides:
         """Start writing the guide; it is published as `session.updated` when done."""
         session = await self._store.get(session_id)
         _require_pr(session)
+        self._engines.of(session).require("review_guide")
         if session_id in self._writing:
             msg = "A review guide for this pull request is being written."
             raise ConflictError(msg)
@@ -209,6 +212,7 @@ class ReviewGuides:
             account=None if local is not None else await engine.prepare_account(),
             local=local,
             keep_history=False,
+            bare=True,
         )
         sink = ReplySink()
         async with asyncio.timeout(CALL_SECONDS):

@@ -7,6 +7,7 @@ import os
 from collections import deque
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from contextlib import suppress
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -213,8 +214,32 @@ def build_options(
 ) -> ClaudeAgentOptions:
     """`shell_env` is the user's login shell environment (B59); Nest's own entries win.
     `block` is a guarded run's push block for its own programs (`push_block`); without it
-    a guarded run gets the git-level block for every URL alone.
+    a guarded run gets the git-level block for every URL alone. A bare run has no tools
+    and loads none of the user's settings, MCP servers, plugins or skills (B149).
     """
+    options = _options(spec, handler, stderr, shell_env, block)
+    if not spec.bare:
+        return options
+    return replace(
+        options,
+        tools=[],
+        allowed_tools=[],
+        setting_sources=[],
+        strict_mcp_config=True,
+        mcp_servers={},
+        agents=None,
+        skills=None,
+        max_turns=1,
+    )
+
+
+def _options(
+    spec: SessionSpec,
+    handler: ApprovalHandler,
+    stderr: Callable[[str], None] | None = None,
+    shell_env: Mapping[str, str] | None = None,
+    block: PushBlock | None = None,
+) -> ClaudeAgentOptions:
     questions = QuestionBridge(handler)
     own_tools = own_tool_names(spec.tools)
     every_run_tools = nest_tool_names(spec.nest_tools)

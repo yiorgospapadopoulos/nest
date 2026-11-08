@@ -115,7 +115,10 @@ logger = logging.getLogger(__name__)
 
 # None of them takes a size to compact at: Gemini CLI a share of the window, OpenCode only
 # on or off (B146).
-ACP_UNSUPPORTED: frozenset[ProviderFeature] = frozenset({"withdraw", "compact_window"})
+# A review guide needs a run with every tool off, which ACP has no setting for (B149).
+ACP_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
+    {"withdraw", "compact_window", "review_guide"}
+)
 # The model a chat without a model uses: the engine's own default (left as it is).
 DEFAULT_MODEL = "default"
 PROTOCOL_VERSION = 1

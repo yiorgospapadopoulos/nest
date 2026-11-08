@@ -3,7 +3,7 @@
 // chat on top, and the review guide.
 import type { RestackView } from "../../api/payloads.ts";
 import type { PrStatus, Session } from "../../api/types.ts";
-import { shownTitle } from "../../store/selectors.ts";
+import { shownTitle, supportsFeature } from "../../store/selectors.ts";
 import type { State } from "../../store/state.ts";
 
 export const MERGE_WHEN_READY = "Merge when checks pass";
@@ -66,6 +66,15 @@ export function stackParent(state: State, session: Session): StackParent | null 
 export function onTopBranch(session: Session): string | null {
   const worktree = session.mode === "worktree" || session.worktree_path !== null;
   return worktree ? session.branch : null;
+}
+
+/**
+ * Whether the details offer a review guide: while the pull request is open, or once one was
+ * written, and only on an engine that can write it with every tool off.
+ */
+export function offersGuide(state: State, session: Session, pr: PrStatus | null): boolean {
+  if (pr === null || !supportsFeature(state, "review_guide", session.provider)) return false;
+  return pr.state === "open" || session.pr_guide != null;
 }
 
 export type GuideView =

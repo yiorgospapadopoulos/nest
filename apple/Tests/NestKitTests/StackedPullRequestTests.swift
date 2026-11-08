@@ -147,3 +147,26 @@ private let openPR = """
         #expect(api.calls.filter { $0.hasPrefix("restack") } == ["restack s1", "restack s1"])
     }
 }
+
+@Suite struct ReviewGuideEngineTests {
+    /// An engine that cannot write a guide with every tool off says so, and the details
+    /// leave the guide out there; read as an unknown feature it would still show.
+    @MainActor @Test func anEngineWithoutBareRunsOffersNoGuide() async {
+        let list = Fixture.decode(
+            ProviderList.self,
+            json: """
+                {"providers": [
+                  {"name": "claude", "display_name": "Claude", "unsupported": []},
+                  {"name": "codex", "display_name": "Codex",
+                   "unsupported": ["slash_commands", "withdraw", "review_guide"]}
+                ]}
+                """)
+        #expect(list.providers[1].unsupported.contains(.reviewGuide))
+        let api = FakeAPI()
+        api.set { $0.providers = list.providers }
+        let store = ProvidersStore(api: api)
+        await store.load()
+        #expect(store.supports(.reviewGuide, on: "claude"))
+        #expect(!store.supports(.reviewGuide, on: "codex"))
+    }
+}

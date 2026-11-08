@@ -54,6 +54,8 @@ async def test_the_guide_is_written_from_the_diff_alone_and_saved_as_an_artifact
     # Its own empty folder, no history, the chat's model: it reaches nothing of the chat.
     assert run.spec.cwd == api.ctx.paths.guides_dir
     assert run.spec.keep_history is False
+    # No tools and none of the user's setup: nothing written in the diff can act.
+    assert run.spec.bare is True
     assert run.spec.model == "small-model"
     assert run.spec.tools == ()
     assert run.spec.nest_tools == ()
@@ -96,3 +98,13 @@ async def test_a_guide_that_cannot_be_written_says_why(api: Api) -> None:
     assert "HTTP 404" in guide["error"]
     refused = await api.http.post(f"/api/sessions/{session_id}/pr/guide/post")
     assert refused.status_code == 409
+
+
+async def test_an_engine_that_cannot_run_without_tools_writes_no_guide(api: Api) -> None:
+    session_id = await with_pr(api)
+    api.provider.unsupported = frozenset({"review_guide"})
+
+    refused = await api.http.post(f"/api/sessions/{session_id}/pr/guide")
+
+    assert refused.status_code == 409
+    assert (await api.http.get(f"/api/sessions/{session_id}")).json()["pr_guide"] is None

@@ -10,6 +10,7 @@ import { ArtifactsSheet } from "../artifacts/ArtifactsSheet.tsx";
 import { chatScopes } from "../artifacts/view.ts";
 import {
   guideView,
+  offersGuide,
   MERGE_WHEN_READY,
   mergesWhenReady,
   mergeWhenReadyLine,
@@ -152,7 +153,7 @@ function PrSheet({
   const mergeLine = mergeWhenReadyLine(session);
   const parent = stackParent(state, session);
   const onTop = onTopBranch(session);
-  const guide = pr !== null && (pr.state === "open" || session.pr_guide != null);
+  const guide = pr !== null && offersGuide(state, session, pr);
   const status = pr === null ? null : `${STATES[pr.state]} · ${checksSummary(pr.checks)}`;
   return (
     <Sheet title={`Pull request ${label}`} onClose={onClose}>

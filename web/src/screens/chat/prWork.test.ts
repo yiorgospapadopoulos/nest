@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { prStatus, session } from "../../test/fixtures.ts";
+import { claudeProvider, prStatus, session } from "../../test/fixtures.ts";
 import { initialState } from "../../store/state.ts";
 import {
   guideView,
+  offersGuide,
   mergesWhenReady,
   mergeWhenReadyLine,
   restackAction,
@@ -72,5 +73,14 @@ describe("the review guide", () => {
 
     expect(guideView(chat, prStatus({ head_sha: "abc123" }))).toMatchObject({ stale: false });
     expect(guideView(chat, prStatus({ head_sha: "def456" }))).toMatchObject({ stale: true });
+  });
+
+  it("is not offered on an engine that cannot write it with every tool off", () => {
+    const codex = { ...claudeProvider(), name: "codex", unsupported: ["review_guide" as const] };
+    const state = { ...initialState, providers: [claudeProvider(), codex] };
+    const open = prStatus({ state: "open" });
+
+    expect(offersGuide(state, session({ provider: "claude" }), open)).toBe(true);
+    expect(offersGuide(state, session({ provider: "codex" }), open)).toBe(false);
   });
 });

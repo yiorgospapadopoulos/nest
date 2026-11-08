@@ -962,7 +962,8 @@ export type ProviderFeature =
   | "pixies"
   | "memory"
   | "pixie_skills"
-  | "compact_window";
+  | "compact_window"
+  | "review_guide";
 
 /** Whether an engine can run chats on this Mac (B107); only "ready" can. */
 export type EngineState = "ready" | "not_installed" | "installing" | "install_failed";
