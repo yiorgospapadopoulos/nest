@@ -760,3 +760,30 @@ block = "B147"
 [features.linux]
 text = "Every control, row and status is named for screen readers, and the keyboard reaches everything: Ctrl+K searches and opens a chat with the keyboard in its composer, and focus comes back where it was when a sheet closes."
 where = "Everywhere"
+
+[[features]]
+id = "merge-when-checks-pass"
+group = "git"
+name = "Merge when checks pass"
+text = "Switch it on for a pull request and it merges by itself once its checks pass. GitHub does it when the repository requires those checks; otherwise Nest does, while it is running."
+where = "Pull request popover"
+added = 2026-11-08
+block = "B149"
+
+[[features]]
+id = "stacked-pull-requests"
+group = "git"
+name = "Stacked pull requests"
+text = "Start a chat on top of another chat's branch. Its pull request goes into that branch, and when the one under it merges, Nest moves it onto the new base and waits for your click to push."
+where = "Pull request popover > New chat on top, and Needs you"
+added = 2026-11-08
+block = "B149"
+
+[[features]]
+id = "review-guide"
+group = "git"
+name = "A review guide for a pull request"
+text = "An agent reads the pull request's changes and writes what changed, where to look and the risks. It opens like any artifact, and you can post it on the pull request."
+where = "Pull request popover > Write review guide"
+added = 2026-11-08
+block = "B149"
