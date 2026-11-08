@@ -277,6 +277,23 @@ async def test_a_new_version_that_never_answers_puts_everything_back(rig: Rig) -
     assert state.refused == ["2.0.0"]
 
 
+async def test_a_failed_update_gives_back_the_undo_from_before_it(rig: Rig) -> None:
+    """B136: after a failed update, the update before it could no longer be undone."""
+    (rig.daemon / "0.9.0").mkdir()
+    save_state(rig.daemon, AppState(previous="0.9.0", previous_schema=47))
+    updater = rig.updater()
+    await updater.check_and_prepare(_nothing)
+    await updater.relaunch(8765)
+    # While it is on trial, its start clears what it does not need, but not the old Undo.
+    updater.clear_unused()
+
+    assert not watch(_trial(rig, Service(), []))
+
+    state = read_state(rig.daemon)
+    assert (state.previous, state.previous_schema) == ("0.9.0", 47)
+    assert (rig.daemon / "0.9.0").is_dir()
+
+
 async def test_a_new_version_that_keeps_crashing_is_undone_without_waiting(rig: Rig) -> None:
     """Regression: a crashing update left the user 2 minutes with nothing to read."""
     updater = rig.updater()

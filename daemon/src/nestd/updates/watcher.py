@@ -104,9 +104,11 @@ def roll_back(trial: Trial, *, crashed: bool = False) -> None:
     # What happened, in the user's words (2026-11-07): a crash, or no answer at all.
     what = "kept crashing when it started" if crashed else "didn't respond when it started"
     notice = f"Nest {trial.new} {what}, so Nest went back to {trial.old}. Your chats are safe."
+    # The update is gone, so Undo goes back to what it went back to before it.
+    before = state.updating
     update = {
-        "previous": None,
-        "previous_schema": None,
+        "previous": before.undo if before else None,
+        "previous_schema": before.undo_schema if before else None,
         "refused": [*state.refused, trial.new],
         "notice": notice,
         "updating": None,
