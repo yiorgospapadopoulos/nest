@@ -365,6 +365,30 @@ describe("Inbox", () => {
     expect(defined(second).querySelectorAll(".why")).toHaveLength(0);
   });
 
+  it("lists what a worktree to remove holds and offers no Always allow", async () => {
+    const reason = "Uncommitted changes:\n  README.md\nIts branch stays.";
+    const api = withItems([
+      approval({
+        payload: {
+          tool: "worktree",
+          input: { action: "remove", worktree: "/w/.claude/worktrees/nest-1a2b3c4d" },
+          title: "Remove the worktree nest-1a2b3c4d? It has 1 uncommitted file.",
+          reason,
+          always_rule: null,
+          always: false,
+        },
+      }),
+    ]);
+    const { user } = await renderInbox({ api });
+    const item = within(screen.getByRole("article"));
+
+    expect(item.getByText("worktree remove nest-1a2b3c4d")).toBeInTheDocument();
+    expect(item.getByText(/Uncommitted changes/).textContent).toBe(reason);
+    expect(item.queryByRole("button", { name: /Always allow/ })).not.toBeInTheDocument();
+    await user.click(item.getByRole("button", { name: "Approve" }));
+    expect(api.resolveApproval).toHaveBeenCalledWith("q1", { behavior: "allow", always: false });
+  });
+
   it("keeps the card usable when resolving fails", async () => {
     const api = withItems([approval()]);
     api.resolveApproval.mockRejectedValueOnce(new ApiError(409, "approval q1 is expired"));

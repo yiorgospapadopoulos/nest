@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import type { Mascot, RepoConfig } from "../../../api/types.ts";
+import type { Mascot, RepoConfig, WorktreeConfig } from "../../../api/types.ts";
 import { PIXIE_COLORS } from "../../../generated/mascots.ts";
 import { MASCOTS } from "../../../screens/pixies/options.ts";
 import { useStore } from "../../../store/context.ts";
@@ -9,18 +9,22 @@ import { Sprite } from "../../pixies/Sprite.tsx";
 import { useShell } from "../../shell/context.ts";
 import { Button, Segmented } from "../../ui/controls.tsx";
 import { SettingsRow, SettingsSection, Value } from "../rows.tsx";
-import { AddField, Chips } from "./parts.tsx";
+import { AddField, Chips, TextRow } from "./parts.tsx";
 import { Dropdown } from "../rows.tsx";
 import type { SaveProject } from "./useProjectSaver.ts";
 import {
   addLink,
   addSetup,
   iconPatch,
+  ownChoice,
+  ownText,
+  ownValue,
   removeLink,
   removeSetup,
   setupTimeoutChoices,
   setupTimeoutLabel,
   worktreePatch,
+  type OwnChoice,
 } from "./worktree.ts";
 
 // A project page's Chats, Worktrees, Look and Artifacts tabs, as ProjectPage.swift.
@@ -33,6 +37,12 @@ const WORK_IN: { value: WorkIn; label: string }[] = [
 ];
 const workIn = (value: boolean | null): WorkIn =>
   value === null ? "default" : value ? "worktree" : "branch";
+
+const OWN_CHOICES: { value: OwnChoice; label: string }[] = [
+  { value: "default", label: "Follow default" },
+  { value: "on", label: "On" },
+  { value: "off", label: "Off" },
+];
 
 export function ChatsTab({ repo, save }: { repo: RepoConfig; save: SaveProject }) {
   return (
@@ -67,6 +77,9 @@ export function WorktreesTab({ repo, save }: { repo: RepoConfig; save: SaveProje
       worktreePatch(r.worktree, { ...r.worktree, setup: change(r.worktree.setup) }),
     );
   };
+  const own = (change: Partial<WorktreeConfig>) => {
+    save(repo.name, (r) => worktreePatch(r.worktree, { ...r.worktree, ...change }));
+  };
   const seconds = config.setup_timeout_seconds;
   // Gitignored files worth linking, read once per project (the Mac's first five).
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -84,79 +97,123 @@ export function WorktreesTab({ repo, save }: { repo: RepoConfig; save: SaveProje
   }, [api, repo.name]);
   const shownSuggestions = suggestions.filter((p) => !config.link.includes(p)).slice(0, 5);
   return (
-    <SettingsSection title="When Nest makes a worktree">
-      <SettingsRow label="Linked files">
-        <Chips
-          items={config.link}
-          onRemove={(_, path) => {
-            links((link) => removeLink(link, path));
+    <>
+      <SettingsSection title="When Nest makes a worktree">
+        <SettingsRow label="Linked files">
+          <Chips
+            items={config.link}
+            onRemove={(_, path) => {
+              links((link) => removeLink(link, path));
+            }}
+          />
+        </SettingsRow>
+        <AddField
+          label="Linked file"
+          placeholder="Path in the project, such as .env"
+          onAdd={(text) => {
+            if (addLink(config.link, text) === null) {
+              actions.toast("Use a path inside the project that is not linked yet", "error");
+              return false;
+            }
+            links((link) => addLink(link, text) ?? link);
+            return true;
           }}
         />
-      </SettingsRow>
-      <AddField
-        label="Linked file"
-        placeholder="Path in the project, such as .env"
-        onAdd={(text) => {
-          if (addLink(config.link, text) === null) {
-            actions.toast("Use a path inside the project that is not linked yet", "error");
-            return false;
-          }
-          links((link) => addLink(link, text) ?? link);
-          return true;
-        }}
-      />
-      {shownSuggestions.length > 0 && (
-        <div className="dkp-suggest">
-          <span>Suggested</span>
-          {shownSuggestions.map((path) => (
-            <Button
-              key={path}
-              kind="plain"
-              onClick={() => {
-                links((link) => addLink(link, path) ?? link);
-                setSuggestions((list) => list.filter((p) => p !== path));
-              }}
-            >
-              <Icon name="plus" />
-              {path}
-            </Button>
-          ))}
-        </div>
-      )}
-      <SettingsRow label="Setup commands">
-        <Chips
-          items={config.setup}
-          onRemove={(index, command) => {
-            setup((list) => removeSetup(list, command, index));
+        {shownSuggestions.length > 0 && (
+          <div className="dkp-suggest">
+            <span>Suggested</span>
+            {shownSuggestions.map((path) => (
+              <Button
+                key={path}
+                kind="plain"
+                onClick={() => {
+                  links((link) => addLink(link, path) ?? link);
+                  setSuggestions((list) => list.filter((p) => p !== path));
+                }}
+              >
+                <Icon name="plus" />
+                {path}
+              </Button>
+            ))}
+          </div>
+        )}
+        <SettingsRow label="Setup commands">
+          <Chips
+            items={config.setup}
+            onRemove={(index, command) => {
+              setup((list) => removeSetup(list, command, index));
+            }}
+          />
+        </SettingsRow>
+        <AddField
+          label="Setup command"
+          placeholder="Command, such as npm ci"
+          onAdd={(text) => {
+            if (addSetup(config.setup, text) === null) return false;
+            setup((list) => addSetup(list, text) ?? list);
+            return true;
           }}
         />
-      </SettingsRow>
-      <AddField
-        label="Setup command"
-        placeholder="Command, such as npm ci"
-        onAdd={(text) => {
-          if (addSetup(config.setup, text) === null) return false;
-          setup((list) => addSetup(list, text) ?? list);
-          return true;
-        }}
-      />
-      <SettingsRow label="Setup time limit">
-        <Dropdown
-          label="Setup time limit"
-          title={setupTimeoutLabel(seconds)}
-          width={130}
-          items={() =>
-            setupTimeoutChoices(seconds).map((choice) => ({
-              title: setupTimeoutLabel(choice),
-              checked: choice === seconds,
-              onSelect: () => {
-                save(repo.name, () => ({ setup_timeout_seconds: choice }));
-              },
-            }))
-          }
+        <SettingsRow label="Setup time limit">
+          <Dropdown
+            label="Setup time limit"
+            title={setupTimeoutLabel(seconds)}
+            width={130}
+            items={() =>
+              setupTimeoutChoices(seconds).map((choice) => ({
+                title: setupTimeoutLabel(choice),
+                checked: choice === seconds,
+                onSelect: () => {
+                  save(repo.name, () => ({ setup_timeout_seconds: choice }));
+                },
+              }))
+            }
+          />
+        </SettingsRow>
+        <TextRow
+          label="Worktrees folder"
+          value={config.folder}
+          unset="Follow default"
+          message="Leave it empty to follow the default."
+          placeholder="~/worktrees/project"
+          onSave={(text) => {
+            own({ folder: ownText(text) });
+          }}
         />
-      </SettingsRow>
-    </SettingsSection>
+        <TextRow
+          label="Branch name prefix"
+          value={config.branch_prefix}
+          unset="Follow default"
+          message="Leave it empty to follow the default."
+          placeholder="agent/"
+          onSave={(text) => {
+            own({ branch_prefix: ownText(text) });
+          }}
+        />
+        <SettingsRow label="Check out submodules">
+          <Segmented
+            label="Check out submodules"
+            value={ownChoice(config.submodules)}
+            options={OWN_CHOICES}
+            onChange={(choice) => {
+              own({ submodules: ownValue(choice) });
+            }}
+          />
+        </SettingsRow>
+      </SettingsSection>
+      <SettingsSection title="Clean up">
+        <SettingsRow label="Remove merged worktrees">
+          <Segmented
+            label="Remove merged worktrees"
+            value={ownChoice(config.clean_merged)}
+            options={OWN_CHOICES}
+            onChange={(choice) => {
+              own({ clean_merged: ownValue(choice) });
+            }}
+          />
+        </SettingsRow>
+      </SettingsSection>
+    </>
   );
 }
 

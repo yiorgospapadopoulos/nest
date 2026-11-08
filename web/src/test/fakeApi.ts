@@ -303,6 +303,15 @@ export function fakeApi(): FakeApi {
     saveLimitSettings: vi
       .fn<Api["saveLimitSettings"]>()
       .mockImplementation((settings) => Promise.resolve(settings)),
+    worktreeSettings: vi.fn<Api["worktreeSettings"]>().mockResolvedValue({
+      folder: null,
+      branch_prefix: "agent/",
+      clean_merged: false,
+      submodules: false,
+    }),
+    saveWorktreeSettings: vi
+      .fn<Api["saveWorktreeSettings"]>()
+      .mockImplementation((settings) => Promise.resolve(settings)),
     savePixieDefaults: vi
       .fn<Api["savePixieDefaults"]>()
       .mockImplementation((settings) => Promise.resolve(settings)),

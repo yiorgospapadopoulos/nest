@@ -84,7 +84,16 @@ export function repo(name: string): RepoConfig {
     remote_url: `git@github.com:me/${name}.git`,
     icon: null,
     icon_color: null,
-    worktree: { default: true, link: [], setup: [], setup_timeout_seconds: 900 },
+    worktree: {
+      default: true,
+      link: [],
+      setup: [],
+      setup_timeout_seconds: 900,
+      folder: null,
+      branch_prefix: null,
+      clean_merged: null,
+      submodules: null,
+    },
   };
 }
 

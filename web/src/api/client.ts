@@ -113,6 +113,7 @@ import type {
   GithubAccount,
   PairingCode,
   LimitSettings,
+  WorktreeSettings,
   PixieDefaults,
   StorageSettings,
   PerfView,
@@ -362,6 +363,8 @@ export interface Api {
   savePixieDefaults(settings: PixieDefaults): Promise<PixieDefaults>;
   limitSettings(): Promise<LimitSettings>;
   saveLimitSettings(settings: LimitSettings): Promise<LimitSettings>;
+  worktreeSettings(): Promise<WorktreeSettings>;
+  saveWorktreeSettings(settings: WorktreeSettings): Promise<WorktreeSettings>;
   github(): Promise<GithubAccount>;
   checkGithub(): Promise<GithubAccount>;
   claudeAccount(): Promise<ClaudeAccount>;
@@ -1165,6 +1168,14 @@ export class HttpApi implements Api {
 
   saveLimitSettings(settings: LimitSettings) {
     return this.json<LimitSettings>("PUT", "/api/limits/settings", settings);
+  }
+
+  worktreeSettings() {
+    return this.json<WorktreeSettings>("GET", "/api/worktrees/settings");
+  }
+
+  saveWorktreeSettings(settings: WorktreeSettings) {
+    return this.json<WorktreeSettings>("PUT", "/api/worktrees/settings", settings);
   }
 
   github() {

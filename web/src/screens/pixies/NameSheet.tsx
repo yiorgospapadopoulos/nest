@@ -4,16 +4,16 @@ import { Sheet } from "../../ui/Sheet.tsx";
 
 interface Props {
   title: string;
-  // The field's label, and the hint shown when it is left empty.
+  // The field's label, and the hint shown when it is left empty; null lets it be saved empty.
   label: string;
-  empty: string;
+  empty: string | null;
   initial: string;
   action: string;
   // A handle rather than a name: typed as is, without capitals or corrections.
   code?: boolean;
   // Why the Mac refused the last value, shown under the field.
   refused?: string | null;
-  // Called with the trimmed text, never empty.
+  // Called with the trimmed text, empty only when `empty` is null.
   onSave: (text: string) => void;
   onClose: () => void;
 }
@@ -35,7 +35,7 @@ export function NameSheet({
   const [text, setText] = useState(initial);
   const save = () => {
     const value = text.trim();
-    if (value === "") actions.toast(empty, "error");
+    if (value === "" && empty !== null) actions.toast(empty, "error");
     else onSave(value);
   };
   return (

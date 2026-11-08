@@ -56,28 +56,42 @@ function relative(value: string, root: string | null): string {
   return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
 
+/**
+ * A permission's tool call on one line, after its tool's name. Nest's own worktree tool
+ * reads as `worktree remove <folder name>`.
+ */
+export function toolCall(tool: string, input: JsonObject, root: string | null): string {
+  if (tool !== "worktree") return `${tool} ${toolArg(input, root)}`.trim();
+  const path = str(input.worktree);
+  const folder = path === null ? "" : (path.replace(/\/+$/, "").split("/").pop() ?? "");
+  return [tool, str(input.action) ?? "", folder].filter((part) => part !== "").join(" ");
+}
+
 export interface PermissionView {
   tool: string;
   // The Bash command, or the tool with its main argument.
   command: string;
   why: string | null;
-  // Why Claude Code asks rather than deciding itself, when it says.
+  // Why it asks, when it says: Claude Code's reason, or what a worktree to remove still
+  // holds, one item per line.
   reason: string | null;
   // What "Always allow" allows from now on: Claude Code's suggested rule, else the tool.
   always: string;
+  // False when the daemon offers no "Always allow", such as removing a worktree with work.
+  canAlways: boolean;
 }
 
 export function permissionOf(approval: Approval, root: string | null): PermissionView {
   const tool = str(approval.payload.tool) ?? "Tool";
   const input = obj(approval.payload.input);
-  const command =
-    tool === "Bash" ? (str(input.command) ?? "") : `${tool} ${toolArg(input, root)}`.trim();
+  const command = tool === "Bash" ? (str(input.command) ?? "") : toolCall(tool, input, root);
   return {
     tool,
     command,
     why: str(input.description) ?? str(approval.payload.title),
     reason: str(approval.payload.reason),
     always: str(approval.payload.always_rule) ?? tool,
+    canAlways: approval.payload.always !== false,
   };
 }
 

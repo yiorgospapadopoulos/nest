@@ -55,6 +55,7 @@ describe("permissionOf", () => {
       why: "Adds zod",
       reason: null,
       always: "Bash",
+      canAlways: true,
     });
   });
 
@@ -75,6 +76,7 @@ describe("permissionOf", () => {
       why: "Edit a file?",
       reason: "Outside the project",
       always: "Edit(src/**)",
+      canAlways: true,
     });
   });
 
@@ -87,6 +89,7 @@ describe("permissionOf", () => {
       why: null,
       reason: null,
       always: "Tool",
+      canAlways: true,
     });
     expect(permissionOf(approval({ payload: { tool: "Bash", input: null } }), null).command).toBe(
       "",

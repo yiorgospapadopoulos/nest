@@ -349,3 +349,28 @@ describe("stuck chats", () => {
     expect(screen.getByRole("region", { name: "Stuck chats" })).toHaveTextContent("Loading...");
   });
 });
+
+describe("worktrees for every project", () => {
+  it("saves the whole section on each change", async () => {
+    const api = fakeApi();
+    const { user } = await openAccount(api);
+    const worktrees = within(await screen.findByRole("region", { name: "Worktrees" }));
+
+    await user.click(worktrees.getByRole("switch", { name: "Check out submodules" }));
+    expect(api.saveWorktreeSettings).toHaveBeenLastCalledWith({
+      folder: null,
+      branch_prefix: "agent/",
+      clean_merged: false,
+      submodules: true,
+    });
+    await user.click(worktrees.getByRole("button", { name: "Change Branch name prefix" }));
+    await user.clear(screen.getByRole("textbox", { name: "Branch name prefix" }));
+    await user.type(screen.getByRole("textbox", { name: "Branch name prefix" }), "nest/{Enter}");
+    expect(api.saveWorktreeSettings).toHaveBeenLastCalledWith({
+      folder: null,
+      branch_prefix: "nest/",
+      clean_merged: false,
+      submodules: true,
+    });
+  });
+});

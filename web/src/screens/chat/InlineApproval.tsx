@@ -85,7 +85,7 @@ function InlinePermission({ approval, session }: Props) {
     <div className="ask" role="group" aria-label="Permission needed">
       <Head>Permission needed</Head>
       <div className="cmdbox">{view.command}</div>
-      {view.reason !== null && <div className="why">{view.reason}</div>}
+      {view.reason !== null && <div className="why lines">{view.reason}</div>}
       <div className="acts">
         <button className="b b-pri" disabled={busy} onClick={() => void decide("allow")}>
           Approve
@@ -93,9 +93,11 @@ function InlinePermission({ approval, session }: Props) {
         <button className="b" disabled={busy} onClick={() => void decide("deny")}>
           Reject
         </button>
-        <button className="b plain" disabled={busy} onClick={() => void decide("allow", true)}>
-          Always allow {view.always}
-        </button>
+        {view.canAlways && (
+          <button className="b plain" disabled={busy} onClick={() => void decide("allow", true)}>
+            Always allow {view.always}
+          </button>
+        )}
       </div>
     </div>
   );

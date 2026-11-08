@@ -19,15 +19,16 @@ function withRepos(
   // The Mac answers with the project as changed.
   api.updateRepo.mockImplementation((name, patch) => {
     const before = repos.find((r) => r.name === name) ?? repo(name);
-    const { link, setup, setup_timeout_seconds, default: mode, ...rest } = patch;
+    const { icon, icon_color, default_branch, remote_url, default: mode, ...worktree } = patch;
     return Promise.resolve({
       ...before,
-      ...rest,
+      ...(icon === undefined ? {} : { icon }),
+      ...(icon_color === undefined ? {} : { icon_color }),
+      ...(default_branch === undefined ? {} : { default_branch }),
+      ...(remote_url === undefined ? {} : { remote_url }),
       worktree: {
         ...before.worktree,
-        ...(link === undefined ? {} : { link }),
-        ...(setup === undefined ? {} : { setup }),
-        ...(setup_timeout_seconds === undefined ? {} : { setup_timeout_seconds }),
+        ...worktree,
         ...(mode === undefined ? {} : { default: mode }),
       },
     });
@@ -205,7 +206,12 @@ describe("project page", () => {
   it("adds and removes linked files and setup commands, and sets the time limit", async () => {
     const configured = {
       ...repo("todo-ui"),
-      worktree: { default: null, link: [".env"], setup: [], setup_timeout_seconds: 120 },
+      worktree: {
+        ...repo("todo-ui").worktree,
+        default: null,
+        link: [".env"],
+        setup_timeout_seconds: 120,
+      },
     };
     const { user, api } = await openFromProjects([configured]);
     await user.click(tab("Worktrees"));
@@ -232,6 +238,36 @@ describe("project page", () => {
     ).toEqual(["2 minutes", "5 minutes", "15 minutes", "30 minutes"]);
     await user.selectOptions(limit, "30");
     expect(api.updateRepo).toHaveBeenCalledWith("todo-ui", { setup_timeout_seconds: 1800 });
+  });
+
+  it("sets the project's own worktree choices, and follows the default again", async () => {
+    const { user, api } = await openFromProjects();
+    await user.click(tab("Worktrees"));
+    const clean = screen.getByRole("group", { name: "Remove merged worktrees" });
+
+    expect(pressed(clean)).toEqual(["Follow default"]);
+    await user.click(within(clean).getByRole("button", { name: "On" }));
+    await waitFor(() => {
+      expect(pressed(clean)).toEqual(["On"]);
+    });
+    await user.click(within(clean).getByRole("button", { name: "Follow default" }));
+    await user.click(screen.getByRole("button", { name: "Change Worktrees folder" }));
+    await user.type(screen.getByRole("textbox", { name: "Worktrees folder" }), "~/wt{Enter}");
+    await waitFor(() => {
+      expect(screen.getByText("~/wt")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "Change Worktrees folder" }));
+    await user.clear(screen.getByRole("textbox", { name: "Worktrees folder" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(api.updateRepo.mock.calls).toEqual([
+        ["todo-ui", { clean_merged: true }],
+        ["todo-ui", { clean_merged: null }],
+        ["todo-ui", { folder: "~/wt" }],
+        ["todo-ui", { folder: null }],
+      ]);
+    });
   });
 
   it("sets the tab icon and its colour", async () => {
