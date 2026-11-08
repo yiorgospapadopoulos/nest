@@ -410,27 +410,42 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   // `stale`: streamed text and thinking may have missed their end, so a chat that is no
   // longer working drops them.
   async function fetchChat(id: string, stale = false): Promise<void> {
-    const done = await attempt(() =>
-      snapshot(
-        () => Promise.all([api.session(id), api.sessionEvents(id)]),
-        ([found, events]) => {
-          // The detail is a session too; its task list and agents go to tracking.
-          dispatch({ type: "session", session: found });
-          const { tasks, agents, background } = found;
-          dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
-          dispatch({ type: "queued", id, queued: found.queued });
-          // A chat closed meanwhile keeps no transcript.
-          if (onScreen.has(id)) dispatch({ type: "transcriptLoaded", id, events });
-          if (stale && !WORKING.has(found.state)) dispatch({ type: "liveCleared", id });
-        },
-      ),
-    );
-    if (done === null && onScreen.has(id)) {
+    // A chat the daemon no longer has, as one a pane remembers from data that was removed
+    // (B136), goes as a deleted one does, with no error.
+    const result = await attempt(async () => {
+      try {
+        await loadChat(id, stale);
+        return "loaded" as const;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return "gone" as const;
+        throw error;
+      }
+    });
+    if (result === "gone") {
+      failed.delete(id);
+      dispatch({ type: "sessionRemoved", id });
+    } else if (result === null && onScreen.has(id)) {
       failed.add(id);
       dispatch({ type: "historyFailed", id });
     } else {
       failed.delete(id);
     }
+  }
+
+  function loadChat(id: string, stale: boolean): Promise<void> {
+    return snapshot(
+      () => Promise.all([api.session(id), api.sessionEvents(id)]),
+      ([found, events]) => {
+        // The detail is a session too; its task list and agents go to tracking.
+        dispatch({ type: "session", session: found });
+        const { tasks, agents, background } = found;
+        dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
+        dispatch({ type: "queued", id, queued: found.queued });
+        // A chat closed meanwhile keeps no transcript.
+        if (onScreen.has(id)) dispatch({ type: "transcriptLoaded", id, events });
+        if (stale && !WORKING.has(found.state)) dispatch({ type: "liveCleared", id });
+      },
+    );
   }
 
   /** The chat's dev server (B108); quiet, as a daemon before B108 has none to tell. */

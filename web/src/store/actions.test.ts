@@ -681,6 +681,19 @@ describe("engines (B102)", () => {
     expect(api.providers).toHaveBeenCalledTimes(2);
   });
 
+  it("drops a chat the daemon no longer has, with no error (B136)", async () => {
+    // Seen on Linux after a reinstall over removed data: a remembered pane's chat was gone.
+    const { api, dispatched, actions } = setup();
+    api.session.mockRejectedValueOnce(new ApiError(404, "unknown session 'gone'"));
+
+    await actions.openChat("gone");
+
+    const types = dispatched.map((action) => action.type);
+    expect(types).toContain("sessionRemoved");
+    expect(types).not.toContain("toast");
+    expect(types).not.toContain("historyFailed");
+  });
+
   it("reads Claude Code's models again when it reports other ones (B136)", async () => {
     const { api, actions } = setup();
     actions.receive(event({ type: "engine.models", session_id: null, payload: {} }));
