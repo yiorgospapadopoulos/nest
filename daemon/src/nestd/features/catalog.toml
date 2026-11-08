@@ -577,6 +577,15 @@ changed = 2026-11-02
 block = "B98"
 
 [[features]]
+id = "free-usage-checks"
+group = "engines"
+name = "Free usage checks"
+text = "The usage meter keeps your plan's limits up to date without using any of them."
+where = "Usage meter"
+added = 2026-11-08
+block = "B142"
+
+[[features]]
 id = "local-models"
 group = "engines"
 name = "Local models"

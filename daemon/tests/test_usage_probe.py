@@ -11,7 +11,7 @@ from nestd.usage.probe import (
     UsageProbe,
     probe_options,
 )
-from tests.fake_probe import FakeProbeFactory, answer, result
+from tests.fake_probe import FakeProbeFactory, answer, plan, result
 
 
 def test_the_probe_is_as_small_as_a_claude_turn_can_be(tmp_path: Path) -> None:
@@ -45,6 +45,51 @@ async def test_a_probe_reports_the_windows_and_its_tokens(tmp_path: Path) -> Non
     assert factory.clients[0].options.cwd == tmp_path
     # Kept open for the next probe.
     assert factory.clients[0].disconnects == 0
+
+
+async def test_a_probe_reads_the_plan_usage_for_free(tmp_path: Path) -> None:
+    """B142: Claude Code reports the plan's windows without a turn, so no tokens are used."""
+    factory = FakeProbeFactory(plans=[plan(five_hour=35, seven_day=None), plan(36)])
+    probe = UsageProbe(factory, tmp_path)
+
+    first = await probe.run()
+    second = await probe.run()
+
+    assert first.limits == UsageInfo(
+        five_hour=UsageWindow(utilization=0.35, resets_at=None), seven_day=None, complete=True
+    )
+    assert first.tokens == TokenUsage()
+    assert second.limits is not None
+    assert second.limits.seven_day == UsageWindow(utilization=0.12, resets_at=None)
+    client = factory.clients[0]
+    assert client.prompts == []
+    assert client.control is not None
+    assert client.control.requests == [{"subtype": "get_usage", "skip_behaviors": True}] * 2
+    assert client.disconnects == 0
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        RuntimeError("get_usage is not supported in this context"),
+        {"rate_limits_available": False, "rate_limits": None},
+        plan(five_hour=None, seven_day=None),
+        {"rate_limits_available": True, "rate_limits": {"seven_day": {"utilization": "lots"}}},
+    ],
+)
+async def test_a_probe_sends_its_turn_when_the_free_read_gives_nothing(
+    tmp_path: Path, refusal: dict[str, object] | Exception
+) -> None:
+    factory = FakeProbeFactory(replies=[answer(0.42, 0.12)], plans=[refusal])
+    probe = UsageProbe(factory, tmp_path)
+
+    outcome = await probe.run()
+
+    assert outcome.limits is not None
+    assert outcome.limits.five_hour is not None
+    assert outcome.limits.five_hour.utilization == 0.42
+    assert outcome.tokens == TokenUsage(input_tokens=450, output_tokens=2)
+    assert factory.clients[0].prompts == [PROBE_PROMPT]
 
 
 async def test_one_client_serves_many_probes(tmp_path: Path) -> None:

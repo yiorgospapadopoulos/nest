@@ -184,6 +184,9 @@ class UsageInfo(BaseModel):
     windows: list[EngineWindow] = Field(default_factory=list[EngineWindow])
     # Codex's banked resets, read with its windows (B98); never in the usage events.
     banked: BankedResets | None = Field(default=None, exclude=True)
+    # Every Claude window the plan has, as read from Claude Code (B142): one left out is
+    # gone, where a turn's report may leave out windows that did not change.
+    complete: bool = Field(default=False, exclude=True)
 
 
 # The usage window whose limit was reached (B78), as the engine names it.
