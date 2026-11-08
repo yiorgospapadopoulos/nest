@@ -407,7 +407,8 @@ import Testing
         #expect(action(.up) == .recall)
         #expect(action(.up, isEmpty: false) == .ignore)
         #expect(action(.down) == .ignore)
-        #expect(action(.tab) == .ignore)
+        // Regression: Tab typed a tab, so the keyboard could not leave the composer.
+        #expect(action(.tab) == .leave)
     }
 
     @Test func theSendButtonSendsOrInterruptsWhileWorking() {

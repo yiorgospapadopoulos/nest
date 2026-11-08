@@ -444,6 +444,17 @@ private func fourPanes() -> WorkspaceLayout {
         #expect(!layout.isDimmed("zzz"))
     }
 
+    @Test func nextAndPreviousPaneWrapAroundInReadingOrder() {
+        var layout = fourPanes()
+        #expect(layout.leaves == ["a", "c", "b", "d"])
+        #expect(layout.neighbour(by: 1) == "a")
+        #expect(layout.neighbour(by: -1) == "b")
+        layout.focus("a")
+        #expect(layout.neighbour(by: -1) == "d")
+        #expect(layout.neighbour(by: 1) == "c")
+        #expect(WorkspaceLayout().neighbour(by: 1) == nil)
+    }
+
     @Test func aMaximizedPaneShowsAloneUndimmed() {
         var layout = fourPanes()
         layout.toggleMaximize("a")

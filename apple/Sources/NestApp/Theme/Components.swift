@@ -624,6 +624,34 @@ struct Separator: View {
 }
 
 extension View {
+    /// A clickable row the keyboard can reach as it reaches buttons, with keyboard
+    /// navigation on: Space or Return runs `action`. A click does not focus it, so the
+    /// focus ring shows for the keyboard only.
+    func keyboardActivatable(_ enabled: Bool = true, perform action: @escaping () -> Void)
+        -> some View
+    {
+        focusable(enabled, interactions: .activate)
+            .onKeyPress(keys: [.space, .return]) { _ in
+                action()
+                return .handled
+            }
+    }
+}
+
+/// Which part of a row has the keyboard: the row, or the control it shows on hover, which
+/// shows while either has it so the keyboard can reach it too.
+enum RowFocus: Hashable {
+    case row, control
+}
+
+extension AnyTransition {
+    /// Comes down from the top as it fades in, or only fades under Reduce Motion.
+    static func dropIn(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
+}
+
+extension View {
     /// A list row's background: the accent's selection when selected, the hover fill while
     /// hovered, nothing otherwise.
     func listRow(selected: Bool = false, radius: Double = Radius.row) -> some View {

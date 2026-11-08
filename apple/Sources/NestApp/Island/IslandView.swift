@@ -297,6 +297,59 @@ final class IslandView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {}
+
+    // MARK: Accessibility
+
+    // The scene is drawn, not made of views: VoiceOver gets one group summing it up, with
+    // a button for the strip and for each pixie and +N, which act as their clicks do.
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    override func accessibilityLabel() -> String? { scene.state.accessibilitySummary }
+
+    override func accessibilityChildren() -> [Any]? {
+        let strip = IslandHitElement(
+            label: "Open Nest", frame: scene.stripRect, parent: self
+        ) { [weak self] in self?.onClick(.strip) }
+        let hits = scene.hits.map { hit in
+            IslandHitElement(label: Self.label(of: hit.target), frame: hit.rect, parent: self) {
+                [weak self] in self?.onClick(hit.target)
+            }
+        }
+        return [strip] + hits + (listHost.isHidden ? [] : [listHost])
+    }
+
+    private static func label(of target: IslandTarget) -> String {
+        switch target {
+        case .strip: "Open Nest"
+        case .more: "Show all pixies"
+        case .entry(let entry): "\(entry.label), \(entry.status.word)"
+        }
+    }
+}
+
+/// A button on the drawn island for VoiceOver: its frame in the island view, and a press
+/// that does what the click there does.
+private final class IslandHitElement: NSAccessibilityElement {
+    private let press: @MainActor @Sendable () -> Void
+
+    init(
+        label: String, frame: CGRect, parent: NSView,
+        press: @escaping @MainActor @Sendable () -> Void
+    ) {
+        self.press = press
+        super.init()
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(label)
+        setAccessibilityParent(parent)
+        setAccessibilityFrameInParentSpace(frame)
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        let press = press
+        MainActor.assumeIsolated { press() }
+        return true
+    }
 }
 
 /// The panel never becomes key, so every click on a row is a first click.

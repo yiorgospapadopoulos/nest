@@ -203,6 +203,19 @@ public struct IslandState: Sendable, Hashable {
     /// Nightshade falls asleep after this long with nothing running.
     public static let sleepAfter: TimeInterval = 120
 
+    /// What VoiceOver calls the island: how many pixies stand each way, those that want the
+    /// user first, such as "Nest island: 1 needs you, 2 working".
+    public var accessibilitySummary: String {
+        let order: [IslandStatus] = [.needsYou, .failed, .interrupted, .working, .done]
+        let counts = order.compactMap { status -> String? in
+            let count = list.count {
+                $0.status == status || (status == .needsYou && $0.status == .seen)
+            }
+            return count > 0 ? "\(count) \(status.word.lowercased())" : nil
+        }
+        return "Nest island: \(counts.isEmpty ? "nothing running" : counts.joined(separator: ", "))"
+    }
+
     /// The chats whose tracked agents the working rows read.
     public var workingChats: [String] {
         var ids: [String] = []

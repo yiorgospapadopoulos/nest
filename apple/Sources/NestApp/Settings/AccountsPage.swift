@@ -199,8 +199,7 @@ private struct AccountRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { activate(account.id) }
-        .focusable()
-        .focusEffectDisabled()
+        .focusable(interactions: .activate)
         .onKeyPress(.space) {
             activate(account.id)
             return .handled

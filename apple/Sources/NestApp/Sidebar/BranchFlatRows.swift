@@ -62,11 +62,12 @@ private struct FlatBranchRow: View {
     let query: String
     let picks: FoundPicks
     @State private var hovering = false
+    @FocusState private var focus: RowFocus?
 
     var body: some View {
         let selected = picks.selected(branch)
         let ink = picks.color(branch.name) ?? Palette.t3
-        let adds = hovering && branch.remote == nil
+        let adds = (hovering || focus != nil) && branch.remote == nil
         HStack(spacing: 0) {
             Button {
                 picks.pick(branch)
@@ -89,10 +90,12 @@ private struct FlatBranchRow: View {
             }
             .buttonStyle(.plain)
             .pointerStyle(.link)
+            .focused($focus, equals: .row)
             if adds {
                 AddWorktreeChip(branch: branch.name, word: picks.addWord) {
                     picks.add(branch.name)
                 }
+                .focused($focus, equals: .control)
                 .padding(.trailing, 8)
             }
         }

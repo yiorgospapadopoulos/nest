@@ -12,15 +12,21 @@ struct SettingsPanel: View {
     @Environment(AppController.self) private var controller
 
     var body: some View {
+        // A sheet of Settings or over the window takes VoiceOver from the panel.
+        let covered =
+            shell.overlay != nil || shell.settingsSheetOpen || controller.pairing != nil
         ZStack {
             Palette.scrim
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { shell.closeSettings() }
+                .accessibilityHidden(true)
             SettingsView()
                 .overlay(alignment: .topTrailing) { closeButton }
                 .clipShape(.rounded(Radius.sheet))
                 .sheetSurface()
+                .modal("Settings")
+                .accessibilityHidden(covered)
                 .frame(maxWidth: Self.maxSize.width, maxHeight: Self.maxSize.height)
                 .padding(.horizontal, 48)
                 .padding(.vertical, 32)
@@ -37,15 +43,9 @@ struct SettingsPanel: View {
     }
 
     private var closeButton: some View {
-        Button {
-            shell.closeSettings()
-        } label: {
-            Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
-        }
-        .buttonStyle(.nest(.soft, iconOnly: true))
-        .foregroundStyle(Palette.t2)
-        .padding(12)
-        .accessibilityLabel("Close settings")
+        SheetCloseButton(label: "Close settings", kind: .soft) { shell.closeSettings() }
+            .foregroundStyle(Palette.t2)
+            .padding(12)
     }
 }
 
@@ -65,6 +65,7 @@ struct SettingsSheets: View {
 /// in the app's accent and mode.
 struct SettingsView: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
         let settings = shell.settings
@@ -81,7 +82,7 @@ struct SettingsView: View {
             if let toast = shell.toast {
                 ToastView(toast: toast)
                     .padding(.top, 14)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.dropIn(reduceMotion: reduceMotion))
             }
         }
         .foregroundStyle(Palette.t1)

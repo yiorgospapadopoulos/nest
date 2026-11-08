@@ -9,8 +9,9 @@ struct ClaudeChatRow: View {
     @Environment(Shell.self) private var shell
     @Environment(\.revealsHoverControls) private var revealsHoverControls
     @State private var hovering = false
+    @FocusState private var focus: RowFocus?
 
-    private var showsMenu: Bool { hovering || revealsHoverControls }
+    private var showsMenu: Bool { hovering || revealsHoverControls || focus != nil }
 
     var body: some View {
         let state = shell.projectState
@@ -60,6 +61,7 @@ struct ClaudeChatRow: View {
         .overlay(alignment: .trailing) {
             if showsMenu {
                 RowActionsMenu(title: chat.title) { ClaudeChatActions(chat: chat) }
+                    .focused($focus, equals: .control)
                     .padding(.trailing, 3)
             }
         }
@@ -67,6 +69,8 @@ struct ClaudeChatRow: View {
         .pointerStyle(.link)
         .onHover { hovering = $0 }
         .onTapGesture { shell.openChat(pane) }
+        .keyboardActivatable { shell.openChat(pane) }
+        .focused($focus, equals: .row)
         .onDrag {
             shell.dragging = .chat(pane)
             return .chat(pane)

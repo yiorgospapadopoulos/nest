@@ -15,8 +15,9 @@ struct ChatRow: View {
     @Environment(\.reducedMotion) private var reduceMotion
     @State private var hovering = false
     @FocusState private var renameFocused: Bool
+    @FocusState private var focus: RowFocus?
 
-    private var showsMenu: Bool { hovering || revealsHoverControls }
+    private var showsMenu: Bool { hovering || revealsHoverControls || focus != nil }
 
     /// Whether the row's earlier worktrees are folded out, kept with the shell's other
     /// folds; closed until the user opens them.
@@ -104,6 +105,7 @@ struct ChatRow: View {
         .overlay(alignment: .trailing) {
             if showsMenu {
                 RowActionsMenu(title: session.title) { ChatActions(session: session) }
+                    .focused($focus, equals: .control)
                     .padding(.trailing, 3)
             }
         }
@@ -122,6 +124,8 @@ struct ChatRow: View {
         .pointerStyle(.link)
         .onHover { hovering = $0 }
         .onTapGesture { shell.openChat(session.id) }
+        .keyboardActivatable { shell.openChat(session.id) }
+        .focused($focus, equals: .row)
         .onDrag {
             shell.dragging = .chat(session.id)
             return .chat(session.id)
@@ -134,7 +138,7 @@ struct ChatRow: View {
         .accessibilityLabel(
             "\(session.title), \(shell.statusLabel(of: session))\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(session.earlierAccessibility.map { ", \($0)" } ?? "")\(ChatPlace.issueAccessibility(of: session).map { ", \($0)" } ?? "")\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
         )
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(rowState == .focused ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { shell.openChat(session.id) }
         .accessibilityActions {
             if !session.earlier.isEmpty {

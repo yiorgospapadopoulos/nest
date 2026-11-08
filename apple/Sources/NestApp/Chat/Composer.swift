@@ -226,6 +226,11 @@ struct Composer: View {
         case .move(let delta):
             if let suggestions {
                 draft.completion.move(delta, in: suggestions)
+                // The field keeps the keyboard, so VoiceOver hears the highlight only here.
+                if let chosen = draft.completion.chosen(in: suggestions) {
+                    VoiceOver.announce(
+                        [chosen.label, chosen.detail].compactMap(\.self).joined(separator: ", "))
+                }
             }
         case .insert:
             if let suggestions, let chosen = draft.completion.chosen(in: suggestions) {
@@ -249,6 +254,9 @@ struct Composer: View {
             if let live {
                 shell.rewindLast(live)
             }
+        case .leave:
+            // What a text field does with Tab, which the editor would type instead.
+            NSApp.keyWindow?.selectNextKeyView(nil)
         case .ignore:
             return false
         }

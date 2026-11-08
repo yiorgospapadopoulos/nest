@@ -72,6 +72,14 @@ import Testing
         #expect(PixieColor.standard == "#8B7CF6")
     }
 
+    /// A preset added to design/mascots.toml without a name would be read out as its code.
+    @Test func everyPresetColourHasAName() {
+        for preset in PixieColors.presets {
+            #expect(PixieColor.name(of: preset) != preset, "\(preset)")
+        }
+        #expect(PixieColor.name(of: "#123456") == "#123456")
+    }
+
     @Test func templatesAreReviewerAndTester() throws {
         #expect(PixieTemplate.all.map(\.name) == ["Reviewer", "Tester"])
         #expect(PixieTemplate.all.map(\.mascot) == [.moth, .star])

@@ -384,6 +384,16 @@ public struct WorkspaceLayout: Sendable, Hashable {
         }
     }
 
+    /// The pane `offset` places from the focused one in reading order, wrapping around:
+    /// Next pane and Previous pane. With none focused, the first or the last.
+    public func neighbour(by offset: Int) -> String? {
+        let panes = leaves
+        guard !panes.isEmpty else { return nil }
+        let start = focused.flatMap(panes.firstIndex(of:)) ?? (offset > 0 ? panes.count - 1 : 0)
+        let index = (start + offset) % panes.count
+        return panes[index < 0 ? index + panes.count : index]
+    }
+
     /// Maximizes the chat, or restores the split view when it is the maximized one.
     public mutating func toggleMaximize(_ chat: String) {
         guard contains(chat) else { return }

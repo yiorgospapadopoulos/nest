@@ -33,12 +33,14 @@ private struct ChatTreeLine: View {
     @Environment(Shell.self) private var shell
     @Environment(\.revealsHoverControls) private var reveal
     @State private var hovering = false
+    @FocusState private var focus: RowFocus?
     /// The width of a row's sprite, spinner or team icon, so names line up.
     private static let icon = 16.0
 
     var body: some View {
         let group = if case .group = row.kind { true } else { false }
-        let controls = (hovering || reveal) && (sendAway != nil || stoppable != nil)
+        let controls =
+            (hovering || reveal || focus != nil) && (sendAway != nil || stoppable != nil)
         HStack(spacing: 0) {
             TreeGuides(guides: row.guides, isLast: row.isLast)
                 .frame(width: TreeGuides.step * Double(row.depth + 1))
@@ -54,16 +56,12 @@ private struct ChatTreeLine: View {
                 .overlay(alignment: .trailing) {
                     if controls {
                         if let sendAway {
-                            RowActionsMenu(title: title) {
-                                Button {
-                                    shell.sendAway(sendAway, from: chat, name: title)
-                                } label: {
-                                    Label("Send away", systemImage: Icon.sendAway)
-                                }
-                            }
-                            .padding(.trailing, 2)
+                            RowActionsMenu(title: title) { actions }
+                                .focused($focus, equals: .control)
+                                .padding(.trailing, 2)
                         } else if let stoppable {
                             StopTaskButton(chat: chat, task: stoppable)
+                                .focused($focus, equals: .control)
                                 .padding(.trailing, 3)
                         }
                     }
@@ -71,22 +69,44 @@ private struct ChatTreeLine: View {
                 .contentShape(Rectangle())
                 .pointerStyle(target == nil ? nil : .link)
                 .onHover { hovering = $0 }
-                .onTapGesture {
-                    if let target {
-                        shell.openWork(target)
-                    }
-                }
+                .onTapGesture(perform: open)
+                .keyboardActivatable(target != nil, perform: open)
+                .focused($focus, equals: .row)
         }
         .frame(height: group ? 20 : 24)
+        .contextMenu { actions }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibility)
         .accessibilityAddTraits(target == nil ? [] : .isButton)
-        .accessibilityAction {
-            if let target {
-                shell.openWork(target)
+        .accessibilityAction { open() }
+        .accessibilityActions { actions }
+        .help(help)
+    }
+
+    private func open() {
+        if let target {
+            shell.openWork(target)
+        }
+    }
+
+    /// Send away for a pixie or team, Stop for a subagent: the hover controls' actions, for
+    /// the right-click menu and VoiceOver too.
+    @ViewBuilder private var actions: some View {
+        if let sendAway {
+            Button {
+                shell.sendAway(sendAway, from: chat, name: title)
+            } label: {
+                Label("Send away", systemImage: Icon.sendAway)
+            }
+        } else if let stoppable, shell.activity.canStop(session: chat),
+            shell.supports(.stopTask, chat: chat)
+        {
+            Button {
+                shell.stopTask(stoppable, in: chat)
+            } label: {
+                Label("Stop", systemImage: Icon.stop)
             }
         }
-        .help(help)
     }
 
     @ViewBuilder private var content: some View {

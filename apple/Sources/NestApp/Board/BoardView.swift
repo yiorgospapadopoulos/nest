@@ -88,6 +88,7 @@ private struct BoardCard: View {
             }
             .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
+            .accessibilityElement(children: .combine)
             Text(session.shownTitle)
                 .font(.ui(TypeSize.reading, .medium))
                 .foregroundStyle(Palette.t1)
@@ -114,6 +115,9 @@ private struct BoardCard: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .softFill()
+        // One group per chat, named by it, rather than loose lines between cards.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(session.shownTitle)
     }
 
     /// The status word: coloured only when it needs the user or waits for review.
@@ -154,6 +158,7 @@ private struct LiveLine: View {
                 Image(systemName: icon)
                     .font(.system(size: 10))
                     .foregroundStyle(Palette.t3)
+                    .accessibilityHidden(true)
             } else {
                 Fireflies(height: 10)
             }

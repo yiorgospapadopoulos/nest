@@ -55,28 +55,34 @@ struct ShellView: View {
         // Offscreen there is no desktop to show through: the window draws opaque.
         let backdrop = WindowBackdrop.of(
             reduceTransparency: reduceTransparency || snapshot, fullScreen: fullScreen)
+        // Under Settings or a sheet, the window is out of VoiceOver's reach, as under a
+        // real sheet.
+        let covered = shell.settingsOpen || shell.overlay != nil
         ZStack(alignment: .top) {
             WindowBackground(backdrop: backdrop, image: shell.chatBackground?.image)
-            switch content {
-            case .daemonDown:
-                DaemonDownView()
-            case .guide:
-                if let guide = shell.guide {
-                    SetupGuideView(flow: guide)
-                }
-            case .blank:
-                EmptyView()
-            case .projects:
-                VStack(spacing: 0) {
-                    // No line under the tabs: the project bar it divided off is gone (B73).
-                    TabStrip(fullScreen: fullScreen)
-                        // A line in the chat background's colours where the top bar ends.
-                        .overlay(alignment: .bottom) {
-                            PhotoLineView(image: shell.chatBackground?.image)
-                        }
-                    ProjectBody()
+            Group {
+                switch content {
+                case .daemonDown:
+                    DaemonDownView()
+                case .guide:
+                    if let guide = shell.guide {
+                        SetupGuideView(flow: guide)
+                    }
+                case .blank:
+                    EmptyView()
+                case .projects:
+                    VStack(spacing: 0) {
+                        // No line under the tabs: the project bar it divided off is gone (B73).
+                        TabStrip(fullScreen: fullScreen)
+                            // A line in the chat background's colours where the top bar ends.
+                            .overlay(alignment: .bottom) {
+                                PhotoLineView(image: shell.chatBackground?.image)
+                            }
+                        ProjectBody()
+                    }
                 }
             }
+            .accessibilityHidden(covered)
             VStack(spacing: 8) {
                 if !shell.daemonDown.isDown {
                     ConnectionBanner()
@@ -84,10 +90,11 @@ struct ShellView: View {
                 UsageWarningBanner()
                 if let toast = shell.toast {
                     ToastView(toast: toast)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(.dropIn(reduceMotion: systemReduceMotion))
                 }
             }
             .padding(.top, Metrics.stripHeight + 12)
+            .accessibilityHidden(covered)
             if shell.settingsOpen {
                 SettingsPanel()
                     .transition(.opacity)
@@ -232,15 +239,20 @@ private struct NoProjectView: View {
 /// A usage limit reached the warning level set in Settings > Agents (B81), until dismissed.
 private struct UsageWarningBanner: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
         let usage = shell.model.usage
         if let warning = usage.warning {
             HStack(spacing: 10) {
-                Image(systemName: Icon.warning).foregroundStyle(StatusTone.waiting.color)
+                Image(systemName: Icon.warning)
+                    .foregroundStyle(StatusTone.waiting.color)
+                    .accessibilityHidden(true)
                 Text(usage.warningText(warning)).foregroundStyle(Palette.t1)
                 Button {
-                    withAnimation(.smooth(duration: 0.2)) { usage.dismissWarning() }
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
+                        usage.dismissWarning()
+                    }
                 } label: {
                     Image(systemName: Icon.close).font(.system(size: 9, weight: .bold))
                 }
@@ -252,7 +264,8 @@ private struct UsageWarningBanner: View {
             .padding(.trailing, 6)
             .frame(height: 36)
             .sheetSurface(radius: Radius.card)
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .transition(.dropIn(reduceMotion: reduceMotion))
+            .onAppear { VoiceOver.announce(usage.warningText(warning)) }
         }
     }
 }
@@ -260,6 +273,7 @@ private struct UsageWarningBanner: View {
 private struct ConnectionBanner: View {
     @Environment(Shell.self) private var shell
     @Environment(AppController.self) private var controller
+    @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
         if let message {
@@ -278,6 +292,9 @@ private struct ConnectionBanner: View {
                     }
                     Text(starting ? "Starting the Nest service" : message)
                         .foregroundStyle(Palette.t1)
+                        .onChange(of: message, initial: true) { _, now in
+                            VoiceOver.announce(now, urgent: true)
+                        }
                     ForEach(actions, id: \.self) { action in
                         switch action {
                         case .retry:
@@ -309,7 +326,7 @@ private struct ConnectionBanner: View {
                     }
                 }
             }
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .transition(.dropIn(reduceMotion: reduceMotion))
         }
     }
 
@@ -424,7 +441,7 @@ struct ToastView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).foregroundStyle(color)
+            Image(systemName: icon).foregroundStyle(color).accessibilityHidden(true)
             Text(toast.text).lineLimit(2)
         }
         .font(.ui(TypeSize.ui, .medium))

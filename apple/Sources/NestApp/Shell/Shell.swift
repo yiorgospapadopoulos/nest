@@ -140,8 +140,10 @@ final class Shell {
     /// Settings' page, search text and tabs (B81).
     /// Settings is showing, as a panel over the window (B118).
     private(set) var settingsOpen = false
-    /// What had the keyboard when Settings opened, to give it back on closing.
-    @ObservationIgnored private weak var focusBeforeSettings: NSResponder?
+    /// What had the keyboard when Settings or a sheet opened, to give it back on closing.
+    @ObservationIgnored private var focusReturn = FocusReturn<NSResponder>()
+    /// Focus sidebar was asked for: the sidebar's first control takes the keyboard.
+    var sidebarFocusPending = false
     var settingsPage = SettingsPage.general
     var settingsQuery = ""
     /// The setup guide over the whole window, while it is open (B130).
@@ -687,7 +689,7 @@ final class Shell {
     /// Opens a habit run's transcript, read-only.
     func openHabitRun(_ session: String) {
         model.island.markSeen(chat: session)
-        withAnimation(.smooth(duration: 0.18)) { overlay = .habitRun(session) }
+        show(.habitRun(session))
     }
 
     /// An inbox entry's Open: the pixie, with its reports read.
@@ -868,9 +870,41 @@ final class Shell {
 
     func isDraft(_ id: String) -> Bool { id.hasPrefix(Self.draftPrefix) }
 
+    /// Opens the chat with the keyboard in its composer, as a new chat's.
     func openChat(_ id: String) {
         let size = workspaceSize
         update { $0.openChat(id, in: size) }
+        focusComposer(of: id)
+    }
+
+    /// Puts the keyboard in a chat pane's composer. Tool and Claude Code chat panes have
+    /// none, and a pixie's is left alone: focus set there has landed in another pane's
+    /// composer (see `KeyboardClaim`).
+    private func focusComposer(of pane: String) {
+        guard !pixiesOpen, PaneKind(paneID: pane) == .chat, !isClaudeChatPane(pane) else {
+            return
+        }
+        draft(for: pane).wantsFocus = true
+    }
+
+    /// Next pane and Previous pane: the neighbour in reading order takes the focus and
+    /// the keyboard, shown alone when the workspace shows one maximized.
+    func focusPane(by offset: Int) {
+        let layout = workspaceState.layout
+        guard let next = layout.neighbour(by: offset), next != layout.focused else { return }
+        if layout.maximized != nil {
+            updateWorkspace { $0.layout.toggleMaximize(next) }
+        }
+        focusPane(next)
+        focusComposer(of: next)
+    }
+
+    /// Focus sidebar: opens it if squeezed and gives its first control the keyboard.
+    func focusSidebar() {
+        if !pixiesOpen, projectState.leftCollapsed {
+            update { $0.leftCollapsed = false }
+        }
+        sidebarFocusPending = true
     }
 
     /// Opens an empty composer pane; the chat is created with its first message.
@@ -1840,9 +1874,7 @@ final class Shell {
         }
         settingsPage = page
         if !settingsOpen {
-            let window = NSApp.keyWindow
-            focusBeforeSettings = window?.firstResponder
-            window?.makeFirstResponder(nil)
+            leaveFocus(for: .settings)
             withAnimation(.smooth(duration: 0.2)) { settingsOpen = true }
         }
         openWindow?(NestApp.mainWindowID)
@@ -1851,11 +1883,26 @@ final class Shell {
     /// Back to the chats and panes, which stayed underneath.
     func closeSettings() {
         guard settingsOpen else { return }
+        returnFocus(from: .settings)
         withAnimation(.smooth(duration: 0.18)) { settingsOpen = false }
-        if let view = focusBeforeSettings as? NSView, let window = view.window {
+    }
+
+    /// Takes the keyboard from what is under a layer that opens, to give it back later.
+    /// Remembers what has the keyboard and takes it from there, so typing cannot reach what
+    /// is underneath. The palette keeps it to hand to its own field: cleared first, the
+    /// composer underneath took it back from the field (B147).
+    private func leaveFocus(for layer: FocusReturn<NSResponder>.Layer, clear: Bool = true) {
+        let window = NSApp.keyWindow
+        focusReturn.opened(layer, from: window?.firstResponder)
+        if clear {
+            window?.makeFirstResponder(nil)
+        }
+    }
+
+    private func returnFocus(from layer: FocusReturn<NSResponder>.Layer) {
+        if let view = focusReturn.closed(layer) as? NSView, let window = view.window {
             window.makeFirstResponder(view)
         }
-        focusBeforeSettings = nil
     }
 
     /// A form or sheet is open on top of Settings (the pairing sheet is the controller's).
@@ -2016,6 +2063,7 @@ final class Shell {
         if overlay == .palette {
             palette = CommandPalette.catalog(app: app, sessions: sessions)
         }
+        leaveFocus(for: .sheet, clear: overlay != .palette)
         withAnimation(.smooth(duration: 0.2)) { self.overlay = overlay }
     }
 
@@ -2037,6 +2085,10 @@ final class Shell {
         if case .branchTree = overlay {
             mapReveals += 1
         }
+        guard overlay != nil else { return }
+        // Before it goes: a field in it that has the keyboard, as the palette's, would hand
+        // it to the window as it is taken down (B147).
+        returnFocus(from: .sheet)
         withAnimation(.smooth(duration: 0.18)) { overlay = nil }
     }
 
@@ -2107,6 +2159,7 @@ final class Shell {
             app.reveal(chat: chat, in: project, size: size)
         }
         syncTools()
+        focusComposer(of: chat)
     }
 
     // MARK: Approvals
@@ -2376,6 +2429,7 @@ final class Shell {
     func show(_ text: String, kind: Toast.Kind = .info) {
         let toast = Toast(text: text, kind: kind)
         withAnimation(.smooth(duration: 0.25)) { self.toast = toast }
+        VoiceOver.announce(text, urgent: kind == .failed)
         toastTask?.cancel()
         toastTask = Task {
             try? await Task.sleep(for: .seconds(3))

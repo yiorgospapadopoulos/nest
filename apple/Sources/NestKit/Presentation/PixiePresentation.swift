@@ -137,6 +137,16 @@ public enum PixieColor {
         return "#" + byte(red) + byte(green) + byte(blue)
     }
 
+    /// What VoiceOver calls a preset's swatch; the code for any other colour.
+    public static func name(of hex: String) -> String {
+        let names = [
+            "#E5484D": "Red", "#F76B15": "Orange", "#FFC53D": "Yellow", "#46A758": "Green",
+            "#12A594": "Teal", "#0090FF": "Blue", "#8B7CF6": "Violet", "#D6409F": "Pink",
+            "#E2A16F": "Tan", "#8D8D8D": "Grey",
+        ]
+        return names[hex.uppercased()] ?? hex
+    }
+
     /// A colour none of the ten presets has: the custom dot is the chosen one.
     public static func isCustom(_ hex: String) -> Bool {
         !PixieColors.presets.contains(hex.uppercased())
