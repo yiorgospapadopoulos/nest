@@ -1,8 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
+from fastapi.responses import FileResponse
 
 from nestd.api.deps import Context, RequireDevice
+from nestd.api.routes.attachments import SAFE_HEADERS
 from nestd.api.schemas import FileList, SessionDetail
 from nestd.autopilot.models import SetAutopilot
 from nestd.events.models import Event
@@ -20,6 +22,7 @@ from nestd.sessions.models import (
     Session,
     UpdateSession,
 )
+from nestd.sessions.named_files import named_file
 
 router = APIRouter(prefix="/api/sessions", dependencies=[RequireDevice])
 
@@ -110,6 +113,24 @@ async def session_files(
 ) -> FileList:
     """Up to 50 files for an @ mention: tracked or untracked and not ignored."""
     return FileList(files=await ctx.sessions.files(session_id, q))
+
+
+@router.get("/{session_id}/file")
+async def named_file_content(
+    session_id: str, ctx: Context, path: Annotated[str, Query(min_length=1, max_length=4096)]
+) -> FileResponse:
+    """A file the chat's messages name, for the viewer (B144): inside the chat's folder or
+    its attachments, else 404. It downloads and never runs as a page on the daemon's origin.
+    """
+    session = await ctx.sessions.get(session_id)
+    file = named_file(path, session.cwd, await ctx.attachments.dirs(session.id))
+    return FileResponse(
+        file,
+        media_type="application/octet-stream",
+        filename=file.name,
+        content_disposition_type="attachment",
+        headers=SAFE_HEADERS,
+    )
 
 
 @router.post("/{session_id}/interrupt", status_code=status.HTTP_202_ACCEPTED)
