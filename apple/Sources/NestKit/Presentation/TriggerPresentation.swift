@@ -34,8 +34,8 @@ extension GitHubEventKind {
 extension TriggerAuthors {
     public var label: String {
         switch self {
+        case .members: "People with write access"
         case .humans: "Anyone but bots"
-        case .others: "Others, not me"
         case .everyone: "Everyone"
         case .unknown: ""
         }
@@ -60,14 +60,14 @@ public enum TriggerText {
             + (rest.isEmpty ? last : rest.joined(separator: ", ") + " or " + last)
     }
 
-    /// "When CI fails · on main · labelled bug · others, not me", for a trigger's row.
+    /// "When CI fails · on main · labelled bug · anyone but bots", for a trigger's row.
     public static func summary(_ trigger: ChatTrigger) -> String {
         let when = github(trigger.events).map { "When" + $0.dropFirst("On GitHub when".count) }
         return [
             when,
             trigger.branches.isEmpty ? nil : "on " + trigger.branches.joined(separator: ", "),
             trigger.labels.isEmpty ? nil : "labelled " + trigger.labels.joined(separator: ", "),
-            trigger.authors == .humans ? nil : trigger.authors.label.lowercased(),
+            trigger.authors == .members ? nil : trigger.authors.label.lowercased(),
         ]
         .compactMap { $0 }
         .joined(separator: " · ")
@@ -112,7 +112,7 @@ public struct GitHubDraft: Sendable, Hashable {
     public var projects: [String] = []
     public var labels = ""
     public var branches = ""
-    public var authors = TriggerAuthors.humans
+    public var authors = TriggerAuthors.members
 
     public init() {}
 
@@ -148,7 +148,7 @@ public struct TriggerDraft: Sendable, Hashable {
     public var events: Set<GitHubEventKind> = []
     public var labels = ""
     public var branches = ""
-    public var authors = TriggerAuthors.humans
+    public var authors = TriggerAuthors.members
     public var enabled = true
 
     public init() {}

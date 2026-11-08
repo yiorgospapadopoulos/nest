@@ -16,12 +16,13 @@ public enum GitHubEventKind: String, Codable, Sendable, CaseIterable, UnknownSaf
     ]
 }
 
-/// Whose events count: anyone but bots, also not the user's own, or every one.
+/// Whose events count: people with write access to the repository (the default), anyone
+/// but bots, or every one.
 public enum TriggerAuthors: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
-    case humans, others, everyone
+    case members, humans, everyone
     case unknown
 
-    public static let choices: [TriggerAuthors] = [.humans, .others, .everyone]
+    public static let choices: [TriggerAuthors] = [.members, .humans, .everyone]
 }
 
 /// A habit's GitHub trigger; no projects is every project on GitHub. Labels apply to issues
@@ -35,7 +36,7 @@ public struct GitHubWatch: Codable, Sendable, Hashable {
 
     public init(
         events: [GitHubEventKind], projects: [String] = [], labels: [String] = [],
-        branches: [String] = [], authors: TriggerAuthors = .humans
+        branches: [String] = [], authors: TriggerAuthors = .members
     ) {
         self.events = events
         self.projects = projects
@@ -57,7 +58,7 @@ public struct ChatTriggerBody: Codable, Sendable, Hashable {
 
     public init(
         name: String, prompt: String, enabled: Bool = true, events: [GitHubEventKind],
-        labels: [String] = [], branches: [String] = [], authors: TriggerAuthors = .humans
+        labels: [String] = [], branches: [String] = [], authors: TriggerAuthors = .members
     ) {
         self.name = name
         self.prompt = prompt

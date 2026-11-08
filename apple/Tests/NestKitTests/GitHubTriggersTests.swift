@@ -33,7 +33,7 @@ import Testing
         let trigger = #"""
             {"id": "t1", "name": "CI", "prompt": "Fix it.", "enabled": true,
              "events": ["ci_failed", "pr_merged"], "labels": [], "branches": ["main"],
-             "authors": "others"}
+             "authors": "humans"}
             """#
         let base = #"""
             "name": "web", "path": "/w",
@@ -45,7 +45,7 @@ import Testing
         let read = try #require(repo.triggers.first)
         // An event this app does not know is kept as unknown, not a failure.
         #expect(read.events == [.ciFailed, .unknown])
-        #expect(TriggerText.summary(read) == "When CI fails · on main · others, not me")
+        #expect(TriggerText.summary(read) == "When CI fails · on main · anyone but bots")
         #expect(older.triggers.isEmpty)
     }
 
