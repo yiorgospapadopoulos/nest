@@ -12,7 +12,7 @@ from nestd.events import types
 from nestd.providers.base import ModelOption
 from nestd.providers.codex import CODEX_UNSUPPORTED, CodexNotSignedInError
 from nestd.sessions.engines import Engine, Engines
-from nestd.sessions.errors import TaskNotFoundError, UnsupportedFeatureError
+from nestd.sessions.errors import TaskNotFoundError
 from nestd.sessions.models import ChatImport, CreateSession, NewSession, SessionState, UpdateSession
 from nestd.sessions.turns import CODEX_GUARDED_PROMPT, CODEX_PLAIN_FOLDER_PROMPT, CODEX_PROMPT
 from nestd.sessions.worktree_tool import WORKTREE_NOTE
@@ -132,25 +132,14 @@ async def test_codex_without_a_login_refuses_new_chats_and_messages(env: Env, co
     assert len(await env.manager.list_sessions()) == 1
 
 
-async def test_claude_only_operations_are_refused_on_a_codex_chat(env: Env, codex: Codex) -> None:
+async def test_codex_chats_stop_one_subagent(env: Env, codex: Codex) -> None:
     codex.provider.script(reply("hi"))
     created = await env.create(provider="codex")
     await env.reach(created.id, SessionState.IDLE)
 
-    with pytest.raises(UnsupportedFeatureError, match="cannot be rewound") as rewound:
-        await env.manager.rewind(created.id, 1, dry_run=True)
-    with pytest.raises(UnsupportedFeatureError, match="cannot be forked"):
-        await env.manager.fork(created.id, 1)
     # Stopping one subagent works on Codex too (B112).
     with pytest.raises(TaskNotFoundError):
         await env.manager.stop_task(created.id, "task-1")
-
-    assert rewound.value.payload() == {
-        "detail": "A Codex chat cannot be rewound.",
-        "code": "unsupported_feature",
-        "provider": "codex",
-        "feature": "rewind",
-    }
 
 
 async def test_a_codex_chats_new_model_is_checked_against_codexs_list(
@@ -198,7 +187,7 @@ def test_engines_by_name_and_by_session() -> None:
     assert engines.named("codex").provider is codex.provider
     assert engines.default.supports("rewind")
     engines.default.require("rewind")
-    assert not engines.named("codex").supports("rewind")
+    assert not engines.named("codex").supports("slash_commands")
 
     def session(provider: str) -> NewSession:
         return NewSession(

@@ -46,7 +46,7 @@ import Testing
                 "be rewound", "be forked", "run slash commands", "stop a single task",
                 "take back a message sent into the turn", "review a plan", "ask questions",
                 "run subagents", "use Nest's tools", "keep a task list", "call pixies",
-                "save a memory to CLAUDE.md", "keep a pixie's own skill list", "do that",
+                "save a memory", "keep a pixie's own skill list", "do that",
             ])
     }
 

@@ -55,6 +55,9 @@ class AppPaths:
     # Codex chats as in the terminal; Nest only drops its worktrees' trust entries from
     # its config. None leaves Codex unconfigured, so tests never touch the real one.
     codex_home: Path | None = None
+    # The user's home, where the ACP engines keep the user's own instructions files that a
+    # `#` memory can go into (B145). None writes none, so tests never touch the real ones.
+    home: Path | None = None
     # Where the daemon hands this Mac's device token to the Mac app (D075). None serves
     # none, so tests never open a socket by accident.
     token_socket: Path | None = None
@@ -80,6 +83,7 @@ class AppPaths:
             claude_dir=Path(claude_dir),
             claude_account_file=account_file,
             codex_home=Path(env.get(CODEX_HOME_ENV) or home / ".codex"),
+            home=home,
         )
 
     @property

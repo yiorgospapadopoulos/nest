@@ -42,6 +42,7 @@ from nestd.claude_sessions.catalog import ClaudeChats
 from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
 from nestd.codex_chats.catalog import CodexChats
+from nestd.composer.memory_files import memory_files
 from nestd.composer.service import ComposerActions
 from nestd.config.errors import ConfigError
 from nestd.config.loader import (
@@ -960,7 +961,7 @@ class AppContext:
                 sessions=store.get,
                 engine_of=sessions.engines.of,
                 project_folder=lambda name: repos.get(name).path,
-                user_memory=None if paths.claude_dir is None else paths.claude_dir / "CLAUDE.md",
+                memory_files=memory_files(paths.home, paths.claude_dir, paths.codex_home),
                 pixie_files=pixie_files,
                 clock=clock,
                 shell_env=shell_env,

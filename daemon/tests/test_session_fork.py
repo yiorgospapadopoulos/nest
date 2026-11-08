@@ -212,7 +212,7 @@ async def test_forking_needs_a_checkpointed_message(env: Env) -> None:
     message = next(e.id for e in events if e.type == types.SESSION_USER_MESSAGE)
     assert message is not None
 
-    with pytest.raises(CannotRewindError, match="no file checkpoint"):
+    with pytest.raises(CannotRewindError, match="no checkpoint"):
         await env.manager.fork(created.id, message)
 
 

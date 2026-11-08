@@ -18,6 +18,9 @@ from tests.fake_provider import FakeRun, echoed, reply, until_interrupted
 from tests.fakes import FakeClock
 from tests.session_support import Env
 
+# Claude Code's own file checkpoints, as in a folder without git (B145).
+pytestmark = pytest.mark.usefixtures("engine_checkpoints_only")
+
 
 @pytest.fixture
 async def env(tmp_path: Path, db: Database, clock: FakeClock) -> AsyncIterator[Env]:

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from nestd.sessions.checkpoints import FileCheckpoints
 from nestd.storage.db import Database
 from tests.db_support import migrated_copy
 from tests.fakes import FakeClock, FakeSecretStore
@@ -43,3 +44,15 @@ def isolated_git(monkeypatch: pytest.MonkeyPatch) -> None:
     for role in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
         monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.com")
+
+
+@pytest.fixture
+def engine_checkpoints_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chats keep no git snapshots, as in a folder without git: files are restored by the
+    engine's own checkpoints, which only Claude Code keeps (B145).
+    """
+
+    async def no_snapshot(*_: object) -> None:
+        return None
+
+    monkeypatch.setattr(FileCheckpoints, "take", no_snapshot)

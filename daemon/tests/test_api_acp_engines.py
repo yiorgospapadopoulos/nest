@@ -56,7 +56,8 @@ async def test_the_engines_are_listed_in_order_with_their_install_and_sign_in(ap
         "git_guard": True,
         "sign_in": "terminal",
     }
-    assert "rewind" in opencode["unsupported"]
+    # B145: ACP chats rewind, fork, review plans and save memories too.
+    assert opencode["unsupported"] == ["withdraw"]
     cursor = listed["cursor"]
     assert (cursor["tested"], cursor["git_guard"], cursor["sign_in"]) == (
         False,

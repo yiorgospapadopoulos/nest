@@ -923,6 +923,8 @@ export interface ProviderInfo {
   sign_in_hint: string | null;
   account: AccountInfo | null;
   unsupported: ProviderFeature[];
+  // The project file the engine reads its instructions from, where a `#` memory goes.
+  memory_file: string;
   // The installed engine's version, such as "1.19.4"; null when unknown.
   version: string | null;
   // False for an engine Nest has not tried itself: it is labelled "untested".

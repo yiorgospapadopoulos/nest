@@ -4,7 +4,7 @@ A `!` command's output is not kept by the daemon: the client puts the returned `
 before the text of the next message it sends, so Claude reads it with that message, as in
 Claude Code. A `#` memory is written at once and read by the chat's next run: in a
 pixie's own chat it is a fact of the pixie's memory, on every engine (B112); elsewhere a
-line of CLAUDE.md, which only Claude Code reads.
+line of the instructions file the chat's engine reads (`memory_files`, B145).
 """
 
 import asyncio
@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from nestd.clock import Clock
 from nestd.composer.memory import append_memory
+from nestd.composer.memory_files import CLAUDE_MD, MemoryFile
 from nestd.composer.shell import MAX_OUTPUT_CHARS, TIMEOUT_SECONDS, ShellResult, run_command
 from nestd.errors import ConflictError
 from nestd.pixies.files import PixieFiles
@@ -28,7 +29,6 @@ from nestd.sessions.rules import require_workspace
 type MemoryScope = Literal["project", "user"]
 # Where a memory went: `pixie` is the pixie's own memory, whichever scope was asked for.
 type WrittenScope = Literal["project", "user", "pixie"]
-MEMORY_FILE = "CLAUDE.md"
 
 
 class NoUserMemoryError(ConflictError):
@@ -48,7 +48,7 @@ class ComposerActions:
         sessions: Callable[[str], Awaitable[Session]],
         engine_of: Callable[[Session], Engine],
         project_folder: Callable[[str], Path],
-        user_memory: Path | None,
+        memory_files: Mapping[str, MemoryFile],
         pixie_files: PixieFiles,
         clock: Clock,
         shell_env: ShellEnvSource,
@@ -58,13 +58,13 @@ class ComposerActions:
         max_output: int = MAX_OUTPUT_CHARS,
     ) -> None:
         """`engine_of` gives a session's engine; `project_folder` names a project's
-        folder; `user_memory` is the user's CLAUDE.md in Claude Code's config folder, None
-        when there is none; `pixie_files` holds each pixie's memory.
+        folder; `memory_files` says where each engine reads its instructions, by engine
+        name; `pixie_files` holds each pixie's memory.
         """
         self._sessions = sessions
         self._engine_of = engine_of
         self._project_folder = project_folder
-        self._user_memory = user_memory
+        self._memory_files = memory_files
         self._pixie_files = pixie_files
         self._clock = clock
         self._shell_env = shell_env
@@ -89,15 +89,16 @@ class ComposerActions:
 
     async def remember(self, session_id: str, text: str, scope: MemoryScope) -> MemoryWritten:
         """In a pixie's own chat, on any engine, add `text` to the pixie's memory as its
-        memory tool does, whatever `scope` says (B112). Elsewhere append it to the
-        project's CLAUDE.md (in its folder, not a worktree) or to the user's: 409
-        `unsupported_feature` in a chat on an engine that does not read CLAUDE.md (B91).
+        memory tool does, whatever `scope` says (B112). Elsewhere append it to the file the
+        chat's engine reads (B145): the project's (in its folder, not a worktree) or the
+        user's own; 409 `unsupported_feature` on an engine that reads none.
         """
         session = await self._sessions(session_id)
         if session.pixie_id is not None:
             return await self._remember_for_pixie(session.pixie_id, text)
-        self._engine_of(session).require("memory")
-        path = self._memory_path(session, scope)
+        engine = self._engine_of(session)
+        engine.require("memory")
+        path = self._memory_path(session, scope, engine.name)
         async with self._memory_lock:
             written = await append_memory(path, text)
         return MemoryWritten(path=written, scope=scope, line=f"- {' '.join(text.split())}")
@@ -111,10 +112,15 @@ class ComposerActions:
             path=files.memory_path(pixie_id), scope="pixie", line=saved.text.splitlines()[-1]
         )
 
-    def _memory_path(self, session: Session, scope: MemoryScope) -> Path:
-        if scope == "user":
-            if self._user_memory is None:
-                msg = "Claude Code's config folder is not known, so there is no user memory"
-                raise NoUserMemoryError(msg)
-            return self._user_memory
-        return self._project_folder(session.repo) / MEMORY_FILE
+    def _memory_path(self, session: Session, scope: MemoryScope, engine: str) -> Path:
+        # The default engine is Claude's.
+        file = self._memory_files.get(engine) or self._memory_files.get("claude")
+        if file is None:
+            file = MemoryFile((CLAUDE_MD,))
+        if scope == "project":
+            return file.project(self._project_folder(session.repo))
+        path = file.for_user()
+        if path is None:
+            msg = "This engine keeps your own rules in its settings, not in a file"
+            raise NoUserMemoryError(msg)
+        return path

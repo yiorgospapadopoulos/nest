@@ -512,6 +512,7 @@ export function engineList(state: State): ProviderInfo[] {
         sign_in_hint: null,
         account: state.account,
         unsupported: [],
+        memory_file: "CLAUDE.md",
         version: null,
         tested: true,
         git_guard: true,
@@ -735,6 +736,12 @@ export function supportsFeature(
 ): boolean {
   const engine = provider ?? CLAUDE;
   return state.providers?.find((p) => p.name === engine)?.unsupported.includes(feature) !== true;
+}
+
+/** The file a `#` memory goes into on the engine (none is Claude): the one it reads. */
+export function memoryFile(state: State, provider: string | null | undefined): string {
+  const engine = provider ?? CLAUDE;
+  return state.providers?.find((p) => p.name === engine)?.memory_file ?? "CLAUDE.md";
 }
 
 /** What to tell the user before sending on an engine that said it is not signed in. */

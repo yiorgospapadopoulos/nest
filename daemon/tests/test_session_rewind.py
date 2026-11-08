@@ -18,6 +18,9 @@ from tests.fakes import FakeClock
 from tests.session_support import Env
 from tests.test_session_control import until_results
 
+# Claude Code's own file checkpoints, as in a folder without git (B145).
+pytestmark = pytest.mark.usefixtures("engine_checkpoints_only")
+
 
 @pytest.fixture
 async def env(tmp_path: Path, db: Database, clock: FakeClock) -> AsyncIterator[Env]:
@@ -109,12 +112,12 @@ async def test_a_message_without_a_checkpoint_cannot_be_restored_to(env: Env) ->
     (message,) = await user_messages(env, created.id)
 
     preview = await env.manager.rewind(created.id, message, dry_run=True)
-    with pytest.raises(CannotRewindError, match="no file checkpoint"):
+    with pytest.raises(CannotRewindError, match="no checkpoint"):
         await env.manager.rewind(created.id, message, dry_run=False)
 
     assert preview.can_rewind is False
     assert preview.error is not None
-    assert "no file checkpoint" in preview.error
+    assert "no checkpoint" in preview.error
     assert env.provider.runs[0].calls == []
 
 

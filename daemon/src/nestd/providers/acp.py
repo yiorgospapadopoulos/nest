@@ -23,9 +23,12 @@ it keeps its list and `pixie_skills` is not reported unsupported. The only tasks
 chat shows are the pixies it called, which the session manager stops by their call, not
 the engine (B112), so Stop is offered.
 
-What only Claude does is reported unsupported (`ACP_UNSUPPORTED`): rewinding, forking,
-taking back a message, plan review, `#` memory outside a pixie's chat (the composer
-writes a pixie's own memory on every engine).
+What the engine cannot do is reported unsupported (`ACP_UNSUPPORTED`): taking back a
+message. A `#` memory goes into the file the engine reads (`composer.memory_files`), and in
+its plan mode the agent's last message is the plan the user reviews (B145). ACP cannot cut
+a conversation, so a rewound or forked chat opens a new session whose first message
+carries the kept part (`HISTORY_CUT`, D174); files come back from Nest's git snapshots, as
+on every engine (B145).
 """
 
 import asyncio
@@ -67,12 +70,14 @@ from nestd.providers.acp_rpc import (
     JsonObject,
 )
 from nestd.providers.base import (
+    HISTORY_CUT,
     AgentTool,
     ApprovalHandler,
     ContextUsage,
     ForkPoint,
     McpServer,
     ModelOption,
+    PlanRequest,
     ProviderEventSink,
     ProviderFeature,
     RewindResult,
@@ -105,20 +110,15 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-ACP_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
-    {
-        "rewind",
-        "fork",
-        "withdraw",
-        "plan_review",
-        "memory",
-    }
-)
+ACP_UNSUPPORTED: frozenset[ProviderFeature] = frozenset({"withdraw"})
 # The model a chat without a model uses: the engine's own default (left as it is).
 DEFAULT_MODEL = "default"
 PROTOCOL_VERSION = 1
 PROBE_TIMEOUT = timedelta(seconds=60)
 PLAN_MODE = "plan"
+# Codex's own words for going on from an approved plan (B145).
+IMPLEMENT_PLAN = "Implement the plan."
+DEFAULT_MODE: PermissionMode = "default"
 _EFFORTS: frozenset[str] = frozenset(get_args(Effort))
 # How engines word a missing sign-in when they do not use ACP's code for it.
 _AUTH_WORDS = re.compile(r"api key|auth|sign(?:ed)? ?in|log(?:ged)? ?in|credential", re.I)
@@ -376,7 +376,11 @@ class AcpRun:
         self._normal_mode: str | None = None
         self._engine_mode: str | None = None
         # Nest's instructions go before the first message of a new session.
-        self._lead_pending = spec.resume_id is None
+        # A cut conversation is a new session too (D174).
+        self._new_session = spec.resume_id is None or spec.resume_at is not None
+        self._lead_pending = self._new_session
+        # A cut's new session is the chat's only once it has the kept part (D174).
+        self._unreported = spec.resume_at is not None
         self._prompting = False
         self._turns: set[asyncio.Task[None]] = set()
 
@@ -414,7 +418,7 @@ class AcpRun:
         options = session_options(result)
         self._options = options
         self._engine_model = options.model
-        if self._spec.resume_id is None:
+        if self._new_session:
             self._default_model = options.model
         self._engine_mode = options.mode
         if PLAN_MODE in options.modes:
@@ -426,7 +430,8 @@ class AcpRun:
             # The chat runs on the engine's choice rather than not at all.
             logger.warning("%s refused the model or thinking level (%s)", self._engine.name, error)
         self._session_id = session_id
-        await self._sink.provider_session_id(session_id)
+        if not self._unreported:
+            await self._sink.provider_session_id(session_id)
 
     @property
     def names_chats(self) -> bool:
@@ -464,6 +469,11 @@ class AcpRun:
             await self._sink.stopped(reason)
 
     async def send(self, user_input: UserInput) -> None:
+        if self._unreported:
+            self._unreported = False
+            await self._sink.provider_session_id(self.session_id)
+        # Any message can be cut to: the engine's new session gets the part kept (D174).
+        await self._sink.checkpoint(HISTORY_CUT)
         await self._sync_mode()
         prompt = self._prompt(user_input)
         self._prompting = True
@@ -501,9 +511,11 @@ class AcpRun:
         return self.stream.context_usage()
 
     async def rewind_files(self, checkpoint_id: str, dry_run: bool) -> RewindResult:
+        """Only reached in a folder without git, where Nest keeps no snapshots (B145)."""
         return RewindResult(
             can_rewind=False,
-            error=f"{self._engine.name} chats cannot restore files to before a message.",
+            error=f"{self._engine.name} keeps no file checkpoints of its own, and Nest keeps "
+            "them only in folders with git.",
         )
 
     async def stop_task(self, task_id: str) -> bool:
@@ -544,19 +556,20 @@ class AcpRun:
         spec = self._spec
         params: JsonObject = {"cwd": str(spec.cwd), "mcpServers": servers}
         try:
-            if spec.resume_id is None:
+            resume_id = None if self._new_session else spec.resume_id
+            if resume_id is None:
                 result = await self.rpc.request("session/new", params)
                 return text(result.get("sessionId")), result
-            params["sessionId"] = spec.resume_id
+            params["sessionId"] = resume_id
             if caps.resume:
-                return spec.resume_id, await self.rpc.request("session/resume", params)
+                return resume_id, await self.rpc.request("session/resume", params)
             if not caps.load:
                 msg = f"{self._engine.name} cannot reopen an earlier chat."
                 raise ConflictError(msg)
             # The engine replays the history before it answers; Nest has it already.
             self.stream.replaying = True
             try:
-                return spec.resume_id, await self.rpc.request("session/load", params)
+                return resume_id, await self.rpc.request("session/load", params)
             finally:
                 self.stream.replaying = False
         except AcpRpcError as error:
@@ -654,9 +667,7 @@ class AcpRun:
         started = time.monotonic()
         try:
             try:
-                result = await self.rpc.request(
-                    "session/prompt", {"sessionId": self.session_id, "prompt": prompt}
-                )
+                result = await self._prompt_reviewed(prompt)
             except AcpClosedError:
                 return  # the run stopped, which the sink hears from `closed`
             except AcpRpcError as error:
@@ -669,6 +680,35 @@ class AcpRun:
             logger.exception("%s's turn could not be reported", self._engine.name)
         finally:
             self._prompting = False
+
+    async def _prompt_reviewed(self, prompt: list[JsonValue]) -> JsonObject:
+        """The prompt's answer; in the engine's plan mode its plan goes to the user first
+        (B145). ACP cannot ask for that, so the agent's last message is the plan, as
+        OpenCode's own plan exit: approved, the engine leaves plan mode and is told to
+        implement it; Keep planning with words goes on planning with them.
+        """
+        while True:
+            self.stream.last_text = ""
+            result = await self.rpc.request(
+                "session/prompt", {"sessionId": self.session_id, "prompt": prompt}
+            )
+            planning = self._mode == "plan" and self._normal_mode is not None
+            if not planning or text(result.get("stopReason")) != "end_turn":
+                return result
+            await self.stream.end_message()
+            if not self.stream.last_text:
+                return result
+            decision = await self._handler.review_plan(PlanRequest(self.stream.last_text))
+            if decision.approved:
+                self._mode = decision.mode or DEFAULT_MODE
+                await self._sink.permission_mode(self._mode)
+                follow_up = IMPLEMENT_PLAN
+            elif decision.message:
+                follow_up = decision.message
+            else:
+                return result
+            await self._sync_mode()
+            prompt = [{"type": "text", "text": follow_up}]
 
 
 class AcpProvider:
@@ -720,8 +760,10 @@ class AcpProvider:
         return run
 
     async def fork_point(self, cwd: Path, session_id: str, message_id: str) -> ForkPoint | None:
-        """ACP chats are not forked or rewound (ACP_UNSUPPORTED)."""
-        return None
+        """ACP cannot cut a conversation: any message is cut to by a new session given
+        the chat's kept part (D174).
+        """
+        return ForkPoint(HISTORY_CUT)
 
 
 async def probe(
