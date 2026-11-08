@@ -50,9 +50,8 @@ async def test_providers_list_the_default_engine_then_codex_with_its_login(api: 
         "plan": "ChatGPT Plus",
         "organization": None,
     }
-    assert {"rewind", "fork", "slash_commands", "plan_review", "memory"} <= set(
-        codex["unsupported"]
-    )
+    # B145: Codex chats rewind, fork, review plans and save memories like Claude's.
+    assert set(codex["unsupported"]) == {"slash_commands", "withdraw"}
 
 
 async def test_a_signed_out_codex_stays_offered_with_how_to_sign_in(
@@ -159,18 +158,6 @@ async def test_an_unknown_provider_is_a_validation_error(api: Api) -> None:
 
     assert response.status_code == 422
     assert "unknown provider" in response.json()["detail"]
-
-
-async def test_rewinding_a_codex_chat_is_refused_as_unsupported(api: Api) -> None:
-    api.codex.script(turn_completed())
-    session_id = str((await create(api, provider="codex", mode="in_place"))["id"])
-    await reach(api, session_id, "idle", results=1)
-
-    response = await api.http.get(f"/api/sessions/{session_id}/rewind", params={"message": 1})
-
-    assert response.status_code == 409
-    assert response.json()["code"] == "unsupported_feature"
-    assert response.json()["feature"] == "rewind"
 
 
 async def test_removing_a_codex_worktree_chat_drops_its_trust_entry(

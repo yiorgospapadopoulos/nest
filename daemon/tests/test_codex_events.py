@@ -61,6 +61,8 @@ async def test_a_turn_streams_text_and_ends_with_its_result() -> None:
     )
 
     assert sink.calls == [
+        # A thread's first turn: a cut before its message keeps nothing (B145).
+        ("checkpoint", ""),
         ("text_delta", "Hel"),
         ("message", ([TextBlock(text="Hello")], None)),
         (
@@ -200,8 +202,27 @@ async def test_a_steered_message_is_taken_when_codex_echoes_it() -> None:
         item("started", {"type": "userMessage", "id": "u0", "clientId": None}),
     )
 
-    assert sink.calls == [("message_taken", ("q1", "u9"))]
+    # Read inside a turn, it has no point the thread can be cut to (B145).
+    assert sink.calls == [("message_taken", ("q1", "steered:u9"))]
     assert codex.steered == set()
+
+
+async def test_a_message_that_starts_a_turn_is_cut_to_the_turn_before() -> None:
+    """B145: Codex forks its thread through a turn, so a cut before a message keeps the
+    thread through the turn before the message's own.
+    """
+    codex, sink = stream()
+    codex.last_turn = "turn-0"
+
+    await feed(
+        codex,
+        started(),
+        turn_completed(),
+        note("turn/started", threadId="thread-1", turn={"id": "turn-2"}),
+    )
+
+    checkpoints = [call for call in sink.calls if call[0] == "checkpoint"]
+    assert checkpoints == [("checkpoint", "turn-0"), ("checkpoint", "turn-1")]
 
 
 async def test_the_turn_counts_its_own_tokens_and_the_context_it_filled() -> None:

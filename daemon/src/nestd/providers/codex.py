@@ -6,9 +6,10 @@ Nest keeps as the session's provider session id. Each user message is a turn
 model or mode applies from the next turn. A message written into a running turn goes in
 with `turn/steer`.
 
-What only Claude does fails cleanly or is reported unsupported (`CODEX_UNSUPPORTED`), so
-clients hide it: rewinding files or the conversation, forking, slash commands, taking back
-a steered message, plan review and `#` memory. Stage 2 serves a run's Nest tools (a
+What Codex cannot do is reported unsupported (`CODEX_UNSUPPORTED`), so clients hide it:
+slash commands and taking back a steered message. A rewound or forked conversation is
+Codex's own `thread/fork` through the turn before the message (B145); files come back from
+Nest's git snapshots, as on every engine. Stage 2 serves a run's Nest tools (a
 pixie's memory, habits and Nest actions, artifacts, calling pixies) to Codex as a local MCP
 server (`codex_tools`) that the thread's `config` names, so pixies run on Codex and Codex
 chats call pixies. The thread's developer instructions name those tools, so the model finds
@@ -22,6 +23,7 @@ skill list switches the other skills off for its thread (`skills.config`).
 """
 
 import asyncio
+import logging
 import os
 import re
 from collections.abc import Mapping
@@ -39,8 +41,10 @@ from nestd.providers.base import (
     ContextUsage,
     ForkPoint,
     McpServer,
+    PlanRequest,
     ProviderEventSink,
     ProviderFeature,
+    ResultInfo,
     RewindResult,
     SessionSpec,
     UserInput,
@@ -49,7 +53,7 @@ from nestd.providers.claude_tools import NEST_SERVER, TOOL_SERVER
 from nestd.providers.codex_agents import CodexAgents, Subthread
 from nestd.providers.codex_approvals import CodexApprovals, RunPermissions
 from nestd.providers.codex_engine import DEFAULT_MODEL, NOT_SIGNED_IN, initialize, read_login
-from nestd.providers.codex_events import CodexStream
+from nestd.providers.codex_events import STEERED, CodexStream
 from nestd.providers.codex_items import items, obj, text
 from nestd.providers.codex_modes import CodexPermissions, codex_permissions
 from nestd.providers.codex_process import (
@@ -65,17 +69,14 @@ from nestd.providers.codex_tools import ToolHost
 from nestd.providers.push_block import PushBlock, helpers, push_block, subagent_hook_args
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
-CODEX_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
-    {
-        "rewind",
-        "fork",
-        "slash_commands",
-        "withdraw",
-        "plan_review",
-        "memory",
-    }
+logger = logging.getLogger(__name__)
+
+CODEX_UNSUPPORTED: frozenset[ProviderFeature] = frozenset({"slash_commands", "withdraw"})
+# Codex's own words when its plan is approved (B145).
+IMPLEMENT_PLAN = "Implement the plan."
+NO_REWIND = (
+    "Codex keeps no file checkpoints of its own, and Nest keeps them only in folders with git."
 )
-NO_REWIND = "Codex chats cannot restore files to before a message."
 # Codex's approval mode that asks before each call of an MCP tool.
 ASK = "prompt"
 # What Codex accepts as an MCP server's name; a tool name is kept to the same, so a dotted
@@ -125,9 +126,11 @@ class CodexRun:
         spec: SessionSpec,
         sink: ProviderEventSink,
         tools: ToolHost | None = None,
+        handler: ApprovalHandler | None = None,
     ) -> None:
         """`tools` serves the run's Nest tools while it is open; closing the run stops them,
-        and removes the files of the pixies it calls natively (`attach`).
+        and removes the files of the pixies it calls natively (`attach`). `handler` takes
+        the plans Codex proposes in its plan mode (B145).
         """
         self._spec = spec
         self._sink = sink
@@ -137,6 +140,14 @@ class CodexRun:
         self._rpc: CodexRpc | None = None
         self._tools = tools
         self._roles: CodexRoles | None = None
+        self._handler = handler
+        # The thread's model as Codex opened it, for its plan mode's settings.
+        self.thread_model = ""
+        # The last turn was sent in Codex's plan mode, so the next one says it leaves it.
+        self._planned = False
+        self._reviews: set[asyncio.Task[None]] = set()
+        if handler is not None:
+            self.stream.on_plan = self._on_plan
 
     def attach(self, rpc: CodexRpc, thread_id: str, roles: CodexRoles | None = None) -> None:
         self._rpc = rpc
@@ -213,11 +224,59 @@ class CodexRun:
             params["model"] = self._model
         if self._spec.effort is not None:
             params["effort"] = self._spec.effort
+        collaboration = self._collaboration_mode()
+        if collaboration is not None:
+            params["collaborationMode"] = collaboration
         response = await self.rpc.request("turn/start", params)
         turn_id = text(obj(response.get("turn")).get("id"))
         # The answer may come after `turn/started`, which already set it.
         if turn_id and self.stream.turn_id is None:
             self.stream.turn_id = turn_id
+
+    def _collaboration_mode(self) -> JsonObject | None:
+        """Codex's own plan mode in Nest's Plan mode (B145), whose proposed plan the user
+        reviews; the turn after it says Codex leaves it. None otherwise, or when the
+        thread's model is unknown, which the mode needs.
+        """
+        planning = self._mode == "plan"
+        if not planning and not self._planned:
+            return None
+        model = self._model if self._model and self._model != DEFAULT_MODEL else self.thread_model
+        if not model:
+            return None
+        self._planned = planning
+        settings: JsonObject = {"model": model, "developer_instructions": None}
+        if self._spec.effort is not None:
+            settings["reasoning_effort"] = self._spec.effort
+        return {"mode": "plan" if planning else "default", "settings": settings}
+
+    async def _on_plan(self, plan: str, info: ResultInfo) -> bool:
+        """Codex's own "Implement this plan?" as Nest's plan review, while the turn waits;
+        the reader goes on meanwhile.
+        """
+        task = asyncio.create_task(self._review(plan, info))
+        self._reviews.add(task)
+        task.add_done_callback(self._reviews.discard)
+        return True
+
+    async def _review(self, plan: str, info: ResultInfo) -> None:
+        """Approved, the turn goes on in the chosen mode with Codex's own "Implement the
+        plan."; Keep planning with words goes on planning with them; else the turn ends.
+        """
+        assert self._handler is not None  # noqa: S101 (set whenever plans are reviewed)
+        try:
+            decision = await self._handler.review_plan(PlanRequest(plan))
+            if decision.approved:
+                await self.set_permission_mode(decision.mode or "default")
+                await self._sink.permission_mode(self._mode or "default")
+                await self.send(UserInput(IMPLEMENT_PLAN))
+                return
+            if decision.message:
+                await self.send(UserInput(decision.message))
+                return
+        except Exception:
+            logger.exception("Codex's plan could not be reviewed")
+        await self.stream.end_turn(info)
 
     async def steer(self, user_input: UserInput, message_id: str) -> None:
         """Codex reads the message at its next step; a turn goes on while it has unread
@@ -295,6 +354,8 @@ class CodexRun:
             await self._release()
 
     async def _release(self) -> None:
+        for review in self._reviews:
+            review.cancel()
         await self.stream.agents.close()
         if self._tools is not None:
             await self._tools.close()
@@ -329,7 +390,7 @@ class CodexProvider:
         servers = {name: tools for name, tools in _served(spec).items() if tools}
         tools = await ToolHost.start(servers) if servers else None
         try:
-            run = CodexRun(spec, sink, tools)
+            run = CodexRun(spec, sink, tools, handler)
             approvals = CodexApprovals(
                 handler,
                 run.permissions,
@@ -393,7 +454,7 @@ class CodexProvider:
                     guard_pixies=spec.guard_subagents or spec.nest_decides,
                 )
                 config |= roles.config(spec.permission_mode)
-            thread_id = await self._open_thread(rpc, spec, config)
+            thread_id, last_turn, model = await self._open_thread(rpc, spec, config)
         except BaseException:
             await rpc.close()
             await run.stream.agents.close()
@@ -403,14 +464,23 @@ class CodexProvider:
                 roles.close()
             raise
         run.attach(rpc, thread_id, roles)
+        run.stream.last_turn = last_turn
+        run.thread_model = model
         await sink.provider_session_id(thread_id)
         return run
 
     async def fork_point(self, cwd: Path, session_id: str, message_id: str) -> ForkPoint | None:
-        """Codex chats are not forked or rewound (CODEX_UNSUPPORTED)."""
-        return None
+        """A message's checkpoint is the turn before its own, which the cut keeps the thread
+        through ("" keeps nothing); one read inside a turn has none (B145).
+        """
+        if message_id.startswith(STEERED):
+            return None
+        return ForkPoint(message_id or None)
 
-    async def _open_thread(self, rpc: CodexRpc, spec: SessionSpec, config: JsonObject) -> str:
+    async def _open_thread(
+        self, rpc: CodexRpc, spec: SessionSpec, config: JsonObject
+    ) -> tuple[str, str, str]:
+        """The thread's id, its last turn's ("" when it has none) and its model."""
         permissions = _permissions(spec, spec.permission_mode)
         params: JsonObject = {
             "cwd": str(spec.cwd),
@@ -431,15 +501,22 @@ class CodexProvider:
             params["developerInstructions"] = instructions
         if not spec.keep_history:
             params["ephemeral"] = True
-        if spec.resume_id is not None:
+        if spec.resume_id is not None and spec.resume_at is not None:
+            # A rewound or forked conversation: a new thread through the kept turn (B145).
+            fork = {"threadId": spec.resume_id, "lastTurnId": spec.resume_at, **params}
+            response = await rpc.request("thread/fork", fork)
+        elif spec.resume_id is not None:
             response = await rpc.request("thread/resume", {"threadId": spec.resume_id, **params})
         else:
             response = await rpc.request("thread/start", params)
-        thread_id = text(obj(response.get("thread")).get("id"))
+        thread = obj(response.get("thread"))
+        thread_id = text(thread.get("id"))
         if not thread_id:
             msg = "Codex opened no thread"
             raise RuntimeError(msg)
-        return thread_id
+        turns = items(thread.get("turns"))
+        last_turn = text(obj(turns[-1]).get("id")) if turns else ""
+        return thread_id, last_turn, text(response.get("model"))
 
 
 def _permissions(spec: SessionSpec, mode: PermissionMode | None) -> CodexPermissions:

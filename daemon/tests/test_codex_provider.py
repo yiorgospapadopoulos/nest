@@ -7,6 +7,7 @@ import pytest
 
 from nestd.config.models import PermissionMode
 from nestd.providers.base import (
+    ForkPoint,
     ImageInput,
     McpServer,
     PermissionDecision,
@@ -31,7 +32,7 @@ from nestd.providers.codex import (
 )
 from nestd.providers.codex_engine import NOT_SIGNED_IN
 from nestd.providers.codex_process import CODEX_HOME_ENV, CodexBinary
-from nestd.providers.codex_rpc import CodexClosedError, CodexRpcError
+from nestd.providers.codex_rpc import CodexClosedError, CodexRpcError, JsonObject
 from nestd.providers.push_block import NO_PUSH_ENV, helpers, subagent_hook_args
 from tests.async_support import until
 from tests.codex_support import SIGNED_OUT, FakeAppServer, item, note, turn_completed
@@ -219,6 +220,36 @@ async def test_a_session_with_a_thread_resumes_it(tmp_path: Path) -> None:
     await run.close()
 
 
+async def test_a_cut_conversation_is_codexs_fork_through_the_kept_turn(tmp_path: Path) -> None:
+    """B145: a rewind or fork opens a new thread holding the turns up to the cut, and the
+    next message's checkpoint is the last of them.
+    """
+    server = FakeAppServer()
+    server.answers["thread/fork"] = {
+        "thread": {"id": "thread-8", "turns": [{"id": "turn-1"}, {"id": "turn-2"}]}
+    }
+    sink = RecordingSink()
+    codex = provider(tmp_path, server)
+    run = await codex.open(
+        spec(tmp_path, resume_id="thread-7", resume_at="turn-2"), Handler(), sink
+    )
+
+    [fork] = server.requests("thread/fork")
+    assert (fork["threadId"], fork["lastTurnId"], fork["cwd"]) == (
+        "thread-7",
+        "turn-2",
+        str(tmp_path),
+    )
+    assert server.requests("thread/resume") == []
+    assert sink.calls == [("provider_session_id", "thread-8")]
+    assert run.stream.last_turn == "turn-2"
+    assert await codex.fork_point(tmp_path, "thread-8", "turn-2") == ForkPoint("turn-2")
+    # Before the thread's first message nothing is kept; inside a turn there is no cut.
+    assert await codex.fork_point(tmp_path, "thread-8", "") == ForkPoint(None)
+    assert await codex.fork_point(tmp_path, "thread-8", "steered:u3") is None
+    await run.close()
+
+
 async def test_opening_without_a_login_fails_with_the_sign_in_message(tmp_path: Path) -> None:
     server = FakeAppServer()
     server.answers["account/read"] = SIGNED_OUT
@@ -344,7 +375,7 @@ async def test_a_message_written_into_the_turn_is_steered_and_taken_on_its_echo(
     )
 
     await run.steer(UserInput("also this"), "q1")
-    await until(lambda: ("message_taken", ("q1", "u2")) in sink.calls)
+    await until(lambda: ("message_taken", ("q1", "steered:u2")) in sink.calls)
 
     [steer] = server.requests("turn/steer")
     assert steer["expectedTurnId"] == "turn-1"
@@ -421,7 +452,7 @@ async def test_connector_statuses_come_from_codexs_mcp_list(tmp_path: Path) -> N
     await run.close()
 
 
-async def test_claude_only_operations_fail_cleanly(tmp_path: Path) -> None:
+async def test_what_codex_lacks_fails_cleanly(tmp_path: Path) -> None:
     server, run, _, _ = await opened(tmp_path)
     codex = provider(tmp_path, server)
 
@@ -430,13 +461,7 @@ async def test_claude_only_operations_fail_cleanly(tmp_path: Path) -> None:
     assert (rewind.can_rewind, rewind.error) == (False, NO_REWIND)
     assert not await run.stop_task("task-1")
     assert await run.context_usage() is None
-    assert await codex.fork_point(tmp_path, "thread-1", "m1") is None
-    assert {"rewind", "fork", "slash_commands", "plan_review"} <= CODEX_UNSUPPORTED
-    # Stage 2: pixies, the pixies a chat calls and Nest's tools run on Codex too; B112:
-    # its own questions, plan, subagent stops and skill limits.
-    assert CODEX_UNSUPPORTED.isdisjoint(
-        {"pixies", "subagents", "nest_tools", "questions", "task_list", "stop_task", "pixie_skills"}
-    )
+    assert {"slash_commands", "withdraw"} == CODEX_UNSUPPORTED
     assert codex.unsupported == CODEX_UNSUPPORTED
     await run.close()
 
@@ -502,4 +527,65 @@ async def test_a_file_change_approval_names_the_items_files(tmp_path: Path) -> N
 
     assert answer["result"] == {"decision": "accept"}
     assert handler.requests[0].tool_input == {"file_path": "/r/a.py"}
+    await run.close()
+
+
+class PlanHandler(Handler):
+    def __init__(self, *decisions: PlanDecision) -> None:
+        super().__init__()
+        self.decisions = list(decisions)
+        self.plans: list[str] = []
+
+    async def review_plan(self, request: PlanRequest) -> PlanDecision:
+        self.plans.append(request.plan)
+        return self.decisions.pop(0)
+
+
+def planned(text: str) -> list[JsonObject]:
+    return [item("completed", {"type": "plan", "id": "p1", "text": text}), turn_completed()]
+
+
+def results(sink: RecordingSink) -> list[object]:
+    return [value for kind, value in sink.calls if kind == "result"]
+
+
+async def test_an_approved_codex_plan_goes_on_in_the_chosen_mode(tmp_path: Path) -> None:
+    """B145: Codex's own plan mode, and its "Implement this plan?" as Nest's plan review."""
+    server = FakeAppServer()
+    server.script(*planned("1. Do it"))
+    server.script(turn_completed())
+    sink = RecordingSink()
+    handler = PlanHandler(PlanDecision(approved=True, mode="acceptEdits"))
+    run = await provider(tmp_path, server).open(
+        spec(tmp_path, permission_mode="plan"), handler, sink
+    )
+
+    await run.send(UserInput("Plan it"))
+    await until(lambda: len(results(sink)) == 1)
+
+    assert handler.plans == ["1. Do it"]
+    first, second = server.requests("turn/start")
+    assert first["collaborationMode"] == {
+        "mode": "plan",
+        "settings": {"model": "gpt-6.1-sol", "developer_instructions": None},
+    }
+    assert second["input"] == [{"type": "text", "text": "Implement the plan.", "text_elements": []}]
+    assert second["collaborationMode"]["mode"] == "default"  # type: ignore[index]
+    assert ("permission_mode", "acceptEdits") in sink.calls
+    await run.close()
+
+
+async def test_a_plan_kept_without_words_ends_the_turn(tmp_path: Path) -> None:
+    server = FakeAppServer()
+    server.script(*planned("1. Do it"))
+    sink = RecordingSink()
+    handler = PlanHandler(PlanDecision(approved=False))
+    run = await provider(tmp_path, server).open(
+        spec(tmp_path, permission_mode="plan"), handler, sink
+    )
+
+    await run.send(UserInput("Plan it"))
+    await until(lambda: len(results(sink)) == 1)
+
+    assert len(server.requests("turn/start")) == 1
     await run.close()
