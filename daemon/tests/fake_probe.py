@@ -17,6 +17,33 @@ from claude_agent_sdk import (
 
 # A reply is the messages after one prompt; an exception is raised from the stream instead.
 type Reply = list[Message] | Exception
+# Claude Code's answer to a control request, or the error the SDK raises for it.
+type Answer = dict[str, Any] | Exception
+
+
+def plan(five_hour: float | None = 42, seven_day: float | None = 12) -> dict[str, Any]:
+    """Claude Code's `get_usage` answer, in percent, as it reports them."""
+
+    def window(percent: float | None) -> dict[str, Any] | None:
+        return None if percent is None else {"utilization": percent, "resets_at": None}
+
+    limits = {"five_hour": window(five_hour), "seven_day": window(seven_day)}
+    return {"rate_limits_available": True, "rate_limits": limits}
+
+
+@dataclass
+class FakeQuery:
+    """The SDK's query, for the control requests the probe sends directly."""
+
+    answers: list[Answer]
+    requests: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+
+    async def _send_control_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        self.requests.append(request)
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 def rate_limit(five_hour: float, seven_day: float | None = None) -> RateLimitEvent:
@@ -58,6 +85,13 @@ class FakeProbeClient:
     connect_error: Exception | None = None
     hang: bool = False
     disconnect_error: Exception | None = None
+    # None plays an SDK without control requests, so every probe sends its turn.
+    control: FakeQuery | None = None
+
+    @property
+    def _query(self) -> FakeQuery | None:
+        """Where the SDK client keeps its query."""
+        return self.control
 
     async def connect(self) -> None:
         if self.connect_error is not None:
@@ -94,10 +128,13 @@ class FakeProbeFactory:
     clients: list[FakeProbeClient] = field(default_factory=list[FakeProbeClient])
     connect_error: Exception | None = None
     hang: bool = False
+    # Answers to `get_usage`, shared by every client; None: the request is not there.
+    plans: list[Answer] | None = None
 
     def __call__(self, options: ClaudeAgentOptions) -> FakeProbeClient:
+        control = None if self.plans is None else FakeQuery(self.plans)
         client = FakeProbeClient(
-            options, self.replies, connect_error=self.connect_error, hang=self.hang
+            options, self.replies, connect_error=self.connect_error, hang=self.hang, control=control
         )
         self.clients.append(client)
         return client
