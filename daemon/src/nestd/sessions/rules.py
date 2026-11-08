@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import JsonValue
 
 from nestd.attachments.store import Attachment
-from nestd.providers.base import ImageInput, UserInput
+from nestd.providers.base import FileInput, ImageInput, UserInput
 from nestd.sessions.errors import NoWorkspaceError, SessionClosedError
 from nestd.sessions.models import Session, SessionState, UpdateSession
 from nestd.worktrees.manager import Worktree
@@ -74,7 +74,7 @@ def user_input(text: str, attachments: list[Attachment]) -> UserInput:
     return UserInput(
         text=text,
         images=tuple(ImageInput(a.media_type, a.read_base64()) for a in attachments if a.is_image),
-        file_paths=tuple(a.path for a in attachments if not a.is_image),
+        files=tuple(FileInput(a.path, a.media_type) for a in attachments if not a.is_image),
     )
 
 

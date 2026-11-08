@@ -11,10 +11,18 @@ from typing import cast
 import pytest
 from pydantic import JsonValue
 
-from nestd.providers.acp import AcpLaunch, AcpProvider, AcpRun, AcpToolsUnsupportedError, probe
+from nestd.providers.acp import (
+    INLINE_TEXT_BYTES,
+    AcpLaunch,
+    AcpProvider,
+    AcpRun,
+    AcpToolsUnsupportedError,
+    probe,
+)
 from nestd.providers.acp_engines import GEMINI, GEMINI_SYSTEM_SETTINGS_ENV, OPENCODE, AcpEngine
 from nestd.providers.base import (
     AgentTool,
+    FileInput,
     PermissionDecision,
     PermissionRequest,
     PlanDecision,
@@ -557,6 +565,39 @@ async def test_resume_uses_session_resume_when_the_engine_has_it(tmp_path: Path)
     [prompt] = agent.requests("session/prompt")
     assert prompt["prompt"] == [{"type": "text", "text": "And now?"}]
     assert ("provider_session_id", RECORDED_SESSION) in sink.calls
+    await run.close()
+
+
+async def test_small_text_files_go_in_the_prompt_and_other_files_by_path(tmp_path: Path) -> None:
+    notes = tmp_path / "notes.md"
+    notes.write_text("# Plan\n")
+    big = tmp_path / "big.log"
+    big.write_text("x" * (INLINE_TEXT_BYTES + 1))
+    report = tmp_path / "report.pdf"
+    report.write_bytes(b"%PDF")
+    agent = FakeAgent(load("opencode-method-probe", tmp_path), load("opencode-text", tmp_path))
+    run, sink, _ = await open_run(agent, tmp_path, resume_id=RECORDED_SESSION)
+
+    await run.send(
+        UserInput(
+            "Read these",
+            files=(
+                FileInput(notes, "text/markdown"),
+                FileInput(big, "text/plain"),
+                FileInput(report, "application/pdf"),
+            ),
+        )
+    )
+    await until(lambda: len(results(sink)) == 1)
+
+    [prompt] = agent.requests("session/prompt")
+    assert prompt["prompt"] == [
+        {
+            "type": "resource",
+            "resource": {"uri": notes.as_uri(), "mimeType": "text/markdown", "text": "# Plan\n"},
+        },
+        {"type": "text", "text": f"Read these\n\nAttached files:\n- {big}\n- {report}"},
+    ]
     await run.close()
 
 
