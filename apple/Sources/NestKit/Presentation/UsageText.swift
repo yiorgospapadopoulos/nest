@@ -86,10 +86,12 @@ public enum UsageText {
         }
     }
 
-    /// "12 usage checks, 5k tokens, not counted above"; nil when there were none.
+    /// "12 usage checks, 5k tokens, not counted above", "12 usage checks, free" when Claude
+    /// Code answered them without a turn (B142); nil when there were none.
     public static func probes(_ probes: ProbeTotals?) -> String? {
         guard let probes, probes.count > 0 else { return nil }
         let checks = probes.count == 1 ? "1 usage check" : "\(probes.count) usage checks"
+        if probes.tokens == 0 { return "\(checks), free" }
         return "\(checks), \(tokens(probes.tokens)) tokens, not counted above"
     }
 

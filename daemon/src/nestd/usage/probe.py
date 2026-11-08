@@ -1,11 +1,14 @@
-"""The smallest Claude turn there is, sent only for the usage windows the engine reports (D031).
+"""Fresh usage windows for the subscription, read for free when Claude Code can (B142).
 
-Claude reports the subscription's five-hour and seven-day windows only alongside a turn, so
-numbers go stale while the user works elsewhere. One long-lived client answers a one-word
-message on Haiku, without tools, settings, MCP servers or thinking: about 450 input tokens.
+A session's turns report the five-hour and seven-day windows, so numbers go stale while the
+user works elsewhere. One long-lived client first asks Claude Code for the plan's usage,
+which costs no tokens. Only when that gives nothing does it send the smallest turn there is
+(D031): a one-word message on Haiku, without tools, settings, MCP servers or thinking, about
+600 input tokens, which also starts a five-hour window when none is running.
 """
 
 import asyncio
+import logging
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -17,12 +20,15 @@ from claude_agent_sdk import ClaudeAgentOptions, Message, RateLimitEvent, Result
 
 from nestd.providers.base import RunAccount, TokenUsage, UsageInfo
 from nestd.providers.claude_messages import token_usage, usage_info
+from nestd.usage.plan_read import read_plan_usage
+
+logger = logging.getLogger(__name__)
 
 PROBE_MODEL = "haiku"
 PROBE_SYSTEM_PROMPT = "Reply with: ok"
 PROBE_PROMPT = "ok"
 PROBE_TIMEOUT = timedelta(seconds=60)
-# Each exchange stays in the probe's conversation; a fresh client now and then keeps it tiny.
+# Each turn stays in the probe's conversation; a fresh client now and then keeps it tiny.
 MAX_PROBES_PER_CLIENT = 20
 
 
@@ -82,11 +88,15 @@ class UsageProbe:
         self._client: ProbeClient | None = None
         # The account the open client runs on (B98).
         self._account: RunAccount | None = None
+        # Turns sent on the open client; free reads do not grow its conversation.
         self._probes = 0
+        # Whether the last probe had to send a turn, so the fallback is logged once.
+        self._fell_back = False
 
     async def run(self, account: RunAccount | None = None) -> ProbeOutcome:
-        """One exchange on the long-lived client, which opens on demand on `account`
-        (None: Claude Code's own environment); a client on another account is closed first.
+        """A free read, else one turn, on the long-lived client, which opens on demand on
+        `account` (None: Claude Code's own environment); a client on another account is
+        closed first.
 
         Raises ProbeError on any failure, after closing the client so the next probe
         starts a new process.
@@ -95,7 +105,15 @@ class UsageProbe:
             await self.close()
         try:
             async with asyncio.timeout(self._timeout.total_seconds()):
-                outcome = await self._exchange(account)
+                client = await self._open(account)
+                limits = await read_plan_usage(client)
+                if limits is not None:
+                    self._fell_back = False
+                    return ProbeOutcome(limits, TokenUsage())
+                if not self._fell_back:
+                    logger.info("Claude Code did not report the plan's usage; sending a turn")
+                    self._fell_back = True
+                outcome = await self._exchange(client)
         except Exception as error:
             await self.close()
             raise ProbeError(_reason(error)) from error
@@ -111,7 +129,7 @@ class UsageProbe:
             with suppress(Exception):
                 await client.disconnect()
 
-    async def _exchange(self, account: RunAccount | None) -> ProbeOutcome:
+    async def _open(self, account: RunAccount | None) -> ProbeClient:
         if self._client is None:
             client = self._factory(
                 probe_options(self._cwd, None if account is None else account.env)
@@ -119,9 +137,12 @@ class UsageProbe:
             self._client = client
             self._account = account
             await client.connect()
-        await self._client.query(PROBE_PROMPT)
+        return self._client
+
+    async def _exchange(self, client: ProbeClient) -> ProbeOutcome:
+        await client.query(PROBE_PROMPT)
         limits: UsageInfo | None = None
-        async for message in self._client.receive_messages():
+        async for message in client.receive_messages():
             if isinstance(message, RateLimitEvent):
                 limits = usage_info(message.rate_limit_info.raw) or limits
             elif isinstance(message, ResultMessage):
