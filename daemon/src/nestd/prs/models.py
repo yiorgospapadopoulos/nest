@@ -28,6 +28,13 @@ class PrChecks(BaseModel):
     items: list[PrCheck]
 
 
+class AutoMerge(BaseModel):
+    """GitHub's own auto-merge, turned on for the pull request (B149)."""
+
+    method: MergeMethod
+    enabled_at: datetime | None = None
+
+
 class PrStatus(BaseModel):
     number: int
     url: str
@@ -42,6 +49,10 @@ class PrStatus(BaseModel):
     review_decision: str | None
     head_sha: str | None
     created_at: datetime | None
+    # The branch the pull request merges into (B149); None for a status read before B149.
+    base_branch: str | None = None
+    # GitHub merges the pull request by itself once its required checks pass (B149).
+    auto_merge: AutoMerge | None = None
     # When Nest last saw something change, and when it last asked GitHub.
     changed_at: datetime
     updated_at: datetime
@@ -130,6 +141,63 @@ class MergeRequest(BaseModel):
     method: MergeMethod = "squash"
     # Deletes the branch on GitHub; only when the user ticks it at the merge (B96).
     delete_branch: bool = False
+
+
+class AutoMergeRequest(BaseModel):
+    """Merge the pull request once its checks pass, or stop waiting (B149)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    method: MergeMethod = "squash"
+    delete_branch: bool = False
+
+
+class Restack(BaseModel):
+    """A stacked chat's branch to move onto a new base after the branch under it changed
+    (B149): its own commits are those after `upstream`.
+    """
+
+    upstream: str
+    # The commit to rebase onto: a local branch, or for the default branch after a fetch,
+    # origin's copy of it.
+    onto: str
+    # A branch of origin to fetch first; None when `onto` is local.
+    fetch: str | None = None
+    # The pull request's base once the branch is pushed.
+    base: str
+    # The new head after Nest rebased the branch on the Mac, waiting for the push.
+    rebased: str | None = None
+    # Why the rebase did not happen by itself, shown with the click that does it.
+    error: str | None = None
+
+
+class Stack(BaseModel):
+    """A chat whose branch starts from another chat's branch (B149). Its pull request merges
+    into that branch while the other one's pull request is open.
+    """
+
+    # The chat under this one; None once its work reached the default branch.
+    parent: str | None
+    # The branch the pull request merges into, while `parent` is set.
+    parent_branch: str | None
+    restack: Restack | None = None
+
+
+type GuideState = Literal["writing", "ready", "failed"]
+
+
+class PrGuide(BaseModel):
+    """A review guide an agent wrote for the pull request, saved as an artifact (B149)."""
+
+    state: GuideState
+    # The pull request's head commit the guide was written for.
+    head_sha: str | None = None
+    artifact_id: str | None = None
+    error: str | None = None
+    # The comment on the pull request, once the user posted the guide there.
+    comment_url: str | None = None
+    written_at: datetime | None = None
 
 
 class PrListItem(BaseModel):

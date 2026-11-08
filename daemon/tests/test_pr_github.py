@@ -30,6 +30,8 @@ def test_an_open_pull_request_without_checks() -> None:
         "review_decision": None,
         "head_sha": "abc123",
         "created_at": datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        "base_branch": None,
+        "auto_merge": None,
         "changed_at": NOW,
         "updated_at": NOW,
     }
@@ -188,6 +190,8 @@ async def test_fetch_status_asks_gh_for_the_fields(tmp_path: Path) -> None:
         "mergeStateStatus",
         "statusCheckRollup",
         "reviewDecision",
+        "baseRefName",
+        "autoMergeRequest",
         "headRefOid",
         "url",
         "number",
@@ -198,3 +202,17 @@ async def test_fetch_status_asks_gh_for_the_fields(tmp_path: Path) -> None:
 
 def test_repo_of_a_pull_request_url() -> None:
     assert repo_of("https://github.com/owner/name/pull/7") == "owner/name"
+
+
+def test_auto_merge_and_the_base_branch_are_read() -> None:
+    auto: dict[str, object] = {
+        "mergeMethod": "REBASE",
+        "enabledAt": "2026-01-01T12:00:00Z",
+        "enabledBy": {},
+    }
+
+    status = parse_status(pr_json(baseRefName="feature", autoMergeRequest=auto), NOW)
+
+    assert status.base_branch == "feature"
+    assert status.auto_merge is not None
+    assert status.auto_merge.method == "rebase"
