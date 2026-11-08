@@ -161,7 +161,7 @@ class ReviewActions:
                 # Merging closes the issue the chat started from (B101).
                 body = closing_body(body, session.issue.number)
             pull_request = PullRequest(
-                base=self._repos.get(session.repo).default_branch or FALLBACK_BRANCH,
+                base=await self._pr_base(session),
                 title=request.pr_title or session.title,
                 body=body,
                 summary=await self._pr_summary(session, diff),
@@ -173,6 +173,29 @@ class ReviewActions:
             push=request.push,
             pull_request=pull_request,
         )
+
+    async def _pr_base(self, session: Session) -> str:
+        """The default branch, or for a stacked chat the branch under it while that one's
+        pull request is open (B149).
+        """
+        default = self._repos.get(session.repo).default_branch or FALLBACK_BRANCH
+        stack = session.stack
+        if stack is None or stack.parent is None or stack.parent_branch is None:
+            return default
+        if stack.restack is not None:
+            msg = "This chat's branch waits to move onto its new base: rebase and push it first."
+            raise ConflictError(msg)
+        parent = await self._sessions.get(stack.parent)
+        if parent.pr_url is None:
+            msg = (
+                f"This chat starts from the branch of “{parent.title}”: open that chat's pull "
+                "request first."
+            )
+            raise ConflictError(msg)
+        if parent.pr is not None and parent.pr.state == "closed":
+            msg = f"The pull request of “{parent.title}”, which this chat starts from, was closed."
+            raise ConflictError(msg)
+        return stack.parent_branch
 
     async def _require_committable(self, cwd: Path, diff: SessionDiff, plan: PublishPlan) -> None:
         """Refuse a nested repository or index flags among the files to commit."""

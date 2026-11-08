@@ -123,6 +123,28 @@ class GitPublisher:
         await self._bus.publish(types.PR_OPENED, {"url": url}, session.id)
         return session
 
+    async def push_rebased(
+        self, session: Session, sha: str, lease: str, remote_url: str | None
+    ) -> str:
+        """Push a stacked chat's branch after Nest rebased it (B149): a force push of `sha`
+        to the session's branch, only while GitHub still has `lease` there, with the same
+        checks as any push. Returns the branch.
+        """
+        cwd = require_cwd(session)
+        await self.require_safe_config(session)
+        await self.require_remote(session, remote_url)
+        branch = await self._branch(session, cwd)
+        push = [
+            *("push", "--no-verify", "--recurse-submodules=no", "--no-follow-tags"),
+            f"--force-with-lease=refs/heads/{branch}:{lease}",
+            *(REMOTE, f"{sha}:refs/heads/{branch}"),
+        ]
+        await self._step(session, "push", _git(*push), cwd)
+        await self._bus.publish(
+            types.GIT_PUSHED, {"remote": REMOTE, "branch": branch, "rebased": True}, session.id
+        )
+        return branch
+
     async def require_safe_config(self, session: Session) -> None:
         """Refuse while the repository's own config would run a program (D050)."""
         cwd = require_cwd(session)
