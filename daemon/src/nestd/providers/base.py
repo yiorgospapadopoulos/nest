@@ -567,8 +567,13 @@ class ForkPoint:
     """Where a conversation is cut to before one of its user messages (B59)."""
 
     # The engine's last transcript entry to keep; None when the message began the
-    # conversation, so nothing is kept.
+    # conversation, so nothing is kept. `HISTORY_CUT` for an engine that cannot cut it.
     keep_through: str | None
+
+
+# The cut of an engine that cannot cut its own conversation (ACP, D174): a new engine
+# session whose first message carries the chat's kept part (`sessions.history`).
+HISTORY_CUT = "nest:history"
 
 
 class ApprovalHandler(Protocol):

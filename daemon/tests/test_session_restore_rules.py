@@ -28,6 +28,9 @@ from tests.fake_provider import (
 from tests.fakes import FakeClock
 from tests.session_support import Env
 
+# Claude Code's own file checkpoints, as in a folder without git (B145).
+pytestmark = pytest.mark.usefixtures("engine_checkpoints_only")
+
 
 @pytest.fixture
 async def env(tmp_path: Path, db: Database, clock: FakeClock) -> AsyncIterator[Env]:
@@ -237,8 +240,8 @@ async def test_a_preview_never_starts_claude_code(env: Env) -> None:
 
     assert preview == RewindReply(
         can_rewind=False,
-        error="Claude Code is not running for this chat, so the files to restore cannot be "
-        "listed. Send a message to start it again, then try again.",
+        error="Claude Code is not running for this chat, and its folder has no git, so the "
+        "files to restore cannot be listed. Send a message to start it again, then try again.",
     )
     assert len(env.provider.runs) == 1
     assert not env.manager.busy(session_id)

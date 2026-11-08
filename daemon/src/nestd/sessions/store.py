@@ -303,8 +303,8 @@ class SessionStore:
         """
         async with self._db.transaction() as tx:
             for table in (
-                *("approvals", "attachments", "checkpoints", "events", "queued_messages"),
-                "earlier_provider_sessions",
+                *("approvals", "attachments", "checkpoints", "file_snapshots", "events"),
+                *("queued_messages", "earlier_provider_sessions"),
             ):
                 await tx.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))  # noqa: S608
             await tx.execute(
@@ -330,14 +330,34 @@ class SessionStore:
         )
         return None if row is None else row["checkpoint_id"]
 
+    async def save_snapshot(
+        self, session_id: str, event_id: int, commit: str, folder: Path
+    ) -> None:
+        """The git snapshot of the files before the user message of event `event_id`."""
+        await self._db.execute(
+            "INSERT OR REPLACE INTO file_snapshots (event_id, session_id, commit_sha, folder)"
+            " VALUES (?, ?, ?, ?)",
+            (event_id, session_id, commit, str(folder)),
+        )
+
+    async def snapshot(self, session_id: str, event_id: int) -> tuple[str, Path] | None:
+        """The snapshot commit before the session's user message `event_id`, and the folder
+        it was taken in; None when there is none.
+        """
+        row = await self._db.fetch_one(
+            "SELECT commit_sha, folder FROM file_snapshots WHERE session_id = ? AND event_id = ?",
+            (session_id, event_id),
+        )
+        return None if row is None else (row["commit_sha"], Path(row["folder"]))
+
     async def drop_events(self, session_id: str, first: int, last: int) -> None:
         """Forget the session's events `first` to `last`, with their checkpoints and search
         entries (a rewound conversation, B59).
         """
         async with self._db.transaction() as tx:
-            for table, column in (("checkpoints", "event_id"), ("search_index", "event_id")):
+            for table in ("checkpoints", "file_snapshots", "search_index"):
                 await tx.execute(
-                    f"DELETE FROM {table} WHERE session_id = ? AND {column} BETWEEN ? AND ?",  # noqa: S608
+                    f"DELETE FROM {table} WHERE session_id = ? AND event_id BETWEEN ? AND ?",  # noqa: S608
                     (session_id, first, last),
                 )
             await tx.execute(
