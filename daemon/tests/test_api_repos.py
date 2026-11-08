@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from nestd.attachments.store import MAX_ATTACHMENT_BYTES
 from nestd.events import types
 from tests.api_client import Api, running_api
 from tests.fake_provider import reply
@@ -455,7 +454,8 @@ async def test_upload_attachments(api: Api) -> None:
 
 
 async def test_upload_limits_and_validation(api: Api) -> None:
-    oversized = b"\0" * (MAX_ATTACHMENT_BYTES + 1)
+    api.ctx.attachments.max_bytes = 4
+    oversized = b"\0" * 5
 
     too_big = await api.http.post("/api/attachments", files={"file": ("a.bin", oversized)})
     missing = await api.http.post("/api/attachments", data={"other": "x"})
