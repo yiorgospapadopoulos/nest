@@ -8,6 +8,7 @@ import pytest
 from pydantic import TypeAdapter
 
 from nestd.events import types
+from nestd.providers.base import FileInput
 from nestd.sessions.errors import SessionBusyError
 from nestd.sessions.live import LiveSession
 from nestd.sessions.models import QueuedMessage, SessionState
@@ -97,7 +98,7 @@ async def test_messages_sent_during_a_turn_run_next_in_order_without_going_idle(
     inputs = [i for run in env.provider.runs for i in run.inputs]
     assert [i.text for i in inputs] == ["first", "second", "third"]
     # The attachment's folder needs a new run, which resumes the conversation.
-    assert inputs[1].file_paths == (doc.path,)
+    assert inputs[1].files == (FileInput(doc.path, "text/plain"),)
     assert env.provider.runs[1].spec.resume_id == "sdk-1"
     assert await env.manager.queued(created.id) == []
 

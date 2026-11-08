@@ -48,6 +48,7 @@ from nestd.providers.base import (
     RewindResult,
     SessionSpec,
     UserInput,
+    with_files,
 )
 from nestd.providers.claude_tools import NEST_SERVER, TOOL_SERVER
 from nestd.providers.codex_agents import CodexAgents, Subthread
@@ -629,10 +630,7 @@ def _thread_config(spec: SessionSpec, block_env: Mapping[str, str]) -> JsonObjec
 
 
 def _input(user_input: UserInput) -> list[JsonValue]:
-    message = user_input.text
-    if user_input.file_paths:
-        listing = "\n".join(f"- {path}" for path in user_input.file_paths)
-        message = f"{message}\n\nAttached files:\n{listing}"
+    message = with_files(user_input.text, user_input.files)
     parts: list[JsonValue] = [
         {"type": "image", "url": f"data:{image.media_type};base64,{image.data}"}
         for image in user_input.images

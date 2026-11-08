@@ -10,6 +10,7 @@ from nestd.events import types
 from nestd.providers.base import AgentTask, MessageBlock
 from nestd.review import hold
 from tests.api_client import Api, running_api
+from tests.async_support import until
 from tests.fake_provider import Turn, edit, messages, reply, tasks
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo, with_origin
@@ -56,6 +57,10 @@ async def notices(api: Api, session_id: str) -> list[str]:
 async def reviews(api: Api, session_id: str) -> list[str]:
     listed = (await api.http.get("/api/approvals", params={"status": "pending"})).json()
     return [a["id"] for a in listed if a["session_id"] == session_id and a["kind"] == "review"]
+
+
+async def _no_reviews(api: Api, session_id: str) -> bool:
+    return await reviews(api, session_id) == []
 
 
 async def say(api: Api, session_id: str, text: str) -> None:
@@ -124,7 +129,8 @@ async def test_a_pending_review_goes_while_a_helper_works_and_comes_back(api: Ap
 
     await say(api, session_id, "check it")
     await reach(api, session_id, "idle", results=2)
-    assert await reviews(api, session_id) == []
+    # The review goes in the turn's end reaction, which runs after the idle state is stored.
+    await until(lambda: _no_reviews(api, session_id))
 
     api.provider.runs[0].emit(tasks(STOPPED))
 

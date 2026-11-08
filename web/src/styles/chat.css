@@ -409,6 +409,15 @@
 }
 /* A known pixie or team mention (B40): its colour pulled halfway toward the bubble's text
    colour, so it reads on an accent bubble and on a neutral one, light or dark. */
+/* Selected text in your own message: the system's highlight is near the accent bubble's own
+   colour, so it takes the bubble's text colour instead and shows on any bubble (B144). */
+.m-u::selection,
+.m-u *::selection,
+.dc-ubub::selection,
+.dc-ubub *::selection {
+  background: color-mix(in srgb, var(--on-bubble) 32%, transparent);
+  color: var(--on-bubble);
+}
 .m-u .mention {
   font-weight: 600;
   color: color-mix(in srgb, var(--px) 50%, var(--on-bubble));
@@ -1822,46 +1831,66 @@
   font-size: 0.8235rem;
   font-weight: 650;
 }
-.md ul {
-  list-style: none;
-  padding: 0;
+.md ul,
+.md ol {
+  margin-left: 0;
+  padding-left: 19px;
   display: grid;
   gap: 3px;
 }
-.md li {
-  display: flex;
-  gap: 7px;
-}
-.md li.d1 {
-  padding-left: 16px;
-}
-.md li.d2 {
-  padding-left: 32px;
-}
-.md li.d3 {
-  padding-left: 48px;
-}
-.md .mk {
-  flex: none;
-  min-width: 12px;
+.md li::marker {
   color: var(--t3);
   font-variant-numeric: tabular-nums;
 }
-/* Holds the marker's width, so what sits under an item lines up with its text. */
-.md .mk.sp {
-  visibility: hidden;
+.md li > ul,
+.md li > ol {
+  margin-top: 3px;
 }
-.md-in {
-  flex: 1;
-  min-width: 0;
-}
-.md-in > *,
+.md li > p,
+.md li > pre,
 .md blockquote > * {
   margin: 0 0 8px;
 }
-.md-in > :last-child,
+.md li > :last-child,
 .md blockquote > :last-child {
   margin-bottom: 0;
+}
+.md ul.contains-task-list {
+  padding-left: 0;
+}
+.md li.task-list-item {
+  list-style: none;
+}
+.md li.task-list-item > .md-box {
+  display: inline-block;
+  margin: 0 7px 0 0;
+  vertical-align: -2px;
+}
+.md-img {
+  display: inline-block;
+  max-width: 100%;
+  max-height: 480px;
+  vertical-align: top;
+  border-radius: var(--radius-mac-card);
+}
+.md-imgask {
+  padding: 4px 10px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--t2);
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.md-img.wait {
+  width: 120px;
+  height: 80px;
+  background: var(--soft);
+}
+.md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .md-box {
   flex: none;
@@ -1949,6 +1978,33 @@ html.desk .md td {
   padding: 8px 10px;
   overflow: auto;
   white-space: pre;
+}
+/* A code block with its copy button in the corner (B144). */
+.md .md-code {
+  position: relative;
+}
+.md .md-code > pre {
+  margin: 0;
+  padding-right: 56px;
+}
+.md-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--soft);
+  color: var(--t3);
+  font: inherit;
+  font-size: 0.6471rem;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.md-copy:hover,
+.md-copy:focus-visible {
+  color: var(--t1);
 }
 .md hr {
   border: 0;
@@ -2997,4 +3053,69 @@ summary.m-decl {
 .m-decb p {
   margin: 0;
   color: var(--t3);
+}
+
+/* The file viewer (B144): a sheet over the window on the desktop, full screen on the phone. */
+.fv-meta {
+  color: var(--t3);
+  font-size: 0.7059rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+p.fv-meta {
+  margin: 0 0 8px;
+}
+.fv-empty {
+  margin: 48px 0;
+  color: var(--t3);
+  text-align: center;
+}
+.fv-text.md pre {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 0.7059rem;
+  line-height: 1.6;
+  white-space: pre;
+  border-radius: var(--radius-mac-card);
+}
+.fv-ln {
+  display: block;
+  padding-right: 12px;
+}
+.fv-ln.fv-on {
+  background: color-mix(in srgb, var(--link) 14%, transparent);
+}
+.fv-no {
+  display: inline-block;
+  min-width: 3.5em;
+  padding-right: 12px;
+  color: var(--t3);
+  text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.fv-note {
+  margin: 8px 0 0;
+  color: var(--t3);
+  font-size: 0.7059rem;
+}
+.fv-pdf {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+.fv-page {
+  display: block;
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+.fv-video,
+.fv-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 160px);
+  margin: 0 auto;
+  border-radius: var(--radius-mac-card);
 }

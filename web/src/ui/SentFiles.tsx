@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { sizeText } from "../format.ts";
 import { useStore } from "../store/context.ts";
 import type { SentFile } from "../transcript/build.ts";
+import type { FileSource } from "./useFileView.tsx";
 import { isImage, typeTag, useSentImage } from "./sentFile.ts";
 
 export interface ImageViewer {
@@ -12,17 +13,22 @@ export interface ImageViewer {
   onClose: () => void;
 }
 
+export interface FileViewer {
+  source: FileSource;
+  onClose: () => void;
+}
+
 interface Props {
   files: SentFile[];
-  // The client's own full-size view, and its way of handing a file to the user.
+  // The client's own full-size view of an image, and its file viewer for the rest.
   Viewer: ComponentType<ImageViewer>;
-  save: (filename: string, blob: Blob) => void;
+  FileViewer: ComponentType<FileViewer>;
   // The message's event, when no bubble carries it.
   ev?: string | undefined;
 }
 
 /** A message's images, then its other files; the images keep a fixed box, as no size is stored. */
-export function SentFiles({ files, Viewer, save, ev }: Props) {
+export function SentFiles({ files, Viewer, FileViewer, ev }: Props) {
   const images = files.filter(isImage);
   const others = files.filter((file) => !isImage(file));
   return (
@@ -35,7 +41,7 @@ export function SentFiles({ files, Viewer, save, ev }: Props) {
         </div>
       )}
       {others.map((file, index) => (
-        <FileRow key={`${String(file.id)}.${String(index)}`} file={file} save={save} />
+        <FileRow key={`${String(file.id)}.${String(index)}`} file={file} FileViewer={FileViewer} />
       ))}
     </div>
   );
@@ -72,11 +78,11 @@ function SentImage({ file, Viewer }: { file: SentFile; Viewer: Props["Viewer"] }
   );
 }
 
-function FileRow({ file, save }: { file: SentFile; save: Props["save"] }) {
+function FileRow({ file, FileViewer }: { file: SentFile; FileViewer: Props["FileViewer"] }) {
   const { actions } = useStore();
   const { id } = file;
   const [gone, setGone] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [source, setSource] = useState<FileSource | null>(null);
   useEffect(() => {
     if (id === null) return;
     let live = true;
@@ -88,16 +94,8 @@ function FileRow({ file, save }: { file: SentFile; save: Props["save"] }) {
     };
   }, [actions, id]);
 
-  const open = async (from: string) => {
-    setFailed(false);
-    const found = await actions.sentFile(from);
-    if (found === "gone") setGone(true);
-    else if (found === null) setFailed(true);
-    else save(file.filename, found);
-  };
-
   const size = file.size === null ? null : sizeText(file.size);
-  const note = gone ? "Deleted" : failed ? "Could not open" : size;
+  const note = gone ? "Deleted" : size;
   const content = (
     <>
       <span className="sf-tile" aria-hidden="true">
@@ -110,8 +108,23 @@ function FileRow({ file, save }: { file: SentFile; save: Props["save"] }) {
   if (id === null || gone)
     return <div className={gone ? "sf-file gone" : "sf-file"}>{content}</div>;
   return (
-    <button className="sf-file" onClick={() => void open(id)}>
-      {content}
-    </button>
+    <>
+      <button
+        className="sf-file"
+        onClick={() => {
+          setSource({ kind: "sent", id, name: file.filename, mediaType: file.mediaType });
+        }}
+      >
+        {content}
+      </button>
+      {source !== null && (
+        <FileViewer
+          source={source}
+          onClose={() => {
+            setSource(null);
+          }}
+        />
+      )}
+    </>
   );
 }

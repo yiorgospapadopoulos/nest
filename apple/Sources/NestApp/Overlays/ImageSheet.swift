@@ -3,7 +3,8 @@ import NestKit
 import SwiftUI
 
 /// A tool result's or a sent message's image at full size, scaled down to fit the window
-/// (B59).
+/// (B59). It reads the image itself: the chats are web panes, which keep their own copies
+/// (B144).
 struct ImageSheet: View {
     let attachment: String
     @Environment(Shell.self) private var shell
@@ -17,12 +18,19 @@ struct ImageSheet: View {
                     .frame(maxWidth: picture.size.width, maxHeight: picture.size.height)
                     .padding(.vertical, 14)
                     .accessibilityLabel("Image")
-            } else {
-                Text("Image not available")
+            } else if shell.images.deleted(attachment) || shell.images.failed(attachment) {
+                Text(shell.images.deleted(attachment) ? "Image deleted" : "Image not available")
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t3)
                     .padding(.vertical, 14)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.vertical, 14)
             }
+        }
+        .task(id: attachment) {
+            await shell.images.load(attachment)
         }
     }
 }

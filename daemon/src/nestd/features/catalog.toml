@@ -172,19 +172,21 @@ block = "B09"
 id = "rich-messages"
 group = "chats"
 name = "Messages that read well"
-text = "Tables, quotes, task lists and coloured code show as they should, with no markdown marks left on screen. On the desktop apps a file named in a message opens in your text editor."
+text = "Tables, task lists, coloured code, pictures and math show as they should, with no markdown marks left on screen. Every code block has a copy button, and a file named in a message opens in the file viewer."
 where = "A chat"
 added = 2026-11-04
 block = "B118"
+changed = 2026-11-08
 
 [[features]]
 id = "sent-attachments"
 group = "chats"
 name = "Sent pictures and files stay visible"
-text = "Pictures you send show in your message and open larger on a click, and files show as rows you can save, also in queued messages and old chats."
+text = "Drag files from any app onto a chat to attach them. Pictures you send show in your message and open larger on a click. PDFs, text files and videos up to 500 MB open in a viewer inside Nest, also in queued messages and old chats."
 where = "A chat"
 added = 2026-11-04
 block = "B118"
+changed = 2026-11-08
 
 [[features]]
 id = "general-chats"

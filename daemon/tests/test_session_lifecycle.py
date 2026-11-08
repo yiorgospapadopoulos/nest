@@ -7,7 +7,7 @@ import pytest
 from nestd.config.models import WorktreeConfig
 from nestd.errors import InvalidInputError
 from nestd.events import types
-from nestd.providers.base import ImageInput, ModelOption, UserInput
+from nestd.providers.base import FileInput, ImageInput, ModelOption, UserInput
 from nestd.sessions.errors import (
     NoWorkspaceError,
     SessionClosedError,
@@ -359,8 +359,8 @@ async def test_attachments_reach_the_agent_and_reopen_the_run_for_new_dirs(env: 
     assert second.spec.resume_id == "sdk-1"
     assert second.spec.extra_dirs == (doc.path.parent,)
     assert second.inputs == [
-        UserInput(text="read this", file_paths=(doc.path,)),
-        UserInput(text="again", file_paths=(doc.path,)),
+        UserInput(text="read this", files=(FileInput(doc.path, "application/pdf"),)),
+        UserInput(text="again", files=(FileInput(doc.path, "application/pdf"),)),
     ]
     messages = [
         e.payload

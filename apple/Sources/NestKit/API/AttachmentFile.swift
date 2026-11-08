@@ -5,29 +5,29 @@ import UniformTypeIdentifiers
 /// refuse before reading it.
 public enum AttachmentFile {
     /// The daemon's limit (`MAX_ATTACHMENT_BYTES`).
-    public static let maximumSize = 20 * 1024 * 1024
+    public static let maximumSize = 500 * 1024 * 1024
 
     /// A link is read as the file it points to. Only regular files are read, and never
     /// more than one byte past the limit, whatever size they claim.
     @concurrent
-    public static func read(_ url: URL) async throws -> Data {
+    public static func read(_ url: URL, limit: Int = maximumSize) async throws -> Data {
         let file = url.resolvingSymlinksInPath()
         let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard values.isRegularFile == true else { throw AttachmentFileError.notAFile }
-        if let size = values.fileSize, size > maximumSize {
+        if let size = values.fileSize, size > limit {
             throw AttachmentFileError.tooLarge
         }
-        return try readCapped(file)
+        return try readCapped(file, limit: limit)
     }
 
     /// Reads at most one byte past the limit and refuses the file then: it may have grown
     /// since its size was checked.
-    static func readCapped(_ file: URL) throws -> Data {
+    static func readCapped(_ file: URL, limit: Int = maximumSize) throws -> Data {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
         // Nothing to read from an empty file.
-        guard let data = try handle.read(upToCount: maximumSize + 1) else { return Data() }
-        guard data.count <= maximumSize else { throw AttachmentFileError.tooLarge }
+        guard let data = try handle.read(upToCount: limit + 1) else { return Data() }
+        guard data.count <= limit else { throw AttachmentFileError.tooLarge }
         return data
     }
 
@@ -41,8 +41,10 @@ public enum AttachmentFile {
 
     /// Prepares pasted or dropped data as `prepare(_:)` does a file, within the same limit.
     @concurrent
-    public static func prepare(data: Data, filename: String) async throws -> PreparedAttachment {
-        guard data.count <= maximumSize else { throw AttachmentFileError.tooLarge }
+    public static func prepare(data: Data, filename: String, limit: Int = maximumSize)
+        async throws -> PreparedAttachment
+    {
+        guard data.count <= limit else { throw AttachmentFileError.tooLarge }
         return prepared(data, filename: filename)
     }
 
@@ -77,7 +79,7 @@ public enum AttachmentFileError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         // The daemon's own words for it.
-        case .tooLarge: "attachments larger than 20 MB are not accepted"
+        case .tooLarge: "attachments larger than 500 MB are not accepted"
         case .notAFile: "only files can be attached, not folders or packages"
         }
     }

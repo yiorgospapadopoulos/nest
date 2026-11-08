@@ -108,7 +108,7 @@ export function ChatPane({ id, chrome, focus }: ChatProps) {
     );
   }
   return (
-    <FileLinks folder={workRoot(session)}>
+    <FileLinks folder={workRoot(session)} session={session.id}>
       <SessionBody session={session} chrome={chrome} focus={focus} />
     </FileLinks>
   );

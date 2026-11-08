@@ -317,7 +317,7 @@ struct Composer: View {
                     : focused || dropTargeted ? accent.focus : Palette.divider, lineWidth: 1)
         )
         .onDrop(of: pixie == nil ? Self.dropTypes : [], isTargeted: $dropTargeted) { providers in
-            loadFiles(providers)
+            Self.attach(providers, to: chat, shell: shell)
             return true
         }
     }
@@ -335,7 +335,9 @@ struct Composer: View {
     /// Files, and image data dragged from a browser or an app without a file (B59).
     static let dropTypes: [UTType] = [.fileURL, .image]
 
-    private func loadFiles(_ providers: [NSItemProvider]) {
+    /// Attaches what was dropped: files as they are, and image data (B59). The chat pane
+    /// uses it too, so a file dropped anywhere on a chat is attached (B144).
+    static func attach(_ providers: [NSItemProvider], to chat: String, shell: Shell) {
         for provider in providers {
             // Called on a background queue: nonisolated, then back to the main actor.
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
@@ -416,6 +418,7 @@ private struct MessageField: View {
             }
             .overlay {
                 TextEditor(text: $draft.text, selection: $draft.selection)
+                    .background(TextDropsOnly())
                     .font(.ui(style.size))
                     .lineSpacing(style.lineSpacing)
                     .scrollContentBackground(.hidden)
@@ -1133,5 +1136,41 @@ private struct InputModeLabel: View {
             .font(.ui(TypeSize.meta, .medium))
             .foregroundStyle(bash ? StatusTone.waiting.color : Palette.t3)
             .padding(.horizontal, 5)
+    }
+}
+
+/// Keeps the message field's text view to dropped text: on its own it takes a dropped file
+/// as its path, before the composer's drop can attach it (B144). Placed behind the editor,
+/// it finds the text view beside it once it is in a window.
+private struct TextDropsOnly: NSViewRepresentable {
+    func makeNSView(context: Context) -> Finder { Finder() }
+    func updateNSView(_ view: Finder, context: Context) { view.apply() }
+
+    final class Finder: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply()
+        }
+
+        func apply() {
+            var level: NSView? = superview
+            for _ in 0..<4 {
+                guard let view = level else { return }
+                if let text = Self.textView(in: view) {
+                    text.unregisterDraggedTypes()
+                    text.registerForDraggedTypes([.string])
+                    return
+                }
+                level = view.superview
+            }
+        }
+
+        private static func textView(in view: NSView) -> NSTextView? {
+            if let text = view as? NSTextView, text.isEditable { return text }
+            for child in view.subviews {
+                if let found = textView(in: child) { return found }
+            }
+            return nil
+        }
     }
 }

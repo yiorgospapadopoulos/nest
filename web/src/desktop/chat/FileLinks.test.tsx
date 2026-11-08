@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useStore } from "../../store/context.ts";
 import { Markdown } from "../../ui/Markdown.tsx";
@@ -15,11 +15,16 @@ function Toasts() {
   return <p>{state.toast?.text}</p>;
 }
 
-function show(bridge: Bridge, folder: string | null) {
+function show(
+  bridge: Bridge,
+  folder: string | null,
+  session: string | null = null,
+  api = fakeApi(),
+) {
   render(
-    <StoreProvider api={fakeApi()} connect={socketFactory().connect} storage={memoryStorage}>
+    <StoreProvider api={api} connect={socketFactory().connect} storage={memoryStorage}>
       <BridgeContext value={bridge}>
-        <FileLinks folder={folder}>
+        <FileLinks folder={folder} session={session}>
           <Markdown text="See `web/src/App.tsx:42`." />
         </FileLinks>
         <Toasts />
@@ -53,5 +58,20 @@ describe("files named in a chat", () => {
     await act(() => Promise.resolve());
     expect(screen.getAllByText("web/src/App.tsx:42")).toHaveLength(3);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("open in the viewer for a chat the daemon knows, with the editor one click away", async () => {
+    const open = vi.fn(() => Promise.resolve());
+    const api = fakeApi();
+    api.namedFile.mockResolvedValue(new Blob(["const a = 1;\n"]));
+    show(appBridge("http://127.0.0.1:8765", open), "/home/me/project", "s1", api);
+
+    (await screen.findByRole("link", { name: "web/src/App.tsx:42" })).click();
+
+    const sheet = await screen.findByRole("dialog", { name: "App.tsx" });
+    expect(api.namedFile).toHaveBeenCalledWith("s1", "web/src/App.tsx");
+    expect(open).not.toHaveBeenCalled();
+    within(sheet).getByRole("button", { name: "Open in editor" }).click();
+    expect(open).toHaveBeenCalledWith("web/src/App.tsx", "/home/me/project");
   });
 });

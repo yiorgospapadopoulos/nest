@@ -35,6 +35,7 @@ from nestd.providers.base import (
     CommandCatalog,
     ContextUsage,
     EngineDetails,
+    FileInput,
     ImageInput,
     McpServer,
     ModelOption,
@@ -552,12 +553,16 @@ async def test_denials_carry_a_message_to_the_agent(
     assert result == PermissionResultDeny(message=message)
 
 
-async def test_send_submits_one_user_message_with_images_and_file_paths(tmp_path: Path) -> None:
+async def test_send_submits_one_user_message_with_images_and_files(tmp_path: Path) -> None:
     run, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "default"))
     user_input = UserInput(
         text="Look at these",
         images=(ImageInput("image/png", "aGVsbG8="),),
-        file_paths=(Path("/data/a/notes.pdf"), Path("/data/b/log.txt")),
+        files=(
+            FileInput(Path("/data/a/notes.pdf"), "application/pdf"),
+            FileInput(Path("/data/b/log.txt"), "text/plain"),
+            FileInput(Path("/data/c/demo.mov"), "video/quicktime"),
+        ),
     )
 
     await run.send(user_input)
@@ -576,7 +581,7 @@ async def test_send_submits_one_user_message_with_images_and_file_paths(tmp_path
                     {
                         "type": "text",
                         "text": "Look at these\n\nAttached files:\n- /data/a/notes.pdf\n"
-                        "- /data/b/log.txt",
+                        "- /data/b/log.txt\n- /data/c/demo.mov (a video, which you cannot watch)",
                     },
                 ],
             },

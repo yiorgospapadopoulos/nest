@@ -62,12 +62,19 @@ import Testing
             WebPaneBridge.isDaemon(scheme: "https", host: "mac.tail.ts.net", port: 0, base: remote))
     }
 
-    @Test func rulesBlockAllButTheDaemon() throws {
-        func filters(_ url: URL) throws -> [(String, String)] {
+    @Test func rulesBlockAllButTheDaemonAndWebPictures() throws {
+        func rules(_ url: URL) throws -> [[String: [String: Any]]] {
             let data = Data(WebPaneBridge.contentRules(base: url).utf8)
-            let rules = try #require(
-                JSONSerialization.jsonObject(with: data) as? [[String: [String: String]]])
-            return rules.map { ($0["trigger"]?["url-filter"] ?? "", $0["action"]?["type"] ?? "") }
+            return try #require(
+                JSONSerialization.jsonObject(with: data) as? [[String: [String: Any]]])
+        }
+        func filters(_ url: URL) throws -> [(String, String)] {
+            try rules(url).map {
+                (
+                    $0["trigger"]?["url-filter"] as? String ?? "",
+                    $0["action"]?["type"] as? String ?? ""
+                )
+            }
         }
         let local = try filters(base)
         #expect(local.first?.0 == ".*")
@@ -75,7 +82,11 @@ import Testing
         #expect(
             local.dropFirst().map(\.0) == [
                 #"^http://127\.0\.0\.1:8765/"#, #"^ws://127\.0\.0\.1:8765/"#, "^blob:", "^data:",
+                "^https://",
             ])
+        // Only pictures come from the web; its scripts, frames and requests stay blocked.
+        let web = try #require(try rules(base).last?["trigger"])
+        #expect(web["resource-type"] as? [String] == ["image"])
         let remote = try filters(URL(string: "https://mac.tail.ts.net/")!)
         #expect(remote.dropFirst().first?.0 == #"^https://mac\.tail\.ts\.net/"#)
         #expect(remote.dropFirst(2).first?.0 == #"^wss://mac\.tail\.ts\.net/"#)

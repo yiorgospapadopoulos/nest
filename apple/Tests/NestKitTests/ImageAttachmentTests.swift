@@ -138,9 +138,9 @@ private func size(of data: Data) throws -> (width: Int, height: Int, type: Strin
         #expect(prepared.filename == "Pasted image.png")
         #expect(prepared.thumbnail != nil)
 
-        let huge = Data(count: AttachmentFile.maximumSize + 1)
+        let huge = Data(count: 9)
         await #expect(throws: AttachmentFileError.tooLarge) {
-            _ = try await AttachmentFile.prepare(data: huge, filename: "x.png")
+            _ = try await AttachmentFile.prepare(data: huge, filename: "x.png", limit: 8)
         }
         let text = try await AttachmentFile.prepare(data: Data("a".utf8), filename: "a")
         #expect(text.mediaType == "application/octet-stream")

@@ -4,7 +4,7 @@ import { useStore } from "../../store/context.ts";
 import type { ResultImage, SentFile } from "../../transcript/build.ts";
 import { SentFiles, type ImageViewer } from "../../ui/SentFiles.tsx";
 import { Sheet } from "../../ui/Sheet.tsx";
-import { download } from "../artifacts/files.ts";
+import { FileSheet } from "./FileSheet.tsx";
 
 // Each image's object URL, or null when it could not be had, fetched once per page: the
 // API wants the device's credentials, so it is read as data rather than linked.
@@ -88,5 +88,5 @@ function FullImage({ url, alt, onClose }: ImageViewer) {
 
 /** A message's sent images and files, on the phone. */
 export function Sent({ files, ev }: { files: SentFile[]; ev?: string | undefined }) {
-  return <SentFiles files={files} Viewer={FullImage} save={download} ev={ev} />;
+  return <SentFiles files={files} Viewer={FullImage} FileViewer={FileSheet} ev={ev} />;
 }

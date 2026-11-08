@@ -7,6 +7,7 @@ import pytest
 
 from nestd.config.models import PermissionMode
 from nestd.providers.base import (
+    FileInput,
     ForkPoint,
     ImageInput,
     McpServer,
@@ -297,7 +298,7 @@ async def test_a_message_starts_a_turn_with_the_runs_settings(tmp_path: Path) ->
         UserInput(
             "Look at this",
             images=(ImageInput("image/png", "QUJD"),),
-            file_paths=(tmp_path / "att" / "notes.txt",),
+            files=(FileInput(tmp_path / "att" / "notes.txt", "text/plain"),),
         )
     )
     await until(lambda: any(kind == "result" for kind, _ in sink.calls))

@@ -41,6 +41,12 @@ struct PaneView: View {
                     Composer(chat: chat)
                 }
             }
+            // A file dropped anywhere on the chat is attached to its message (B144).
+            .onDrop(of: shell.isClaudeChatPane(chat) ? [] : Composer.dropTypes, isTargeted: nil) {
+                providers in
+                Composer.attach(providers, to: chat, shell: shell)
+                return true
+            }
             .modifier(PaneBodyDim())
         }
         .modifier(PaneChrome(pane: chat))
