@@ -29,8 +29,15 @@ GH_COMMANDS = frozenset(
 )
 
 _ROOT_FLAGS = frozenset({"--help", "-h", "--version"})
-# `gh extension` actions that only list; the rest run or install an extension.
-_EXTENSION_READS = frozenset({"list", "ls", "search", None})
+# gh's commands that run code or an agent with the user's login, by the actions that only
+# read: the rest could push or open a pull request themselves (`agent-task create`, a
+# command run in a codespace, an extension, Copilot).
+_RUNS_CODE: dict[str, frozenset[str | None]] = {
+    "agent-task": frozenset({"list", "view", None}),
+    "codespace": frozenset({"list", "view", "logs", "ports", None}),
+    "copilot": frozenset(),
+    "extension": frozenset({"list", "ls", "search", None}),
+}
 
 
 def gh_refusal(args: Sequence[str]) -> str | None:
@@ -44,8 +51,8 @@ def gh_refusal(args: Sequence[str]) -> str | None:
     if command is not None and command not in GH_COMMANDS:
         return f"{DENY_REASON} (gh {command} is not one of gh's own commands)"
     action = next((arg for arg in args[at + 1 :] if not arg.startswith("-")), None)
-    if command == "extension" and action not in _EXTENSION_READS:
-        return f"{DENY_REASON} (gh extension {action} runs or installs code)"
+    if command in _RUNS_CODE and action not in _RUNS_CODE[command]:
+        return f"{DENY_REASON} (gh {command} can run code with the user's login)"
     return DENY_REASON if is_git_write(shlex.join(["gh", *args])) else None
 
 

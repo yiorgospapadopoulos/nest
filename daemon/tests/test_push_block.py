@@ -149,6 +149,12 @@ async def test_a_script_cannot_open_a_pull_request_through_gh(tmp_path: Path) ->
         (("prc",), False),
         (("extension", "exec", "pusher"), False),
         (("extension", "list"), True),
+        # GitHub's coding agent opens a pull request on its own.
+        (("agent-task", "create", "Fix the bug"), False),
+        (("agent-task", "list"), True),
+        (("codespace", "ssh", "-c", "x", "--", "git", "push"), False),
+        (("codespace", "list"), True),
+        (("copilot", "-p", "open a PR"), False),
         # A flag before the command could hide which command runs.
         (("--repo", "o/r", "prc"), False),
     ],
