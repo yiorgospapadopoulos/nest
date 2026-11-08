@@ -21,6 +21,7 @@ Claude's subagents, `codex_agents`), Codex asks its questions with `request_user
 skill list switches the other skills off for its thread (`skills.config`).
 """
 
+import asyncio
 import os
 import re
 from collections.abc import Mapping
@@ -61,7 +62,7 @@ from nestd.providers.codex_process import (
 from nestd.providers.codex_roles import CodexRoles, read_only, skill_overrides
 from nestd.providers.codex_rpc import CodexRpc, JsonObject
 from nestd.providers.codex_tools import ToolHost
-from nestd.providers.git_guard import NO_PUSH_ENV
+from nestd.providers.push_block import PushBlock, helpers, push_block, subagent_hook_args
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
 CODEX_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
@@ -338,7 +339,6 @@ class CodexProvider:
             )
             extra_env = {
                 **spec.env,
-                **(NO_PUSH_ENV if spec.guard_git else {}),
                 **(tools.env() if tools is not None else {}),
                 # The account's profile folder (B98) wins over the first account's home.
                 **(spec.account.env if spec.account is not None else {}),
@@ -353,6 +353,12 @@ class CodexProvider:
                 extra_env,
                 spec.cwd,
             )
+            block_env = await _push_block_env(spec, launch.env.get("PATH"))
+            launch = replace(
+                launch,
+                args=(*launch.args, *await _subagent_hook(spec)),
+                env={**launch.env, **block_env},
+            )
             transport = await self._transport(launch)
         except BaseException:
             if tools is not None:
@@ -366,7 +372,7 @@ class CodexProvider:
             # A local model's own provider needs no login (B106).
             if spec.local is None and not (await read_login(rpc)).signed_in:
                 raise CodexNotSignedInError
-            config = _thread_config(spec) | QUESTIONS_CONFIG
+            config = _thread_config(spec, block_env) | QUESTIONS_CONFIG
             if spec.local is not None:
                 config |= codex_config(spec.local)
             if tools is not None:
@@ -516,14 +522,30 @@ async def _ask_before_mcp_tools(rpc: CodexRpc, spec: SessionSpec) -> JsonObject:
     return config
 
 
-def _thread_config(spec: SessionSpec) -> JsonObject:
+async def _push_block_env(spec: SessionSpec, path: str | None) -> dict[str, str]:
+    """A guarded run's push block for its own programs (`push_block`)."""
+    if not spec.guard_git:
+        return {}
+    block: PushBlock = await push_block((spec.cwd, *spec.extra_dirs))
+    return block.env(path)
+
+
+async def _subagent_hook(spec: SessionSpec) -> tuple[str, ...]:
+    """Codex's own PreToolUse hook for a chat that may push but whose subagents may not
+    (B127); a guarded run asks Nest about every command instead.
+    """
+    if spec.guard_git or not spec.guard_subagents:
+        return ()
+    return subagent_hook_args(await asyncio.to_thread(helpers))
+
+
+def _thread_config(spec: SessionSpec, block_env: Mapping[str, str]) -> JsonObject:
     """Config overrides for the thread, as `-c key=value` would give them. A guarded run's
-    commands also get the git-level push block (D160), and every run's commands its folder's
-    ports (B108), whatever the user's shell environment policy leaves out.
+    commands also get its push block (D160), and every run's commands its folder's ports
+    (B108), whatever the user's shell environment policy leaves out.
     """
     config: JsonObject = {}
-    # The folder's ports (B108), whatever the policy lets through from the environment.
-    env: dict[str, JsonValue] = {**spec.env, **(NO_PUSH_ENV if spec.guard_git else {})}
+    env: dict[str, JsonValue] = {**spec.env, **block_env}
     if env:
         config["shell_environment_policy.set"] = env
     return config

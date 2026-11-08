@@ -11,6 +11,7 @@ import pytest
 
 from nestd.providers.base import PermissionDecision, SessionSpec
 from nestd.providers.claude import ClaudeProvider
+from nestd.providers.push_block import helpers
 from nestd.providers.shell_env import (
     MARKER,
     TIMEOUT_SECONDS,
@@ -152,7 +153,8 @@ async def test_the_runs_environment_starts_from_the_login_shell(tmp_path: Path) 
     _, guarded = await opened.open(SessionSpec(tmp_path, "default"), handler)
     _, normal = await opened.open(SessionSpec(tmp_path, "default", guard_git=False), handler)
 
-    assert guarded.options.env["PATH"] == "/Users/me/.nvm/bin:/usr/bin"
+    # Nest's gh comes first for a guarded run (B143), before the login shell's PATH.
+    assert guarded.options.env["PATH"] == f"{helpers()}{os.pathsep}/Users/me/.nvm/bin:/usr/bin"
     assert guarded.options.env["GH_TOKEN"] == normal.options.env["GH_TOKEN"]
     assert guarded.options.env["MCP_CONNECTION_NONBLOCKING"] == "true"
     assert guarded.options.env["CLAUDE_CODE_ENABLE_TODO_TOOLS"] == "1"

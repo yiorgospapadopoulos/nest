@@ -70,6 +70,9 @@ class AcpEngine:
     # Added while Nest must decide every command (`SessionSpec.nest_decides`): pixie chats,
     # habit runs, chats a pixie started and Autopilot.
     guarded_env: Mapping[str, str] = field(default_factory=dict[str, str])
+    # Added while the user has not let agents push (`SessionSpec.guard_subagents`): the
+    # engine's own rules that stop its subagents' pushes (B127), before `guarded_env`.
+    subagent_env: Mapping[str, str] = field(default_factory=dict[str, str])
     # The command that signs in, in Terminal: required for `sign_in == "terminal"`.
     login_command: str | None = None
     # The engine's own login file, relative to XDG_DATA_HOME: signed in while it holds an
@@ -111,24 +114,92 @@ _OPENCODE_RULES: dict[str, object] = {
     "*_*": "ask",
 }
 # A guarded run's agents may call only the built-in subagents, which get the rules too.
-_OPENCODE_AGENTS = ("build", "plan", "general", "explore")
+_OPENCODE_PRIMARY = ("build", "plan")
+_OPENCODE_SUBAGENTS = ("general", "explore")
 _OPENCODE_GUARDED_RULES: dict[str, object] = {
     **_OPENCODE_RULES,
     "task": {"*": "deny", "general": "allow", "explore": "allow"},
 }
+# A subagent's shell commands that push or write pull requests, while agents may not push
+# (B127). Its questions never reach Nest (OpenCode 1.19.5 drops a child session's in
+# `acp/permission.ts`), so only a deny stops one. Each simple command's text is matched,
+# `*` matching anything, so `git -C x push` is caught too, and some reads (`gh pr view`)
+# that such a subagent could not have run anyway.
+_OPENCODE_SUBAGENT_BASH = dict.fromkeys(
+    (
+        *("*git*push*", "*git*send-pack*", "*git*http-push*", "*gh*pr*"),
+        *("*gh*api*", "*gh*repo*sync*", "*gh*auth*token*", "*gh*alias*"),
+    ),
+    "deny",
+)
 # Read after every config file, so Nest's timeout wins (in milliseconds).
 _OPENCODE_CONFIG = {
     "experimental": {"mcp_timeout": int(OPENCODE_MCP_TIMEOUT.total_seconds() * 1000)}
 }
+_OPENCODE_SUBAGENT_CONFIG = {
+    **_OPENCODE_CONFIG,
+    "agent": {
+        name: {"permission": {"bash": _OPENCODE_SUBAGENT_BASH}} for name in _OPENCODE_SUBAGENTS
+    },
+}
 _OPENCODE_GUARDED_CONFIG = {
     **_OPENCODE_CONFIG,
     "default_agent": "build",
-    "agent": {name: {"permission": _OPENCODE_GUARDED_RULES} for name in _OPENCODE_AGENTS},
+    "agent": {
+        **{name: {"permission": _OPENCODE_GUARDED_RULES} for name in _OPENCODE_PRIMARY},
+        **{
+            name: {
+                "permission": {
+                    **_OPENCODE_GUARDED_RULES,
+                    "bash": {"*": "ask", **_OPENCODE_SUBAGENT_BASH},
+                }
+            }
+            for name in _OPENCODE_SUBAGENTS
+        },
+    },
 }
 # Gemini's system settings win over the user's and the project's; Nest's file turns off
 # "always allow", so every call is asked (written next to the engine, `system_settings`).
 GEMINI_SYSTEM_SETTINGS = '{"security":{"disableAlwaysAllow":true}}'
 GEMINI_SYSTEM_SETTINGS_ENV = "GEMINI_CLI_SYSTEM_SETTINGS_PATH"
+# The same while agents may not push (B127), with an admin policy, which outranks every
+# other, that denies the pushes of Gemini's own subagent that runs commands: its questions
+# never reach Nest (Gemini CLI 0.66.0 asks them on its own bus, `local-executor.ts`).
+GEMINI_SUBAGENT_SETTINGS = "gemini-subagent-settings.json"
+GEMINI_SUBAGENT_POLICY = "gemini-subagent-pushes.toml"
+_GEMINI_SUBAGENTS = ("generalist",)
+_GEMINI_PUSHES = (
+    r"\bgit\b.*\b(?:push|send-pack|http-push)\b"
+    r"|\bgh\b.*\b(?:pr|api|repo\s+sync|auth\s+token|alias)\b"
+)
+
+
+def gemini_subagent_files(folder: Path, reason: str) -> dict[str, str]:
+    """The system settings and the policy they name, by file name in `folder`."""
+    rules = [
+        "\n".join(
+            (
+                "[[rule]]",
+                'toolName = "run_shell_command"',
+                f"subagent = {json.dumps(name)}",
+                f"commandRegex = {json.dumps(_GEMINI_PUSHES)}",
+                'decision = "deny"',
+                "priority = 999",
+                f"denyMessage = {json.dumps(reason)}",
+            )
+        )
+        for name in _GEMINI_SUBAGENTS
+    ]
+    settings = {
+        **json.loads(GEMINI_SYSTEM_SETTINGS),
+        "adminPolicyPaths": [str(folder / GEMINI_SUBAGENT_POLICY)],
+    }
+    return {
+        GEMINI_SUBAGENT_SETTINGS: json.dumps(settings),
+        GEMINI_SUBAGENT_POLICY: "\n\n".join(rules) + "\n",
+    }
+
+
 GEMINI_KEY_ENV = "GEMINI_API_KEY"
 
 OPENCODE = AcpEngine(
@@ -150,6 +221,7 @@ OPENCODE = AcpEngine(
         "OPENCODE_CONFIG_CONTENT": json.dumps(_OPENCODE_CONFIG),
     },
     guarded_env={"OPENCODE_CONFIG_CONTENT": json.dumps(_OPENCODE_GUARDED_CONFIG)},
+    subagent_env={"OPENCODE_CONFIG_CONTENT": json.dumps(_OPENCODE_SUBAGENT_CONFIG)},
     login_command="opencode auth login",
     # It runs its free models signed out, so only its login file says it is signed in.
     auth_file="opencode/auth.json",

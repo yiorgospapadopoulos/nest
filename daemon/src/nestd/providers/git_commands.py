@@ -37,9 +37,8 @@ Read-only commands that mention the words elsewhere (`git log --grep push`,
 only mentions a blocked command but is not one of the harmless ones (`cat <<E > n.md` with
 `git push` inside, `echo "$X git push"`, `git commit -m "fix git push"`).
 
-Known gap: a script written first and run later is not seen here. A guarded run's git-level
-block stops `git push` in it (`git_guard.NO_PUSH_ENV`), but nothing stops `gh`, or `curl`
-with a token already held, in a script (D160).
+A script written first and run later is not seen here: a guarded run's own programs meet
+its push block instead (`push_block`, D160).
 """
 
 import re

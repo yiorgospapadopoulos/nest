@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -31,7 +32,7 @@ from nestd.providers.codex import (
 from nestd.providers.codex_engine import NOT_SIGNED_IN
 from nestd.providers.codex_process import CODEX_HOME_ENV, CodexBinary
 from nestd.providers.codex_rpc import CodexClosedError, CodexRpcError
-from nestd.providers.git_guard import NO_PUSH_ENV
+from nestd.providers.push_block import NO_PUSH_ENV, helpers, subagent_hook_args
 from tests.async_support import until
 from tests.codex_support import SIGNED_OUT, FakeAppServer, item, note, turn_completed
 from tests.recording_sink import RecordingSink
@@ -90,7 +91,14 @@ async def test_opening_starts_app_server_and_a_thread_in_the_chats_folder(
     )
 
     [launch] = server.launches
-    assert launch.args == (str(tmp_path / "codex"), "app-server", "--listen", "stdio://")
+    # A normal chat's subagents may not push (B127): Codex's own hook stops them.
+    assert launch.args == (
+        str(tmp_path / "codex"),
+        "app-server",
+        "--listen",
+        "stdio://",
+        *subagent_hook_args(helpers()),
+    )
     assert launch.cwd == tmp_path
     assert launch.env[CODEX_HOME_ENV] == str(tmp_path / "codex-home")
     assert launch.env["HOME"] == "/Users/me"
@@ -143,10 +151,12 @@ async def test_a_guarded_run_has_the_git_level_block_in_codex_and_its_commands(
     assert "GH_CONFIG_DIR" not in env
     [start] = server.requests("thread/start")
     assert start["model"] == "gpt-5.5"
+    # Nest's gh comes first for the commands and for Codex itself (D160).
     assert start["config"] == {
-        "shell_environment_policy.set": NO_PUSH_ENV,
+        "shell_environment_policy.set": {**NO_PUSH_ENV, "PATH": env["PATH"]},
         **QUESTIONS_CONFIG,
     }
+    assert env["PATH"].startswith(f"{helpers()}{os.pathsep}")
     assert "developerInstructions" not in start
     await run.close()
 
@@ -164,6 +174,20 @@ async def test_a_run_without_history_starts_an_ephemeral_thread(tmp_path: Path) 
     await once.close()
 
 
+@pytest.mark.parametrize(
+    "fields", [{"guard_git": True}, {"guard_git": False, "guard_subagents": False}]
+)
+async def test_codexs_subagent_hook_is_only_for_a_chat_that_may_push_alone(
+    tmp_path: Path, fields: dict[str, bool]
+) -> None:
+    """A guarded run asks Nest about every command; with agents allowed to push, nothing
+    is blocked."""
+    server, run, _, _ = await opened(tmp_path, **fields)
+
+    assert "-c" not in server.launches[0].args
+    await run.close()
+
+
 async def test_a_runs_folder_ports_reach_codex_and_its_commands(tmp_path: Path) -> None:
     """B108: set for the commands too, whatever the user's environment policy passes on."""
     ports = {"NEST_PORT": "41020", "NEST_PORT_1": "41021"}
@@ -175,8 +199,10 @@ async def test_a_runs_folder_ports_reach_codex_and_its_commands(tmp_path: Path) 
     [start] = server.requests("thread/start")
     assert start["config"] == {"shell_environment_policy.set": ports, **QUESTIONS_CONFIG}
     [guarded_start] = guarded_server.requests("thread/start")
+    guarded_path = guarded_server.launches[0].env["PATH"]
+    assert guarded_path.startswith(f"{helpers()}{os.pathsep}")
     assert guarded_start["config"] == {
-        "shell_environment_policy.set": {**ports, **NO_PUSH_ENV},
+        "shell_environment_policy.set": {**ports, **NO_PUSH_ENV, "PATH": guarded_path},
         **QUESTIONS_CONFIG,
     }
     await run.close()
