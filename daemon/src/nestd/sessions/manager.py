@@ -466,7 +466,8 @@ class SessionManager:
             pixie_batch=pixie_batch,
             issue=None if issue is None else issue.ref(),
             started_by_trigger=started_by_trigger,
-            movable=started_by_pixie is None,
+            # A chat no one started by hand stays in its worktree (B148).
+            movable=not unattended,
         )
         await self._refuse_member_calls(new, request.prompt)
         attachments = await self._attachments.for_session(request.attachment_ids, None)

@@ -63,15 +63,15 @@ GITHUB_LIST: dict[str, JsonValue] = {
             "projects": {"type": "array", "items": {"type": "string"}},
             "labels": {"type": "array", "items": {"type": "string"}},
             "branches": {"type": "array", "items": {"type": "string"}},
-            "authors": {"type": "string", "enum": ["humans", "others", "everyone"]},
+            "authors": {"type": "string", "enum": ["members", "humans", "everyone"]},
         },
         "required": ["events"],
     },
     "description": "Events on GitHub that run it, checked every minute: each item has its"
     " events and optional filters: projects (none is every project on GitHub), labels (any"
     " of them), branches (names or patterns such as release/*, for CI runs and the branch a"
-    " pull request goes into) and authors (humans, the default, skips bots; others also"
-    " skips the user's own; everyone).",
+    " pull request goes into) and authors (members, the default: people with write access to"
+    " the repository; humans: anyone but bots; everyone).",
 }
 HABIT_FIELDS: dict[str, JsonValue] = {
     "name": {"type": "string", "description": "A short name, at most 60 characters."},

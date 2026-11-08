@@ -9,13 +9,14 @@ came for an hour, and after a failure it waits twice as long each time up to 15 
 unchanged one costs nothing.
 
 An event counts once per habit or trigger (dedupe in `TriggerStore`), only if it happened
-after the habit or trigger started waiting for it as it is now, and at most a day ago.
+after the habit or trigger started waiting for it as it is now, and at most a day ago. By
+default only people with write access to the repository count (`WriteAccess`, D179).
 """
 
 import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -32,6 +33,7 @@ from nestd.issues.service import github_repo_of
 from nestd.pixies.habit_store import HabitStore, StoredHabit
 from nestd.pixies.scheduler import HabitScheduler
 from nestd.prs.untrusted import one_line
+from nestd.triggers.access import WriteAccess
 from nestd.triggers.chats import TriggeredChats
 from nestd.triggers.github import (
     Feed,
@@ -60,8 +62,6 @@ PRUNE_EVERY = timedelta(hours=1)
 HABIT_TEXT_CHARS = 300
 _CI = frozenset({"ci_failed", "ci_passed"})
 
-type Login = Callable[[], Awaitable[str | None]]
-
 
 @dataclass(frozen=True)
 class _Watcher:
@@ -88,7 +88,8 @@ class _Poll:
     """One read of a feed: the pull requests read for it, by number."""
 
     pulls: dict[int, GitHubEvent | None] = field(default_factory=dict[int, GitHubEvent | None])
-    # A pull request could not be read: the next read asks for the whole feed again.
+    # A pull request or an author's access could not be read: the next read asks for the
+    # whole feed again.
     unread: bool = False
 
 
@@ -105,11 +106,11 @@ class GitHubPoller:
         run: CommandRunner,
         cwd: Path,
         clock: Clock,
-        login: Login,
+        access: WriteAccess,
         tick: timedelta = TICK,
     ) -> None:
         """`run` runs gh with the user's login; `cwd` is a folder outside any repository;
-        `login` gives the user's GitHub login, for the "others only" filter.
+        `access` tells who has write access, whose events count by default.
         """
         self._repos = repos
         self._habits = habits
@@ -120,7 +121,7 @@ class GitHubPoller:
         self._run = run
         self._cwd = cwd
         self._clock = clock
-        self._login = login
+        self._access = access
         self._tick = tick
         self._feeds: dict[tuple[str, Feed], _FeedState] = {}
         self._pruned: datetime | None = None
@@ -155,13 +156,11 @@ class GitHubPoller:
                     wanted.setdefault((where, feed), []).append(watcher)
         # Feeds nobody waits for are forgotten, so a new watcher reads them at once.
         self._feeds = {key: self._feeds.get(key, _FeedState()) for key in wanted}
-        me: str | None = None
         for (where, feed), waiting in wanted.items():
             state = self._feeds[(where, feed)]
             if state.due is not None and state.due > now:
                 continue
-            me = me if me is not None else await self._login()
-            await self._read(where, feed, state, waiting, me, now)
+            await self._read(where, feed, state, waiting, now)
         if self._pruned is None or now - self._pruned >= PRUNE_EVERY:
             self._pruned = now
             await self._store.prune()
@@ -201,7 +200,6 @@ class GitHubPoller:
         feed: Feed,
         state: _FeedState,
         waiting: list[_Watcher],
-        me: str | None,
         now: datetime,
     ) -> None:
         try:
@@ -231,7 +229,7 @@ class GitHubPoller:
             poll = _Poll()
             for event in events:
                 for watcher in waiting:
-                    took = await self._offer(watcher, event, poll, me, now) or took
+                    took = await self._offer(watcher, event, poll, now) or took
             if poll.unread:
                 state.etag = None
         if took or state.last_new is None:
@@ -240,12 +238,12 @@ class GitHubPoller:
         state.due = now + (SLOW if quiet else FAST)
 
     async def _offer(
-        self, watcher: _Watcher, event: GitHubEvent, poll: _Poll, me: str | None, now: datetime
+        self, watcher: _Watcher, event: GitHubEvent, poll: _Poll, now: datetime
     ) -> bool:
         """Hand the event to the watcher if it is new to it and matches; True if taken."""
         if event.at < watcher.since or now - event.at > MAX_AGE:
             return False
-        if not first_match(watcher.rule, event, me):
+        if not first_match(watcher.rule, event):
             return False
         project = next(p for p in watcher.projects if github_repo_of(p) == event.repo)
         if event.on_pull and event.number is not None:
@@ -253,8 +251,15 @@ class GitHubPoller:
             if read is None:
                 return False
             event = read
-        if not matches(watcher.rule, event, me):
+        if not matches(watcher.rule, event):
             return False
+        if watcher.rule.authors == "members":
+            allowed = await self._access.has_write(event.repo, event.author)
+            if allowed is None:
+                # Asked again with the whole feed next time.
+                poll.unread = True
+            if not allowed:
+                return False
         if not await self._store.claim(watcher.owner, event):
             return False
         if watcher.habit is not None:

@@ -163,6 +163,7 @@ from nestd.storage.archiver import ChatArchiver
 from nestd.storage.db import Database
 from nestd.stuck.watcher import StuckWatcher
 from nestd.tracking.service import Tracking
+from nestd.triggers.access import WriteAccess
 from nestd.triggers.chats import TriggeredChats
 from nestd.triggers.poller import GitHubPoller
 from nestd.triggers.service import ChatTriggerService
@@ -931,11 +932,6 @@ class AppContext:
             setup=update_setup or UpdateSetup(),
             engines_wait=local.engine_updates_wait,
         )
-        github = GithubAccount(runner, paths.data_dir, clock)
-
-        async def github_login() -> str | None:
-            return (await github.status()).login
-
         trigger_store = TriggerStore(db, clock)
         github_triggers = GitHubPoller(
             repos=repos.list_repos,
@@ -955,7 +951,7 @@ class AppContext:
             run=runner,
             cwd=paths.data_dir,
             clock=clock,
-            login=github_login,
+            access=WriteAccess(runner, paths.data_dir, clock),
         )
         context = cls(
             paths=paths,
@@ -1046,7 +1042,7 @@ class AppContext:
                 settings=lambda: context.settings.usage,
                 push=notifications.push,
             ),
-            github=github,
+            github=GithubAccount(runner, paths.data_dir, clock),
             chat_triggers=ChatTriggerService(repos, trigger_store),
             github_triggers=github_triggers,
             claude_code=claude_code,

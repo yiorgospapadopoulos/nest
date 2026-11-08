@@ -15,8 +15,9 @@ type GitHubEventKind = Literal[
     "issue_opened", "pr_opened", "comment", "review", "ci_failed", "ci_passed"
 ]
 GITHUB_EVENTS: tuple[GitHubEventKind, ...] = get_args(GitHubEventKind.__value__)
-# Whose events count: anyone but bots, also not the user's own, or every one.
-type Authors = Literal["humans", "others", "everyone"]
+# Whose events count: people with write access to the repository (the default, so a
+# stranger's issue on a public repository starts nothing), anyone but bots, or every one.
+type Authors = Literal["members", "humans", "everyone"]
 
 NAME_MAX = 120
 PROMPT_MAX = 4000
@@ -48,7 +49,7 @@ class EventFilter(_Strict):
     branches: Annotated[list[Branch], Field(max_length=MAX_FILTERS)] = Field(
         default_factory=list[Branch]
     )
-    authors: Authors = "humans"
+    authors: Authors = "members"
 
     @model_validator(mode="after")
     def _unique(self) -> Self:

@@ -116,7 +116,8 @@ class NewSession(BaseModel):
     started_by_trigger: TriggerRef | None = None
     # A chat that outlives its worktree (B119): merging leaves it open, deleting it keeps
     # its worktrees, and its agent moves it between worktrees with its tool. Set when a
-    # chat is created, never on a pixie's chat, a habit run or a chat a pixie started.
+    # chat is created, never on a pixie's chat, a habit run or a chat a pixie or a GitHub
+    # trigger started.
     movable: bool = False
 
 

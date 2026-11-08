@@ -145,6 +145,10 @@ class _Event(_Loose):
     created_at: datetime
 
 
+class _RepoName(_Loose):
+    full_name: str = ""
+
+
 class _Run(_Loose):
     id: int
     run_attempt: int = 1
@@ -152,6 +156,8 @@ class _Run(_Loose):
     display_title: str = ""
     html_url: str = ""
     head_branch: str | None = None
+    # The fork a pull request's run came from, or the repository itself.
+    head_repository: _RepoName | None = None
     conclusion: str | None = None
     actor: _User = Field(default_factory=_User)
     updated_at: datetime
@@ -199,12 +205,22 @@ def parse_runs(body: str, repo: str) -> list[GitHubEvent]:
                 author=run.actor.login,
                 bot=_bot(run.actor),
                 labels=None,
-                branch=run.head_branch,
+                branch=_run_branch(run, repo),
                 text="",
                 at=run.updated_at,
             )
         )
     return sorted(found, key=lambda e: e.at)
+
+
+def _run_branch(run: _Run, repo: str) -> str | None:
+    """A fork's branch named with its owner, `owner:main`, so it cannot pass for one of
+    the repository's own branches.
+    """
+    head = run.head_repository
+    if run.head_branch is None or head is None or head.full_name.lower() in ("", repo.lower()):
+        return run.head_branch
+    return f"{head.full_name.split('/')[0]}:{run.head_branch}"
 
 
 def with_pull(event: GitHubEvent, body: str) -> GitHubEvent:

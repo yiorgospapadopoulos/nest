@@ -46,15 +46,20 @@ class FakeGitHub:
         self.pulls: dict[int, object] = {}
         self.fail: str | None = None
         self.calls: list[tuple[str, ...]] = []
+        # Each person's permission on the repository; anyone else reads only.
+        self.permissions: dict[str, str] = {"ana": "write"}
+        self.permission_down = False
 
     async def __call__(self, argv: Sequence[str], cwd: Path) -> str:
         if argv[0] != "gh":
             return await run_command(argv, cwd)
         self.calls.append(tuple(argv))
-        if list(argv[1:3]) == ["api", "user"]:
-            return "me\n"
         if self.fail is not None:
             raise CommandError(argv, 1, self.fail)
+        if "/collaborators/" in argv[2]:
+            if self.permission_down:
+                raise CommandError(argv, 1, "could not reach GitHub\n")
+            return self.permissions.get(argv[2].split("/")[4], "read") + "\n"
         path = argv[-1]
         if path.startswith(f"repos/{WHERE}/pulls/"):
             return json.dumps(self.pulls[int(path.rsplit("/", 1)[1])])
@@ -94,7 +99,9 @@ def issue_opened(
     }
 
 
-def ci_run(run_id: int, when: str, conclusion: str = "failure", branch: str = "main") -> object:
+def ci_run(
+    run_id: int, when: str, conclusion: str = "failure", branch: str = "main"
+) -> dict[str, object]:
     return {
         "id": run_id,
         "run_attempt": 1,
@@ -180,9 +187,46 @@ async def test_a_new_issue_starts_one_chat_in_a_worktree_once(
     assert [(a.outcome, a.session_id) for a in activity] == [("started", chat.id)]
 
 
+async def test_only_people_with_write_access_count_by_default(
+    ctx: AppContext, gh: FakeGitHub, clock: FakeClock
+) -> None:
+    await chat_trigger(ctx)
+    await chat_trigger(ctx, name="Anyone", authors="humans")
+    await ctx.github_triggers.tick()
+    gh.feeds[EVENTS] = [issue_opened("2", at(clock, 0.5), login="stranger")]
+    clock.advance(FAST)
+
+    await ctx.github_triggers.tick()
+
+    # A stranger's issue on a public repository starts only the trigger that asks for it.
+    assert [c.started_by_trigger.name for c in await triggered(ctx) if c.started_by_trigger] == [
+        "Anyone"
+    ]
+
+
+async def test_an_access_github_could_not_tell_is_asked_again(
+    ctx: AppContext, gh: FakeGitHub, clock: FakeClock
+) -> None:
+    await chat_trigger(ctx)
+    await ctx.github_triggers.tick()
+    gh.feeds[EVENTS] = [issue_opened("2", at(clock, 0.5))]
+    gh.permission_down = True
+    clock.advance(FAST)
+    await ctx.github_triggers.tick()
+    assert await triggered(ctx) == []
+
+    gh.permission_down = False
+    clock.advance(FAST)
+    await ctx.github_triggers.tick()
+
+    assert len(await triggered(ctx)) == 1
+
+
 async def test_a_triggered_chat_cannot_push(
     ctx: AppContext, clock: FakeClock, gh: FakeGitHub, provider: FakeProvider
 ) -> None:
+    agents = ctx.settings.agents.model_copy(update={"permission_mode": "bypassPermissions"})
+    ctx.settings = ctx.settings.model_copy(update={"agents": agents})
     await chat_trigger(ctx)
     await ctx.github_triggers.tick()
     gh.feeds[EVENTS] = [issue_opened("2", at(clock, 0.5))]
@@ -192,7 +236,11 @@ async def test_a_triggered_chat_cannot_push(
 
     await until(lambda: bool(provider.runs))
     assert provider.runs[-1].spec.guard_git is True
-    assert NO_PUSH in (await triggered(ctx))[0].prompt
+    chat = (await triggered(ctx))[0]
+    assert NO_PUSH in chat.prompt
+    # It asks before any command whatever the default, and stays in its worktree.
+    assert chat.permission_mode == "default"
+    assert not chat.movable
 
 
 async def test_an_edited_trigger_starts_its_wait_again(
@@ -395,25 +443,34 @@ def event(**fields: object) -> GitHubEvent:
 def test_filters_apply_only_where_they_mean_something() -> None:
     rule = EventFilter(events=["comment", "ci_failed"], labels=["Bug"], branches=["main"])
 
-    assert matches(rule, event(labels=["bug"]), None)
-    assert not matches(rule, event(labels=["ui"]), None)
+    assert matches(rule, event(labels=["bug"]))
+    assert not matches(rule, event(labels=["ui"]))
     # A CI run has no labels; an issue has no branch.
-    assert matches(rule, event(kind="ci_failed", labels=None, branch="main"), None)
-    assert not matches(rule, event(kind="ci_failed", labels=None, branch="dev"), None)
-    assert not matches(rule, event(kind="review", labels=["bug"]), None)
+    assert matches(rule, event(kind="ci_failed", labels=None, branch="main"))
+    assert not matches(rule, event(kind="ci_failed", labels=None, branch="dev"))
+    assert not matches(rule, event(kind="review", labels=["bug"]))
 
 
-def test_whose_events_count() -> None:
-    humans = EventFilter(events=["comment"])
-    others = EventFilter(events=["comment"], authors="others")
-    everyone = EventFilter(events=["comment"], authors="everyone")
+def test_bots_count_only_for_everyone() -> None:
     bot = event(author="ci[bot]", bot=True)
 
-    assert matches(humans, event(author="me"), "me")
-    assert not matches(humans, bot, "me")
-    assert not matches(others, event(author="Me"), "me")
-    assert matches(others, event(author="ana"), "me")
-    assert matches(everyone, bot, "me")
+    assert not matches(EventFilter(events=["comment"]), bot)
+    assert not matches(EventFilter(events=["comment"], authors="humans"), bot)
+    assert matches(EventFilter(events=["comment"], authors="everyone"), bot)
+
+
+def test_a_forks_ci_run_cannot_pass_for_main() -> None:
+    fork = {
+        **ci_run(1, "2026-01-01T00:00:00Z"),
+        "head_repository": {"full_name": "stranger/repo"},
+    }
+    own = {**ci_run(2, "2026-01-01T00:00:00Z"), "head_repository": {"full_name": "Me/Repo"}}
+
+    runs = parse_runs(json.dumps({"workflow_runs": [fork, own]}), WHERE)
+
+    assert [r.branch for r in runs] == ["stranger:main", "main"]
+    on_main = EventFilter(events=["ci_failed"], branches=["main"], authors="everyone")
+    assert [matches(on_main, r) for r in runs] == [False, True]
 
 
 def test_github_feeds_are_read_into_events() -> None:
