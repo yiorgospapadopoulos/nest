@@ -139,6 +139,7 @@ private func date(_ text: String) -> Date {
         #expect(
             UsageText.probes(ProbeTotals(count: 1, tokens: 400))
                 == "1 usage check, 400 tokens, not counted above")
+        #expect(UsageText.probes(ProbeTotals(count: 340, tokens: 0)) == "340 usage checks, free")
         #expect(UsageText.probes(ProbeTotals(count: 0, tokens: 0)) == nil)
     }
 }
