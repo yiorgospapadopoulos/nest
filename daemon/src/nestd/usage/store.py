@@ -142,7 +142,7 @@ class UsageStore:
     async def update_limits(self, info: UsageInfo, account_id: str | None = None) -> None:
         """Keep the latest report of each window the engine included, as that account's
         (None: the engine's active one). Windows by length (another engine's, B91) come
-        whole and replace the account's.
+        whole and replace the account's, as does a complete report of Claude's (B142).
         """
         account = account_id or self._active(info.provider)
         now = self._clock.now().isoformat()
@@ -151,6 +151,10 @@ class UsageStore:
         async with self._db.transaction() as tx:
             if sized:
                 await tx.execute("DELETE FROM usage_limits WHERE account_id = ?", (account,))
+            for gone in _gone_windows(info):
+                await tx.execute(
+                    "DELETE FROM usage_limits WHERE account_id = ? AND name = ?", (account, gone)
+                )
             for name, window, minutes in named + sized:
                 await tx.execute(
                     "INSERT INTO usage_limits"
@@ -288,6 +292,14 @@ class UsageStore:
 def _claude_windows(info: UsageInfo) -> list[tuple[str, UsageWindow]]:
     pairs = (("five_hour", info.five_hour), ("seven_day", info.seven_day))
     return [(name, window) for name, window in pairs if window is not None]
+
+
+def _gone_windows(info: UsageInfo) -> list[str]:
+    """Claude's windows a complete report left out: the plan no longer has them."""
+    if not info.complete:
+        return []
+    pairs = (("five_hour", info.five_hour), ("seven_day", info.seven_day))
+    return [name for name, window in pairs if window is None]
 
 
 def _account_window(row: Row, now: datetime) -> AccountWindow:

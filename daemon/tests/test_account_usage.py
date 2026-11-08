@@ -128,6 +128,26 @@ async def test_a_window_before_its_reset_is_as_reported(db: Database, clock: Fak
     assert (five_hour.utilization, five_hour.resets_at, five_hour.reset) == (0.64, SOON, False)
 
 
+async def test_a_window_the_plan_no_longer_has_goes_only_with_a_complete_report(
+    db: Database, clock: FakeClock
+) -> None:
+    """B142 regression: a plan that dropped its five-hour limit kept showing the last one as
+    reset. A turn may leave out a window that did not change; Claude Code's read of the plan
+    lists every window it has.
+    """
+    usage = UsageStore(db, clock)
+    await usage.update_limits(CLAUDE)
+    weekly = UsageWindow(utilization=0.35, resets_at=None)
+
+    await usage.update_limits(UsageInfo(five_hour=None, seven_day=weekly))
+    assert [w.minutes for w in await usage.windows("claude-main")] == [300, 10080]
+
+    await usage.update_limits(UsageInfo(five_hour=None, seven_day=weekly, complete=True))
+    windows = await usage.windows("claude-main")
+    assert [(w.minutes, w.utilization) for w in windows] == [(10080, 0.35)]
+    assert (await usage.limits()).five_hour is None
+
+
 async def test_a_window_of_unknown_length_comes_last(db: Database, clock: FakeClock) -> None:
     usage = UsageStore(db, clock)
     unsized = EngineWindow(utilization=0.9, resets_at=None, minutes=None)
