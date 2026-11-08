@@ -148,6 +148,7 @@ While Nest runs, a strip around the MacBook's notch shows your pixies at work: t
 - **GitHub issues.** The start screen lists the project's open issues; click one to start a chat on it. See [GitHub issues](docs/using-nest.md#github-issues-and-review-comments).
 - **Terminals, browsers and dev servers.** Open a terminal or a browser as a pane, and run the project's dev server per chat, each worktree on its own ports. See [Terminal and browser panes](docs/using-nest.md#terminal-and-browser-panes) and [Dev servers](docs/using-nest.md#dev-servers).
 - **Usage limits.** When you hit your plan's limit, a chat pauses and carries on by itself once the limit resets. See [What the agent is doing](docs/using-nest.md#what-the-agent-is-doing).
+- **Files in chats.** Send PDFs, text files and videos up to 500 MB, and open them, or a file the agent names in its reply, in a viewer inside Nest. Replies show pictures, tables and math. See [Files and messages](docs/using-nest.md#files-and-messages).
 - **Search.** Find any chat by what was said in it. See [Search](docs/using-nest.md#search).
 - **Linux and another machine.** A Linux app that works like the Mac app, and a Mac app that can drive Nest on another computer of yours. See [Linux desktop app](docs/using-nest.md#linux-desktop-app) and [A daemon on another machine](docs/using-nest.md#a-daemon-on-another-machine).
 
@@ -176,7 +177,7 @@ Every device can be revoked in Settings > Devices.
 
 ## Privacy
 
-Nest sends nothing home. Your chats, settings and files stay on your computer. Nest talks only to the engines you sign in to and to GitHub, as you, through your own logins, and, when an app opens, to GitHub, PyPI and npm to look for updates. It never reads or keeps your passwords, and there is no Nest account or server.
+Nest sends nothing home. Your chats, settings and files stay on your computer. Nest talks only to the engines you sign in to and to GitHub, as you, through your own logins, and, when an app opens, to GitHub, PyPI and npm to look for updates. It never reads or keeps your passwords, and there is no Nest account or server. A picture an agent puts in a reply by its web address loads only when you click Show picture, since its address could carry what the agent read to that site.
 
 ## Updates
 
