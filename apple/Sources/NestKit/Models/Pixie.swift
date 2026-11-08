@@ -46,6 +46,8 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var provider: String?
     public var model: String?
     public var effort: Effort?
+    /// Nil for Auto (`CompactAt`, B146).
+    public var compactAt: Int?
     public var permissionMode: PermissionMode
     public var autonomy: Autonomy
     public var projectAccess: ProjectAccess
@@ -69,6 +71,7 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
         case id, slug, name, mascot, color, provider, model, effort, autonomy, skills
         case hidden, position
         case permissionMode = "permission_mode"
+        case compactAt = "compact_at"
         case projectAccess = "project_access"
         case canCall = "can_call"
         case chatSessionID = "chat_session_id"
@@ -123,6 +126,7 @@ extension Pixie {
         pixie.provider = change.provider ?? provider
         pixie.model = change.model ?? (moved ? nil : model)
         pixie.effort = change.effort ?? (moved ? nil : effort)
+        pixie.compactAt = change.compactAt.map(\.tokens) ?? compactAt
         pixie.permissionMode = change.permissionMode ?? permissionMode
         pixie.autonomy = change.autonomy ?? autonomy
         pixie.projectAccess = change.projectAccess ?? projectAccess

@@ -1708,6 +1708,20 @@ final class Shell {
         }
     }
 
+    /// A pixie's own chat takes it from its pixie, as its model and effort.
+    func setCompactAt(_ compactAt: CompactAt, for chat: String) {
+        // A pixie's own chat goes with its pixie; a habit run's or a call's chat is its own.
+        if let pixie = sessions.session(chat)?.pixieID.flatMap(pixie),
+            pixie.chatSessionID == chat
+        {
+            updatePixie(pixie.id, UpdatePixieRequest(compactAt: compactAt))
+        } else {
+            run("Could not change when to compact") {
+                try await self.sessions.setCompactAt(chat, compactAt)
+            }
+        }
+    }
+
     // MARK: Engines (B91)
 
     /// The chat's engine: a new chat's choice, else the session's; nil is Claude.

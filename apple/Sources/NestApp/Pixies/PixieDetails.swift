@@ -541,9 +541,9 @@ private struct CustomColorDot: View {
     }
 }
 
-/// Model, Thinking, Permissions, Project files and Autonomy: a value on the right that
-/// opens a menu of choices. The Model picker also chooses the engine (B91), a section per
-/// engine; Thinking and Permissions follow that engine's models.
+/// Model, Thinking, Compact at, Permissions, Project files and Autonomy: a value on the
+/// right that opens a menu of choices. The Model picker also chooses the engine (B91), a
+/// section per engine; Thinking and Permissions follow that engine's models.
 private struct PixieSettings: View {
     let pixie: Pixie
     @Environment(Shell.self) private var shell
@@ -564,6 +564,16 @@ private struct PixieSettings: View {
             ) {
                 ThinkingItems(model: runs, effort: pixie.effort, catalog: picker.catalog) {
                     save(UpdatePixieRequest(effort: $0))
+                }
+            }
+            if shell.providers.supports(.compactWindow, on: pixie.provider) {
+                let current = CompactAt(pixie.compactAt)
+                PickerRow(title: "Compact at", value: current.label) {
+                    ForEach(CompactAt.choices, id: \.self) { choice in
+                        OptionItem(title: choice.label, detail: "", checked: choice == current) {
+                            save(UpdatePixieRequest(compactAt: choice))
+                        }
+                    }
                 }
             }
             PickerRow(title: "Permissions", value: pixie.permissionMode.label) {

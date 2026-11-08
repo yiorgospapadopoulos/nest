@@ -128,6 +128,9 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var archivedAt: Date?
     /// How full the context window was after the last turn; nil before the first.
     public var context: SessionContext?
+    /// The tokens at which the engine compacts the context by itself, nil for Auto
+    /// (`CompactAt`, B146); applies when the agent run next opens.
+    public var compactAt: Int?
     /// Why the running chat looks stuck, while it does (D036).
     public var stuck: StuckFlag?
     /// The pixie this chat belongs to; such chats stay out of project lists (D072).
@@ -201,6 +204,7 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case archivedAt = "archived_at"
         case limitPause = "limit_pause"
         case movable
+        case compactAt = "compact_at"
         case earlierWorktrees = "earlier_worktrees"
         case movedAt = "moved_at"
         case autopilot

@@ -115,6 +115,10 @@ public final class AgentsStore {
         try await change { $0.mode = mode }
     }
 
+    public func setDefaultCompactAt(_ compactAt: CompactAt) async throws {
+        try await change { $0.compactAt = compactAt.tokens }
+    }
+
     /// Shows the change at once and restores the old defaults if the daemon refuses.
     private func change(_ edit: (inout AgentDefaults) -> Void) async throws {
         let previous = defaults

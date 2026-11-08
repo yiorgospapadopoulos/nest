@@ -22,6 +22,8 @@ public enum ProviderFeature: String, UnknownSafeEnum {
     /// A pixie's own skill list, which only Claude runs take; on another engine its details
     /// leave Skills out.
     case pixieSkills = "pixie_skills"
+    /// Choosing how full the context gets before the engine compacts it (B146).
+    case compactWindow = "compact_window"
     case unknown
 
     /// What a chat without it cannot do, for a refusal that came without words.
@@ -40,6 +42,7 @@ public enum ProviderFeature: String, UnknownSafeEnum {
         case .pixies: "call pixies"
         case .memory: "save a memory"
         case .pixieSkills: "keep a pixie's own skill list"
+        case .compactWindow: "choose when to compact"
         case .unknown: "do that"
         }
     }

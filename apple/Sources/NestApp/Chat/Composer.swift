@@ -1096,6 +1096,15 @@ private struct ContextMeter: View {
         Menu {
             Section(context.detail) {
                 Button("Compact") { shell.compact(chat) }
+                if shell.supports(.compactWindow, chat: chat) {
+                    let current = CompactAt(shell.sessions.session(chat)?.compactAt)
+                    Menu("Compact at") {
+                        ForEach(CompactAt.choices, id: \.self) { choice in
+                            OptionItem(title: choice.label, detail: "", checked: choice == current)
+                            { shell.setCompactAt(choice, for: chat) }
+                        }
+                    }
+                }
             }
         } label: {
             Text(label)
