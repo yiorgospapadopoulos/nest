@@ -11,7 +11,7 @@ from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
 from nestd.attachments.store import AttachmentStore
 from nestd.claude_sessions.live import LiveChats
-from nestd.config.models import AgentDefaults, WorktreeConfig
+from nestd.config.models import AgentDefaults, WorktreeConfig, WorktreeDefaults
 from nestd.events.bus import EventBus
 from nestd.gitops import runner
 from nestd.notifications.notifier import Notifier
@@ -50,7 +50,9 @@ class Env:
         self.clock = clock
         self.bus = EventBus(db, clock)
         self.repos = RepoService(self.paths)
-        self.worktrees = WorktreeManager(self.paths)
+        # The `[worktrees]` settings, read as they are each time (B141).
+        self.worktree_defaults = WorktreeDefaults()
+        self.worktrees = WorktreeManager(self.paths, defaults=lambda: self.worktree_defaults)
         self.attachments = AttachmentStore(db, clock, self.paths.attachments_dir)
         self.store = SessionStore(db, clock)
         self.approvals = ApprovalQueue(ApprovalStore(db, clock), self.bus, Notifier(self.bus))

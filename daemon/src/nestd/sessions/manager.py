@@ -29,6 +29,7 @@ from nestd.engine.service import effort_problem, mode_problem
 from nestd.errors import InvalidInputError, NestError
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.gitops.runner import GitError
 from nestd.issues.message import issue_message, issue_meta
 from nestd.issues.models import Issue
 from nestd.local.models import is_local
@@ -218,6 +219,7 @@ class SessionManager:
             clock=clock,
             remove=self._remove_worktree,
             background=self.background_running,
+            confirm=self._confirm_removal,
         )
         self._turns = TurnRunner(
             store=store,
@@ -1090,7 +1092,10 @@ class SessionManager:
             await self._moves.drop(session_id)
             worktree = worktree_of(session)
             if remove_worktree and worktree is not None:
-                await self._remove_worktree(self._repos.get(session.repo), session, worktree)
+                repo = self._repos.get(session.repo)
+                # Its commits are the merged pull request's; files it holds would be lost.
+                if not await self._holds_work(repo, worktree, files_only=True):
+                    await self._remove_worktree(repo, session, worktree)
             return await self._states.set(session_id, SessionState.CLOSED)
 
     async def close_keeping_work(self, session_id: str) -> bool:
@@ -1110,8 +1115,8 @@ class SessionManager:
         """Delete the session for good: its run and all it stored. Its branch stays. Its
         worktrees stay too when it is a movable chat: the user decides when a worktree goes
         (B119), and any chat of the project can remove it. Any other chat's worktree goes
-        with it; `along_with` are the other sessions deleted in the same operation: they do
-        not keep a worktree they share with this one.
+        with it unless it holds work (B141); `along_with` are the other sessions deleted in
+        the same operation: they do not keep a worktree they share with this one.
         """
         await self._store.get(session_id)
         self._limits.forget(session_id)
@@ -1121,12 +1126,30 @@ class SessionManager:
                 # Without the repo's config git cannot clean up; the rest is deleted anyway.
                 with suppress(RepoNotFoundError):
                     repo = self._repos.get(session.repo)
-                    await self._remove_worktree(repo, session, worktree, along_with)
+                    if not await self._holds_work(repo, worktree):
+                        await self._remove_worktree(repo, session, worktree, along_with)
             await self._attachments.delete_files(session_id)
             await self._store.delete(session_id)
         await self._hooks.purged(session_id)
         # Not a session event: the session's events are gone with it.
         await self._bus.publish(types.SESSION_DELETED, {"session_id": session_id})
+
+    async def _holds_work(
+        self, repo: RepoConfig, worktree: Worktree, *, files_only: bool = False
+    ) -> bool:
+        """Whether removing the worktree would lose work (B141), and it stays: changes and
+        untracked files, and unless `files_only` commits not on the base branch. When git
+        cannot tell, it does.
+        """
+        try:
+            risk = await self._worktrees.at_risk(repo, worktree)
+        except GitError as error:
+            logger.warning("keeping the worktree %s: checking it failed (%s)", worktree.path, error)
+            return True
+        held = bool(risk.files) if files_only else not risk.empty
+        if held:
+            logger.info("keeping the worktree %s: it has %s", worktree.path, risk.summary())
+        return held
 
     async def _remove_worktree(
         self,
@@ -1139,7 +1162,18 @@ class SessionManager:
         `along_with`) works in it, or Nest did not make it (B96). Returns whether it was
         removed. Its branch always stays: Nest deletes no branch.
         """
-        users = await self._store.worktree_users({session.id, *along_with})
+        return await self._remove_unused(repo, worktree, {session.id, *along_with})
+
+    async def remove_unused_worktree(self, repo: RepoConfig, worktree: Worktree) -> bool:
+        """Remove a worktree no open chat works in, if Nest made it, such as a merged one
+        (B141); its branch stays. Returns whether it was removed.
+        """
+        return await self._remove_unused(repo, worktree, set())
+
+    async def _remove_unused(
+        self, repo: RepoConfig, worktree: Worktree, excluding: Collection[str]
+    ) -> bool:
+        users = await self._store.worktree_users(excluding)
         if await asyncio.to_thread(among, worktree.path, users):
             return False
         removed = await self._worktrees.remove(repo, worktree)
@@ -1435,6 +1469,21 @@ class SessionManager:
         """Why `model` does not run in `mode`; None when it does or the list is unknown."""
         option = await engine.find(model)
         return None if option is None else mode_problem(option, mode)
+
+    async def _confirm_removal(
+        self, run_session_id: str, payload: dict[str, JsonValue], notice: str
+    ) -> bool:
+        """The user's own yes to removing a worktree with work, asked for the run of
+        `run_session_id` as its permission prompts are (B141).
+        """
+
+        async def keep_mode(_session_id: str, _mode: PermissionMode) -> None:
+            return None
+
+        prompts = SessionPrompts(
+            run_session_id, self._approvals, self._store, self._on_waiting, keep_mode, self._calls
+        )
+        return await prompts.confirm(payload, notice)
 
     def _handler_for(self, live: LiveSession) -> ApprovalHandler:
         async def on_mode(_session_id: str, mode: PermissionMode) -> None:

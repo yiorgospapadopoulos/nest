@@ -192,8 +192,8 @@ async def close_session(
     session_id: str, ctx: Context, remove_worktree: bool = False, purge: bool = False
 ) -> Session | Response:
     """Close the session; with purge, delete it with its history. A movable chat's worktrees
-    stay, any other session's worktree goes; its branch stays. A pixie's chat is refused
-    (409 `pixie_chat`): it goes with its pixie (D072).
+    stay, any other session's worktree goes unless it holds work (B141); its branch stays.
+    A pixie's chat is refused (409 `pixie_chat`): it goes with its pixie (D072).
     """
     if (await ctx.sessions.get(session_id)).pixie_id is not None:
         raise PixieChatError

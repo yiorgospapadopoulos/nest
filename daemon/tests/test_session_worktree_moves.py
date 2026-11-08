@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
+from nestd.approvals.models import ApprovalKind
 from nestd.gitops.runner import GitError
 from nestd.providers.base import ForkPoint, ToolRefusedError
 from nestd.sessions.models import CreateSession, NewSession, Session, SessionState
@@ -517,9 +518,21 @@ async def test_an_unmerged_branch_survives_and_its_worktree_still_goes(env: Env)
     assert session.worktree_path is not None
     commit_file(session.worktree_path, "work.txt", "unmerged")
 
+    async def allow() -> None:
+        async def asked() -> bool:
+            return await env.approvals.pending(session.id, ApprovalKind.PERMISSION) is not None
+
+        await until(asked)
+        item = await env.approvals.pending(session.id, ApprovalKind.PERMISSION)
+        assert item is not None
+        await env.approvals.resolve(item.id, {"behavior": "allow"})
+
+    # The unmerged commit is work: the user says yes to losing the worktree (B141).
+    answer = asyncio.create_task(allow())
     done = await turn_with(
         env, session, asks({"action": "remove", "delete_branch": True}, reply("ok"))
     )
+    await answer
 
     assert not session.worktree_path.exists()
     assert session.branch in git(env.repo_path, "branch", "--list", session.branch)

@@ -110,6 +110,14 @@ class SessionPrompts:
             await self._allow_always(request.tool_name)
         return PermissionDecision("allow", _text(resolution.get("message")), always)
 
+    async def confirm(self, payload: dict[str, JsonValue], notice: str) -> bool:
+        """A permission card only the user answers, each time: no rule, mode or Autopilot
+        answers it, such as removing a worktree that holds work (B141). True for Allow.
+        """
+        approval = await self._wait(ApprovalKind.PERMISSION, payload, notice, None)
+        resolution = approval.resolution or {}
+        return approval.status is ApprovalStatus.RESOLVED and resolution.get("behavior") == "allow"
+
     async def ask(self, request: QuestionRequest) -> QuestionAnswer:
         if self._autopilot is not None:
             auto = await self._autopilot.question(await self._owner(), request)

@@ -11,8 +11,9 @@ from nestd.errors import InvalidInputError
 
 class ResolveApproval(BaseModel):
     """Permission: `behavior`, optional `message`, and `always` to allow the tool for the
-    rest of the session. Question: `answers` (question text to the chosen label or free
-    text; a list for several choices) or `dismiss` with an optional `message`. Plan:
+    rest of the session, unless the item's payload has `always` false (B141). Question:
+    `answers` (question text to the chosen label or free text; a list for several choices)
+    or `dismiss` with an optional `message`. Plan:
     `decision` (approve, or keep_planning with an optional `message` for the agent).
     An approved plan continues in `mode`: acceptEdits (the default), default, or auto with
     a model that supports it. Merge: `dismiss` only; merging goes through the session's
@@ -33,6 +34,9 @@ class ResolveApproval(BaseModel):
 
 def resolution_for(approval: Approval, body: ResolveApproval) -> dict[str, JsonValue]:
     if approval.kind is ApprovalKind.PERMISSION:
+        if body.always and approval.payload.get("always") is False:
+            msg = "this permission is answered each time and cannot be allowed always"
+            raise InvalidInputError(msg)
         return _permission(body)
     if approval.kind is ApprovalKind.QUESTION:
         return _question(approval, body)
