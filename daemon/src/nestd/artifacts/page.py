@@ -28,11 +28,11 @@ PALETTE: dict[str, tuple[str, str]] = {
     "line-strong": ("rgba(0,0,0,0.16)", "rgba(255,255,255,0.18)"),
     "fill": ("rgba(0,0,0,0.045)", "rgba(255,255,255,0.065)"),
     "fill-strong": ("rgba(0,0,0,0.085)", "rgba(255,255,255,0.12)"),
-    "link": ("#0a6fd6", "#4ea7ff"),
+    "link": ("#0967c7", "#4ea7ff"),
     "hl-keyword": ("#4b59d6", "#7f8cff"),
     "hl-string": ("#14723a", "#6be3a0"),
     "hl-number": ("#8f5100", "#ffc466"),
-    "hl-title": ("#0a6fd6", "#4ea7ff"),
+    "hl-title": ("#0967c7", "#4ea7ff"),
     "hl-type": ("#bd2c27", "#ff8f88"),
     "hl-meta": ("#6b5d4f", "#c9bba9"),
 }
@@ -53,7 +53,7 @@ def _diagram(theme: int) -> dict[str, str | bool]:
         return dark if theme else light
 
     page, text = pick("#eeeeec", "#0c0c0d"), pick("#1a1b20", "#f2f3f7")
-    box, edge = pick("#f8f8f6", "#171717"), pick("#7f7f7f", "#8c8c8c")
+    box, edge = pick("#f8f8f6", "#171717"), pick("#676767", "#929292")
     slices = (
         pick("#a5573a", "#e39a78"),
         pick("#2c6a9a", "#79b4e3"),
