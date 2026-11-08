@@ -126,7 +126,8 @@ def save_agent_defaults(paths: AppPaths, choices: AgentChoices) -> AgentDefaults
     agents = {
         key: value
         for key, value in data.get("agents", {}).items()
-        if key not in {"provider", "model", "effort", "permission_mode", "default_mode"}
+        if key
+        not in {"provider", "model", "effort", "permission_mode", "default_mode", "compact_at"}
     }
     chosen = {
         "provider": choices.provider,
@@ -134,6 +135,7 @@ def save_agent_defaults(paths: AppPaths, choices: AgentChoices) -> AgentDefaults
         "effort": choices.effort,
         "permission_mode": choices.permission_mode,
         "default_mode": choices.mode,
+        "compact_at": choices.compact_at,
     }
     data["agents"] = {key: value for key, value in chosen.items() if value is not None} | agents
     settings = _validate(file, Settings, data)

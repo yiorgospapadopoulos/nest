@@ -118,6 +118,16 @@ private struct NewChatsSection: View {
                     ) { mode in change { try await agents.setDefaultPermissionMode(mode) } }
                 }
             }
+            SettingsRow(label: "Compact at") {
+                let current = CompactAt(defaults.compactAt)
+                DropdownMenu(title: current.label) {
+                    ForEach(CompactAt.choices, id: \.self) { choice in
+                        OptionItem(title: choice.label, detail: "", checked: choice == current) {
+                            change { try await agents.setDefaultCompactAt(choice) }
+                        }
+                    }
+                }
+            }
             SettingsRow(label: "Work in") {
                 Segmented(
                     options: [

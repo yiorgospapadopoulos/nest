@@ -478,6 +478,7 @@ class PixieCallRuns:
             title=f"{pixie.name}, called by {calling.title}",
             model=run_model(pixie, self._defaults().model),
             effort=pixie.effort,
+            compact_at=pixie.compact_at,
             permission_mode=mode,
             attachment_ids=[],
             provider=pixie.provider,

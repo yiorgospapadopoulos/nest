@@ -451,6 +451,7 @@ class SessionManager:
             cwd=joined.path if joined is not None else repo.path if mode == "in_place" else None,
             model=model,
             effort=effort,
+            compact_at=_compact_at(engine, defaults.compact_at),
             # Nest always passes the mode; Ask when none fits (B94).
             permission_mode=BYPASS if on_autopilot else permission_mode or DEFAULT_MODE,
             follows_claude_code_mode=False,
@@ -573,6 +574,7 @@ class SessionManager:
         permission_mode: PermissionMode,
         attachment_ids: list[str],
         sender: Sender = USER,
+        compact_at: int | None = None,
         habit_run_id: str | None = None,
         provider: str | None = None,
         called_by: str | None = None,
@@ -600,6 +602,7 @@ class SessionManager:
                 cwd=cwd,
                 model=model,
                 effort=await self._effort(engine, model, effort, None),
+                compact_at=_compact_at(engine, compact_at),
                 permission_mode=permission_mode if autopilot is None else BYPASS,
                 provider=engine.name,
                 pixie_id=pixie_id,
@@ -687,6 +690,7 @@ class SessionManager:
                 cwd=chat.cwd,
                 model=model,
                 effort=await self._effort(engine, model, None, defaults.effort if own else None),
+                compact_at=_compact_at(engine, defaults.compact_at),
                 permission_mode=mode or DEFAULT_MODE,
                 follows_claude_code_mode=False,
                 provider=engine.name,
@@ -925,6 +929,9 @@ class SessionManager:
         if (request.model, request.permission_mode, request.effort) != (None, None, None):
             require_open(session)
             request = await self._fitting_mode(session, request)
+        if request.compact_at is not None:
+            require_open(session)
+            self._engines.of(session).require("compact_window")
         changes = session_changes(session, request, self._clock.now())
         if not changes:
             return session
@@ -1561,3 +1568,10 @@ def _repo_mode(repo: RepoConfig) -> SessionMode | None:
     if repo.worktree.default is None:
         return None
     return "worktree" if repo.worktree.default else "in_place"
+
+
+def _compact_at(engine: Engine, size: int | None) -> int | None:
+    """The size a new chat on `engine` compacts at: none on an engine without the setting,
+    which compacts its own way (B146).
+    """
+    return size if engine.supports("compact_window") else None

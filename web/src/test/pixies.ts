@@ -3,7 +3,7 @@ import type { UserEvent } from "@testing-library/user-event";
 import { expect } from "vitest";
 import type { Pixie } from "../api/types.ts";
 import { fakeApi, type FakeApi } from "./fakeApi.ts";
-import { pixie } from "./fixtures.ts";
+import { applied, pixie } from "./fixtures.ts";
 import { renderApp } from "./render.tsx";
 
 /** The Chats tab showing the pixies, chosen from its project menu (B102). */
@@ -24,7 +24,9 @@ export async function openPixie(
   { from = "address" }: { from?: "address" | "list" } = {},
 ) {
   api.pixies.mockResolvedValue([shown]);
-  api.updatePixie.mockImplementation((_id, body) => Promise.resolve({ ...shown, ...body }));
+  api.updatePixie.mockImplementation((_id, body) =>
+    Promise.resolve({ ...shown, ...applied(body) }),
+  );
   let rendered;
   if (from === "list") {
     rendered = await renderApp({ api });

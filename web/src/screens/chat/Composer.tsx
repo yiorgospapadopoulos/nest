@@ -674,6 +674,7 @@ export function Composer({
           )}
           {session !== undefined && context !== null && (
             <ContextMeter
+              session={session}
               context={context}
               disabled={closed}
               onCompact={() => void deliver(session.id, "/compact", [])}

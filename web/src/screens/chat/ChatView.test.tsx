@@ -11,6 +11,7 @@ import type {
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import {
+  applied,
   approval,
   check,
   detail,
@@ -45,7 +46,11 @@ async function openChat({
   api.session.mockResolvedValue(detail({ ...chat, agents }));
   api.sessionEvents.mockResolvedValue(events);
   api.updateSession.mockImplementation((_id, body) =>
-    Promise.resolve({ ...chat, ...body, archived_at: body.archived === true ? "x" : null }),
+    Promise.resolve({
+      ...chat,
+      ...applied(body),
+      archived_at: body.archived === true ? "x" : null,
+    }),
   );
   api.resolveApproval.mockImplementation((id) =>
     Promise.resolve({ ...defined(approvals.find((a) => a.id === id)), status: "resolved" }),

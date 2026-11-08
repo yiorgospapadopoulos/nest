@@ -225,13 +225,13 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase(
             "PUT", "/api/agents/defaults",
             body:
-                #"{"effort":null,"mode":"worktree","model":"gpt-5.5","permission_mode":"plan","provider":"codex"}"#,
+                #"{"compact_at":1000000,"effort":null,"mode":"worktree","model":"gpt-5.5","permission_mode":"plan","provider":"codex"}"#,
             response: defaultsJSON
         ) {
             _ = try await $0.updateAgentDefaults(
                 AgentDefaults(
                     provider: "codex", model: "gpt-5.5", effort: nil, permissionMode: .plan,
-                    mode: .worktree))
+                    mode: .worktree, compactAt: 1_000_000))
         },
         RouteCase("GET", "/api/stuck/settings", response: stuckJSON) {
             _ = try await $0.stuckSettings()

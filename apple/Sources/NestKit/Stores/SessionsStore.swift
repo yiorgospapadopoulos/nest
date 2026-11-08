@@ -388,6 +388,11 @@ public final class SessionsStore {
         try await update(id, UpdateSessionRequest(permissionMode: mode))
     }
 
+    /// Applies when the agent run next opens. A pixie's own chat changes through its pixie.
+    public func setCompactAt(_ id: String, _ compactAt: CompactAt) async throws {
+        try await update(id, UpdateSessionRequest(compactAt: compactAt))
+    }
+
     /// Deletes the session for good, with its worktree and history; its branch stays.
     public func delete(_ id: String) async throws {
         try await api.deleteSession(id)

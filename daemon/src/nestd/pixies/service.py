@@ -45,7 +45,7 @@ DEFAULT_SOUL = (
     "and what you should never do."
 )
 # Changing these on a pixie changes its open chat as well.
-_CONTROLS = ("model", "effort", "permission_mode")
+_CONTROLS = ("model", "effort", "compact_at", "permission_mode")
 # An explicit null sets these back to the default; for the other fields null is no change.
 _CLEARABLE = ("model", "effort")
 # Changing these changes what the chat's run is opened with, so its next turn opens a new one.
@@ -121,6 +121,8 @@ class PixieService:
 
     async def update(self, pixie_id: str, request: UpdatePixie) -> Pixie:
         changes = request.model_dump(exclude_none=True, exclude={"team_id"})
+        if request.compact_at == "auto":
+            changes["compact_at"] = None
         cleared = {
             name
             for name in _CLEARABLE
@@ -249,6 +251,7 @@ class PixieService:
                 title=pixie.name,
                 model=run_model(pixie, self._defaults().model),
                 effort=pixie.effort,
+                compact_at=pixie.compact_at,
                 permission_mode=pixie.permission_mode,
                 attachment_ids=attachment_ids,
                 sender=sender,

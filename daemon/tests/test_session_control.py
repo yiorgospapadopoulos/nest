@@ -19,6 +19,7 @@ from nestd.sessions.errors import (
     NoTurnInProgressError,
     SessionClosedError,
     SessionNotFoundError,
+    UnsupportedFeatureError,
 )
 from nestd.sessions.models import SessionState, UpdateSession
 from nestd.storage.db import Database
@@ -235,6 +236,41 @@ async def test_a_new_effort_reopens_the_run_at_the_next_message(env: Env) -> Non
     await env.manager.send(created.id, "again", [])
     await until_results(env, created.id, 3)
     assert len(env.provider.runs) == 2
+
+
+async def test_a_chat_compacts_at_the_default_size_until_another_is_chosen(env: Env) -> None:
+    """B146: a new chat takes the agent defaults' size; a new one, or Auto, applies when the
+    run next opens, as the engine reads it only then.
+    """
+    env.defaults = env.defaults.model_copy(update={"compact_at": 300_000})
+    env.provider.script(reply("one"), reply("two"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    updated = await env.manager.update(created.id, UpdateSession(compact_at="auto"))
+
+    assert created.compact_at == 300_000
+    assert env.provider.runs[0].spec.compact_at == 300_000
+    assert updated.compact_at is None
+    await env.manager.send(created.id, "go on", [])
+    await until_results(env, created.id, 2)
+    assert env.provider.runs[1].spec.compact_at is None
+    assert env.provider.runs[1].spec.resume_id == "sdk-1"
+
+
+async def test_an_engine_without_a_size_to_compact_at_keeps_its_own(env: Env) -> None:
+    """B146: an ACP engine compacts its own way: its chats take no size, and setting one is
+    refused.
+    """
+    env.provider.unsupported = frozenset({"compact_window"})  # type: ignore[misc]
+    env.defaults = env.defaults.model_copy(update={"compact_at": 300_000})
+    env.provider.script(reply("one"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    assert created.compact_at is None
+    with pytest.raises(UnsupportedFeatureError):
+        await env.manager.update(created.id, UpdateSession(compact_at=700_000))
 
 
 async def test_switching_to_bypass_reopens_the_run_in_bypass(env: Env) -> None:

@@ -26,7 +26,14 @@ import { localEngineName } from "../../screens/settings/accountText.ts";
 import { useAutopilot } from "../../screens/chat/useAutopilot.ts";
 import { prepareImage } from "../../screens/chat/images.ts";
 import { localCommand, namedModel, type LocalCommand } from "../../screens/chat/localCommands.ts";
-import { effortLabel, PERMISSIONS } from "../../screens/chat/options.ts";
+import { useCompactAt } from "../../screens/chat/useCompactAt.ts";
+import {
+  COMPACT_AT,
+  COMPACT_AT_TITLE,
+  compactAtLabel,
+  effortLabel,
+  PERMISSIONS,
+} from "../../screens/chat/options.ts";
 import { placeName, sessionPlace } from "../../screens/chat/place.ts";
 import { dropThumbnail, keepThumbnail, useThumbnail } from "../../screens/chat/thumbnails.ts";
 import { useSuggestions } from "../../screens/chat/useSuggestions.ts";
@@ -577,6 +584,7 @@ export function Composer({ target }: { target: ComposerTarget }) {
   ];
 
   const context = session?.context ?? null;
+  const compactAt = useCompactAt(session);
   const contextText = context === null ? null : contextLabel(fit.context, context);
   const chatPlace = session === undefined ? null : sessionPlace(session, repo);
 
@@ -900,6 +908,21 @@ export function Composer({ target }: { target: ComposerTarget }) {
                     void actions.send(session.id, "/compact", []);
                   },
                 },
+                ...(compactAt === null
+                  ? []
+                  : [
+                      {
+                        type: "submenu" as const,
+                        title: `${COMPACT_AT_TITLE}: ${compactAtLabel(compactAt.value)}`,
+                        items: COMPACT_AT.map((option) => ({
+                          title: option.label,
+                          checked: option.value === compactAt.value,
+                          onSelect: () => {
+                            compactAt.pick(option.value);
+                          },
+                        })),
+                      },
+                    ]),
               ]}
             >
               {(trigger) => (

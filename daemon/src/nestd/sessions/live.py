@@ -48,6 +48,7 @@ class LiveSession:
     run_dirs: tuple[Path, ...] = ()
     # The thinking effort the run opened with; a different one needs a new run.
     run_effort: Effort | None = None
+    run_compact_at: int | None = None
     # Whether the run opened in bypass: only such a run may switch into it live (D046).
     run_bypass: bool = False
     # Whether the run opened on Autopilot: its git guard, tools and prompt come with that.

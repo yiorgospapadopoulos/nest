@@ -327,6 +327,7 @@ class HabitScheduler:
                 title=habit.name,
                 model=run_model(pixie, self._defaults().model),
                 effort=pixie.effort,
+                compact_at=pixie.compact_at,
                 permission_mode=pixie.permission_mode,
                 attachment_ids=[],
                 habit_run_id=run.id,

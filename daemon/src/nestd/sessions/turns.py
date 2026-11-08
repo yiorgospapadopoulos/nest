@@ -872,6 +872,7 @@ class TurnRunner:
                 model=session.model if local is None else local.model,
                 # A local model without thinking takes no thinking level.
                 effort=session.effort if local is None or local.thinking else None,
+                compact_at=session.compact_at,
                 # A pixie never resumes: each run starts fresh with its memory (D072), but
                 # a called pixie continues its call's session as a subagent does (B112). A
                 # rewound or forked conversation resumes cut (B59).
@@ -924,6 +925,7 @@ class TurnRunner:
             live.run_local = local
             live.run_dirs = dirs
             live.run_effort = session.effort
+            live.run_compact_at = session.compact_at
             live.run_bypass = mode == BYPASS
             live.run_autopilot = session.autopilot is not None
             live.run_can_push = can_push
@@ -1091,16 +1093,18 @@ def _fits(
     can_push: bool,
 ) -> bool:
     """Whether the live run can take the session's next message as it is."""
-    # A new attachment folder, a new effort, another set of subagents (B40), another
-    # active account (B98), a change to whether agents may push (D160), or bypass for a run
-    # that did not open in it needs a new run (D046), but waits while background tasks run:
-    # closing would stop them. Until then the agent asks before reading a new folder's files.
+    # A new attachment folder, a new effort or size to compact at (B146), another set of
+    # subagents (B40), another active account (B98), a change to whether agents may push
+    # (D160), or bypass for a run that did not open in it needs a new run (D046), but waits
+    # while background tasks run: closing would stop them. Until then the agent asks before
+    # reading a new folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = (
         not crosses_local(live.run_model, session.model)
         and live.run_cwd == session.cwd
         and set(dirs) <= set(live.run_dirs)
         and live.run_effort == session.effort
+        and live.run_compact_at == session.compact_at
         and live.run_agents.fingerprint == agents.fingerprint
         and live.run_account == account
         and live.run_autopilot == (session.autopilot is not None)

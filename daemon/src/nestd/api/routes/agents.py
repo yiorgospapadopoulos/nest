@@ -24,6 +24,9 @@ async def put_defaults(body: AgentChoices, ctx: Context) -> AgentChoices:
     default model, Medium or the closest level, Ask). 422 for an unknown engine, or when
     the model does not take the effort or Auto mode. Applies to the next new session.
     """
+    if "compact_at" not in body.model_fields_set:
+        # A client from before B146 keeps the size chosen elsewhere.
+        body = body.model_copy(update={"compact_at": ctx.settings.agents.compact_at})
     engines = ctx.sessions.engines
     if body.provider is not None:
         engines.named(body.provider)
