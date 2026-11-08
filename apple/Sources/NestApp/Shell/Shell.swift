@@ -2490,7 +2490,11 @@ final class ComposerDraft {
 
     /// The caret as a character offset; the end of the text when unknown.
     var caret: Int {
-        guard let selection, case .selection(let range) = selection.indices else {
+        // A selection kept from longer text ends past this text's end, where reading its
+        // offset traps (a crash seen while typing, B147).
+        guard let selection, case .selection(let range) = selection.indices,
+            range.upperBound <= text.endIndex
+        else {
             return text.count
         }
         let offset = min(max(range.upperBound.utf16Offset(in: text), 0), text.utf16.count)
