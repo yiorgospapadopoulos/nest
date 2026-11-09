@@ -112,7 +112,10 @@ public enum ShortcutGroup: String, Sendable, CaseIterable {
 public enum ShortcutAction: String, Sendable, CaseIterable {
     case settings, palette, toggleSidebar, toggleActivity, workspace, board, artifacts
     case focusSidebar, nextPane, previousPane
-    case newChat, sendMessage, closePane, newTerminal, newBrowser, openInVSCode
+    case newChat, sendMessage, closePane, newTerminal, newBrowser
+    /// Opens the project in the default editor (B152); saved under its old name, so a
+    /// shortcut changed before stays.
+    case openInEditor = "openInVSCode"
     case previousProject, nextProject, project, pixies
 
     public var title: String {
@@ -132,7 +135,7 @@ public enum ShortcutAction: String, Sendable, CaseIterable {
         case .closePane: "Close pane"
         case .newTerminal: "New terminal"
         case .newBrowser: "New browser"
-        case .openInVSCode: "Open project in VS Code"
+        case .openInEditor: "Open project in the default editor"
         case .previousProject: "Previous project"
         case .nextProject: "Next project"
         case .project: "Project 1 to 9"
@@ -145,7 +148,7 @@ public enum ShortcutAction: String, Sendable, CaseIterable {
         case .settings, .palette, .toggleSidebar, .toggleActivity, .workspace, .board,
             .artifacts, .focusSidebar, .nextPane, .previousPane:
             .window
-        case .newChat, .sendMessage, .closePane, .newTerminal, .newBrowser, .openInVSCode:
+        case .newChat, .sendMessage, .closePane, .newTerminal, .newBrowser, .openInEditor:
             .chats
         case .previousProject, .nextProject, .project, .pixies: .projects
         }
@@ -168,7 +171,7 @@ public enum ShortcutAction: String, Sendable, CaseIterable {
         case .closePane: Shortcut("w")
         case .newTerminal: Shortcut("t", [.command, .shift])
         case .newBrowser: Shortcut("b", [.command, .shift])
-        case .openInVSCode: Shortcut("o", [.command, .shift])
+        case .openInEditor: Shortcut("o", [.command, .shift])
         case .previousProject: Shortcut("[", [.command, .shift])
         case .nextProject: Shortcut("]", [.command, .shift])
         case .project: Shortcut(Shortcut.digits)

@@ -271,7 +271,12 @@ public struct RemotesRefresh: Decodable, Sendable, Hashable {
 }
 
 struct OpenRepoRequest: Encodable {
-    var app: RepoApp
+    var app: String
+}
+
+/// Nil goes back to the first installed editor.
+struct DefaultEditorRequest: Encodable {
+    var `default`: String?
 }
 
 struct ArchiveRequest: Encodable {

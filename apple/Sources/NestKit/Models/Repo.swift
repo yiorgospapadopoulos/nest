@@ -370,9 +370,48 @@ public enum ProjectRemoval {
     }
 }
 
-/// Local apps a project can be opened in.
-public enum RepoApp: String, Codable, Sendable, CaseIterable {
-    case vscode
+/// What a project opens in: an editor by the daemon's id (B152), the default editor, the
+/// Finder or a terminal.
+public enum RepoApp: Sendable, Hashable {
+    case editor(String)
+    case defaultEditor
     case finder
     case terminal
+
+    /// The name the daemon's open route takes.
+    public var rawValue: String {
+        switch self {
+        case .editor(let id): id
+        case .defaultEditor: "editor"
+        case .finder: "finder"
+        case .terminal: "terminal"
+        }
+    }
+}
+
+/// A code editor installed on the daemon's computer.
+public struct Editor: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+/// The installed editors in Open in's order (B152), and the one its shortcut opens.
+public struct Editors: Codable, Sendable, Equatable {
+    public var installed: [Editor]
+    /// The one chosen in Settings while it is installed, else the first; nil with none.
+    public var `default`: String?
+
+    public static let none = Editors(installed: [], default: nil)
+
+    public init(installed: [Editor], default: String?) {
+        self.installed = installed
+        self.default = `default`
+    }
+
+    public var defaultEditor: Editor? { installed.first { $0.id == self.default } }
 }

@@ -33,8 +33,12 @@ import Testing
                 Fixture.session("h1", repo: "map-viewer", title: "Retry", state: .waiting),
             ]
             $0.approvals = [question]
+            $0.editors = Editors(
+                installed: [Editor(id: "vscode", name: "VS Code"), Editor(id: "zed", name: "Zed")],
+                default: "zed")
         }
         try await app.loadRepos()
+        try await app.loadEditors()
         app.openProject("map-viewer")
         app.selectProject("todo-ui")
         try await sessions.load()
@@ -51,7 +55,7 @@ import Testing
                 "New terminal in todo-ui", "New browser", "Show the Board view",
                 "Show the Artifacts view", "Collapse the chat sidebar",
                 "Collapse the activity panel",
-                "Show usage", "Open todo-ui in VS Code", "Go to map-viewer",
+                "Show usage", "Open todo-ui in Zed", "Go to map-viewer",
             ])
         #expect(
             palette.items.prefix(3).map(\.subtitle) == [
@@ -84,6 +88,15 @@ import Testing
         let other = CommandPalette.catalog(app: app, sessions: sessions).items
         #expect(other.last?.title == "Go to todo-ui")
         #expect(other.last?.subtitle == "Project")
+    }
+
+    /// B152: with no editor installed there is nothing to open the project in.
+    @Test func noEditorNoOpenCommand() async throws {
+        try await load()
+        api.set { $0.editors = .none }
+        try await app.loadEditors()
+        let palette = CommandPalette.catalog(app: app, sessions: sessions)
+        #expect(!palette.items.contains { $0.action == .openInEditor })
     }
 
     @Test func withoutAProjectOnlyChatsShow() {
