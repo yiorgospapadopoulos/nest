@@ -54,12 +54,13 @@ const PATHS = {
   chevr: <path d="M9 6l6 6-6 6" />,
   x: <path d="M6 6l12 12M18 6L6 18" />,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  // The classic git branch, as the desktop's `branch` glyph at 1.5 times its grid.
   branch: (
     <>
-      <circle cx="6" cy="6" r="2" />
-      <circle cx="6" cy="18" r="2" />
-      <circle cx="18" cy="8" r="2" />
-      <path d="M6 8v8M18 10c0 3.5-4 4-10 6.5" />
+      <circle cx="6.75" cy="5.25" r="2.625" />
+      <circle cx="6.75" cy="18.75" r="2.625" />
+      <circle cx="17.25" cy="5.25" r="2.625" />
+      <path d="M6.75 7.875v8.25M17.25 7.875v1.5a3.375 3.375 0 0 1-3.375 3.375h-3.75A3.375 3.375 0 0 0 6.75 16.125" />
     </>
   ),
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,

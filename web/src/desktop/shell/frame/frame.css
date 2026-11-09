@@ -528,8 +528,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.fr-pbranch .dk-fork,
-.fr-init .dk-fork {
+.fr-pbranch .dk-branch,
+.fr-init .dk-branch {
   stroke: currentColor;
   width: 9px;
   height: 9px;
@@ -1100,7 +1100,7 @@
   gap: 3px;
   min-width: 0;
 }
-.fr-place .dk-fork {
+.fr-place .dk-branch {
   width: 9px;
   height: 9px;
   stroke: var(--t3);

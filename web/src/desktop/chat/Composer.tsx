@@ -34,7 +34,6 @@ import {
   effortLabel,
   PERMISSIONS,
 } from "../../screens/chat/options.ts";
-import { placeName, sessionPlace } from "../../screens/chat/place.ts";
 import { dropThumbnail, keepThumbnail, useThumbnail } from "../../screens/chat/thumbnails.ts";
 import { useSuggestions } from "../../screens/chat/useSuggestions.ts";
 import {
@@ -598,7 +597,6 @@ export function Composer({ target }: { target: ComposerTarget }) {
   const context = session?.context ?? null;
   const compactAt = useCompactAt(session);
   const contextText = context === null ? null : contextLabel(fit.context, context);
-  const chatPlace = session === undefined ? null : sessionPlace(session, repo);
 
   return (
     <div className={target.kind === "start" ? "dc-comp start" : "dc-comp"}>
@@ -876,25 +874,6 @@ export function Composer({ target }: { target: ComposerTarget }) {
             {shownPlace.kind === "newWorktree" && (
               <BranchField value={branch} onChange={setBranch} />
             )}
-          </span>
-        )}
-        {chatPlace !== null && (
-          <span
-            className="dc-place"
-            title={
-              chatPlace.kind === "worktree"
-                ? `Worktree ${chatPlace.name}`
-                : `Project folder, on ${placeName(chatPlace)}`
-            }
-          >
-            <Glyph name="branch" size={11} />
-            {/* A label on a plain span is not read; this text is (B147). */}
-            <span className="sr">
-              {chatPlace.kind === "worktree"
-                ? `Worktree ${chatPlace.name}`
-                : `On ${placeName(chatPlace)}`}
-            </span>
-            {fit.showsPlaceName && <span aria-hidden="true">{placeName(chatPlace)}</span>}
           </span>
         )}
         <span className="grow" />

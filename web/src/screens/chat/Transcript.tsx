@@ -643,7 +643,7 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
       return (
         <div className="m-ans" data-ev={ev}>
           <small>{item.question}</small>
-          <div className="m-u">
+          <div className="m-aa">
             <UserText text={item.text} />
           </div>
         </div>

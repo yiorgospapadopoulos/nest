@@ -4,9 +4,8 @@ import Foundation
 /// name first (B60): it drops the run's extra ports (B108) and the pull request chip, then
 /// shortens who started the chat.
 /// A pixie's header shortens its Details button to the icon, then drops its status word
-/// and @slug. The composer shortens where the chat works to its icon (B71), shortens,
-/// then hides, the context and shortens the model's name; attach, dictation and send
-/// always stay.
+/// and @slug. The composer shortens, then hides, the context and shortens the model's
+/// name; attach, dictation and send always stay.
 public struct PaneFit: Sendable, Equatable {
     public enum ContextStyle: Sendable, Equatable {
         case full, percent, hidden
@@ -24,10 +23,6 @@ public struct PaneFit: Sendable, Equatable {
     public let showsDetailsLabel: Bool
     /// Who started a chat in full and a pixie's @slug, in a header.
     public let showsHeaderDetails: Bool
-    /// The branch or worktree name beside its icon in the composer, where the model,
-    /// thinking, permission and full context still fit beside it; narrower panes show the
-    /// icon only.
-    public let showsPlaceName: Bool
     /// The status word beside its dot, in a pixie's header; a chat's header shows the dot.
     public let showsStatusLabel: Bool
     public let showsPullRequest: Bool
@@ -44,7 +39,6 @@ public struct PaneFit: Sendable, Equatable {
         showsPullRequest = width >= 420
         showsAllPorts = width >= 400
         showsHeaderDetails = width >= 360
-        showsPlaceName = width >= 560
         showsStatusLabel = width >= 380
         context = width >= 460 ? .full : width >= 360 ? .percent : .hidden
         compact = width < 380

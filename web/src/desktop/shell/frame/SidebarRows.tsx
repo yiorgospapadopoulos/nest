@@ -17,7 +17,7 @@ import { useContextMenu } from "../../ui/contextMenu.tsx";
 import { Menu } from "../../ui/Menu.tsx";
 import type { MenuEntry } from "../../ui/menuItems.ts";
 import { RenameField } from "../../ui/RenameField.tsx";
-import { ForkIcon, PANE_DRAG } from "../bits.tsx";
+import { BranchIcon, PANE_DRAG } from "../bits.tsx";
 import { useShell } from "../context.ts";
 import { claudePane } from "../panes.ts";
 import { useTap } from "../tap.ts";
@@ -40,7 +40,7 @@ function PlaceMark({ place, map }: { place: ChatPlace; map: LoadedMap | null }) 
       style={color === null ? undefined : ({ "--lane": color } as CSSProperties)}
       title={place.kind === "worktree" ? `Worktree ${name}` : `On ${name} in the project folder`}
     >
-      <ForkIcon />
+      <BranchIcon />
       <span>{name}</span>
     </span>
   );

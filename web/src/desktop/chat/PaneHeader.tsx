@@ -1,18 +1,21 @@
 // A chat pane's header, as the Mac's PaneHeader (PaneView.swift): the grip, the chat's
-// name and status dot, the engine or local model, the machine of a General chat and who
+// name and status dot, where it works in its branch's colour, the engine or local model, the machine of a General chat and who
 // started it; at the trailing edge the issue and pull request chips, Stuck, the Run
 // control, maximise and close. A double click on its empty part maximises the pane.
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Session } from "../../api/types.ts";
 import { isLocalModel } from "../../api/payloads.ts";
+import { placeName, sessionPlace } from "../../screens/chat/place.ts";
 import { startedByText } from "../../screens/pixies/options.ts";
 import { useStore } from "../../store/context.ts";
-import { GENERAL } from "../../store/general.ts";
+import { GENERAL, repoNamed } from "../../store/general.ts";
 import { localModelOf } from "../../store/local.ts";
 import { chatStatus, engineName, pendingFor, shownTitle } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { PrChip } from "../shell/frame/PrChip.tsx";
+import { placeColor } from "../shell/frame/projectMap.ts";
+import { useBranchMap } from "./branchMaps.ts";
 import { useFit } from "./fit.ts";
 import { Glyph } from "./glyphs.tsx";
 
@@ -48,6 +51,31 @@ export function HeaderTitle({ title }: { title: string }) {
   return <h2 className="dc-htitle">{title}</h2>;
 }
 
+/** Where the chat works, beside its name: the branch icon and the worktree's name or the
+ * folder's branch, in its branch map colour, shortened in the middle only when short of room. */
+function HeaderPlace({ session }: { session: Session }) {
+  const { state } = useStore();
+  const repo = repoNamed(state.repos, session.repo);
+  const map = useBranchMap(session.repo, repo?.git === true);
+  const place = sessionPlace(session, repo);
+  if (place === null) return null;
+  const color = placeColor(map, place);
+  const help =
+    place.kind === "worktree" ? `Worktree ${place.name}` : `Project folder, on ${placeName(place)}`;
+  return (
+    <span
+      className="dc-hplace"
+      title={help}
+      style={color === null ? undefined : ({ "--lane": color } as CSSProperties)}
+    >
+      <Glyph name="branch" size={11} />
+      {/* A label on a plain span is not read; this text is (B147). */}
+      <span className="sr">{help}</span>
+      <span aria-hidden="true">{placeName(place)}</span>
+    </span>
+  );
+}
+
 export function ChatHeaderParts({ session, run }: { session: Session; run: ReactNode }) {
   const { state } = useStore();
   const fit = useFit();
@@ -63,6 +91,7 @@ export function ChatHeaderParts({ session, run }: { session: Session; run: React
       <span className="dc-hstatus" title={status.label}>
         <Dot tone={status.tone} label={status.label} />
       </span>
+      <HeaderPlace session={session} />
       {local !== null ? (
         <span
           className="dc-hlocal"

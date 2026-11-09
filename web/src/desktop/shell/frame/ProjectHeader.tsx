@@ -7,7 +7,7 @@ import type { LoadedMap } from "../../chat/branchMaps.ts";
 import { keysText as keysOf } from "../../layout/shortcuts.ts";
 import { terminalPane } from "../../layout/tools.ts";
 import { Menu } from "../../ui/Menu.tsx";
-import { ProjectMark, ForkIcon } from "../bits.tsx";
+import { ProjectMark, BranchIcon } from "../bits.tsx";
 import { useShell } from "../context.ts";
 import { BranchMapPanel } from "./BranchMapPanel.tsx";
 import { middleName } from "./branchLanes.ts";
@@ -131,7 +131,7 @@ function BranchLabel({
       aria-expanded={open}
       onClick={onToggle}
     >
-      <ForkIcon />
+      <BranchIcon />
       <span>{selected ? middleName(branch, CHIP_NAME) : branch}</span>
       <Icon name="chev" className="fr-pbchev" />
     </button>
@@ -152,7 +152,7 @@ function InitButton() {
         shell.newChat();
       }}
     >
-      <ForkIcon />
+      <BranchIcon />
       Init
     </button>
   );

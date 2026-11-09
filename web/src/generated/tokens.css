@@ -26,6 +26,8 @@
   --mac-backdrop-tint: rgba(248,248,246,0.82);
   --mac-sheet: rgba(251,251,250,0.98);
   --mac-selection: rgba(28,28,29,0.06);
+  --mac-text-highlight: #b3d7ff;
+  --mac-text-on-highlight: #1c1c1d;
   --mac-composer: rgba(28,28,29,0.03);
   --mac-soft: rgba(28,28,29,0.045);
   --mac-hover: rgba(28,28,29,0.05);
@@ -207,6 +209,8 @@
     --mac-backdrop-tint: rgba(23,23,23,0.82);
     --mac-sheet: rgba(27,27,27,0.98);
     --mac-selection: rgba(235,235,235,0.1);
+    --mac-text-highlight: #3f638b;
+    --mac-text-on-highlight: #ffffff;
     --mac-composer: rgba(235,235,235,0.03);
     --mac-soft: rgba(235,235,235,0.045);
     --mac-hover: rgba(235,235,235,0.07);
@@ -327,6 +331,8 @@
   --mac-backdrop-tint: rgba(23,23,23,0.82);
   --mac-sheet: rgba(27,27,27,0.98);
   --mac-selection: rgba(235,235,235,0.1);
+  --mac-text-highlight: #3f638b;
+  --mac-text-on-highlight: #ffffff;
   --mac-composer: rgba(235,235,235,0.03);
   --mac-soft: rgba(235,235,235,0.045);
   --mac-hover: rgba(235,235,235,0.07);

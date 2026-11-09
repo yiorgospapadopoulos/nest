@@ -27,3 +27,13 @@ describe("the user's message bubble (B80)", () => {
     );
   });
 });
+
+describe("selected text in your own message", () => {
+  // The desktop's general `html.desk ::selection` used to outrank it, so the highlight
+  // never showed in the Mac and Linux chat.
+  it("outranks the desktop's general selection colour", () => {
+    expect(css).toContain(":root .dc-ubub::selection,");
+    expect(css).toContain(":root .m-u::selection,");
+    expect(rule(":root .dc-ubub *::selection")).toContain("background: var(--mac-text-highlight);");
+  });
+});

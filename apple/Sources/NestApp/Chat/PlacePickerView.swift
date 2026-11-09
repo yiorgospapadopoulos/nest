@@ -30,7 +30,7 @@ struct WorkOnButton: View {
             WidthCap(maxWidth: Self.maxWidth - 2 * padding) {
                 HStack(spacing: quiet ? 4 : 5) {
                     if !quiet || lane != nil {
-                        Image(systemName: Icon.branch).font(.system(size: 10, weight: .medium))
+                        BranchIcon(size: 10)
                     }
                     Text(title)
                         .font(lane == nil ? .ui(TypeSize.button) : .mono(TypeSize.meta))

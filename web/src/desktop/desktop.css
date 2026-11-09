@@ -428,14 +428,15 @@ html.desk button {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.dk-fork {
+.dk-branch {
   width: 11px;
   height: 11px;
   flex: none;
   fill: none;
   stroke: var(--t3);
-  stroke-width: 1.1;
+  stroke-width: 1.4;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .dk-act {
   display: flex;

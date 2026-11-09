@@ -160,6 +160,8 @@ public enum DesignTokens {
             public static let backdropTint = ThemedColor(light: RGBA(red: 0.972549, green: 0.972549, blue: 0.964706, alpha: 0.82), dark: RGBA(red: 0.090196, green: 0.090196, blue: 0.090196, alpha: 0.82))
             public static let sheet = ThemedColor(light: RGBA(red: 0.984314, green: 0.984314, blue: 0.980392, alpha: 0.98), dark: RGBA(red: 0.105882, green: 0.105882, blue: 0.105882, alpha: 0.98))
             public static let selection = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.06), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.1))
+            public static let textHighlight = ThemedColor(light: RGBA(red: 0.701961, green: 0.843137, blue: 1, alpha: 1), dark: RGBA(red: 0.247059, green: 0.388235, blue: 0.545098, alpha: 1))
+            public static let textOnHighlight = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 1), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 1))
             public static let composer = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.03), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.03))
             public static let soft = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.045), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.045))
             public static let hover = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.05), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.07))

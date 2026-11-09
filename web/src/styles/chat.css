@@ -379,21 +379,29 @@
   padding-bottom: 0;
 }
 /* An answer to a question Claude asked: the question, quiet, over the user's bubble (B60). */
+/* A question the agent asked and your answer, together in one card on your side: not a
+   message of its own. */
 .m-ans {
   align-self: flex-end;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  gap: 3px;
   max-width: 82%;
+  padding: 8px 12px;
+  border-radius: var(--radius-mac-card);
+  border: 1px solid var(--line-hairline);
+  background: var(--soft);
 }
 .m-ans > small {
   color: var(--t3);
   font-size: 0.7059rem;
-  text-align: right;
 }
-.m-ans .m-u {
-  max-width: 100%;
+.m-aa {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--t1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .m-u {
   align-self: flex-end;
@@ -409,14 +417,15 @@
 }
 /* A known pixie or team mention (B40): its colour pulled halfway toward the bubble's text
    colour, so it reads on an accent bubble and on a neutral one, light or dark. */
-/* Selected text in your own message: the system's highlight is near the accent bubble's own
-   colour, so it takes the bubble's text colour instead and shows on any bubble (B144). */
-.m-u::selection,
-.m-u *::selection,
-.dc-ubub::selection,
-.dc-ubub *::selection {
-  background: color-mix(in srgb, var(--on-bubble) 32%, transparent);
-  color: var(--on-bubble);
+/* Selected text in your own message: the Mac's classic blue highlight with its own text
+   colour, solid so it shows on any bubble colour. `:root` puts it above the desktop's
+   general `html.desk ::selection`. */
+:root .m-u::selection,
+:root .m-u *::selection,
+:root .dc-ubub::selection,
+:root .dc-ubub *::selection {
+  background: var(--mac-text-highlight);
+  color: var(--mac-text-on-highlight);
 }
 .m-u .mention {
   font-weight: 600;

@@ -94,7 +94,7 @@ When an agent makes a report, a plan, slides, a mockup or a chart, Nest keeps it
 
 ### Worktrees
 
-A chat can work in the project folder or in its own git worktree, a separate folder on its own branch. Then several chats can change the same project at the same time without getting in each other's way. The branch shows in colour under the chat's name and under the message box. Ask a chat to make a new worktree or delete its own and it does.
+A chat can work in the project folder or in its own git worktree, a separate folder on its own branch. Then several chats can change the same project at the same time without getting in each other's way. The branch shows in colour under the chat's name in the sidebar and next to its name at the top of the chat. Ask a chat to make a new worktree or delete its own and it does.
 
 <p align="center">
   <img src="docs/images/worktree-chat.png" alt="A chat working in its own worktree" width="860">

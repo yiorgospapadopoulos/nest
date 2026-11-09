@@ -4,11 +4,14 @@ import { GENERAL } from "../../store/general.ts";
 import { ProjectIcon } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 
-/** The Mac's branch mark: two lines joining into one, as SF Symbols' fork. */
-export function ForkIcon() {
+/** The classic git branch, as the chat's `branch` glyph. */
+export function BranchIcon() {
   return (
-    <svg className="dk-fork" viewBox="0 0 12 12" aria-hidden="true">
-      <path d="M3 1.5v2.2c0 1.6 1.3 2.3 3 3.1M9 1.5v2.2c0 1.6-1.3 2.3-3 3.1M6 6.8v3.7" />
+    <svg className="dk-branch" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="4.5" cy="3.5" r="1.75" />
+      <circle cx="4.5" cy="12.5" r="1.75" />
+      <circle cx="11.5" cy="3.5" r="1.75" />
+      <path d="M4.5 5.25v5.5M11.5 5.25v1a2.25 2.25 0 0 1-2.25 2.25h-2.5A2.25 2.25 0 0 0 4.5 10.75" />
     </svg>
   );
 }

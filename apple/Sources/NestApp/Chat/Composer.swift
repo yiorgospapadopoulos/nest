@@ -706,13 +706,6 @@ private struct ControlRow: View {
                     .padding(.leading, 4)
                     .layoutPriority(-1)
             }
-            if !pixie && !isDraft,
-                let place = session.flatMap({ ChatPlace.of($0, repo: shell.repo) })
-            {
-                PlaceLabel(place: place, showsName: fit.showsPlaceName)
-                    .frame(maxWidth: 140, alignment: .leading)
-                    .padding(.leading, 4)
-            }
             Spacer(minLength: 4).layoutPriority(start ? -2 : 0)
             if !pixie {
                 ModelMenu(chat: chat, model: isDraft ? draft.model : session?.model)
@@ -744,32 +737,6 @@ private struct ControlRow: View {
 
     private func toggleDictation() {
         actions.toggleDictation()
-    }
-}
-
-/// Where an open chat works, beside the composer's mic (B71, in the header since B55): the
-/// branch icon and the worktree's name, or the project folder's current branch, shortened
-/// in the middle; the icon alone in a narrower pane. The tooltip names the folder.
-private struct PlaceLabel: View {
-    let place: ChatPlace
-    let showsName: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: Icon.branch)
-                .font(.system(size: 10, weight: .medium))
-            if showsName {
-                Text(place.name)
-                    .font(.mono(TypeSize.meta))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
-        .foregroundStyle(Palette.t3)
-        .fixedSize(horizontal: !showsName, vertical: false)
-        .help(place.help)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(place.help)
     }
 }
 
@@ -922,7 +889,7 @@ private struct PlaceSelector<Items: View>: View {
             items()
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: Icon.branch).font(.system(size: 10, weight: .medium))
+                BranchIcon(size: 10)
                 Text(title)
                     .font(.ui(TypeSize.button))
                     .lineLimit(1)

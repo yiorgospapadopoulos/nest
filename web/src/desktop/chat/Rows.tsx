@@ -95,9 +95,11 @@ export function TranscriptRow({ item }: { item: TranscriptItem }) {
       );
     case "answer":
       return (
-        <div className="dc-urow dc-answer" data-ev={ev}>
-          <span className="dc-aq">{item.question}</span>
-          <UserBubble text={item.text} attachments={[]} event={null} />
+        <div className="dc-urow" data-ev={ev}>
+          <div className="dc-answer">
+            <span className="dc-aq">{item.question}</span>
+            <span className="dc-aa">{item.text}</span>
+          </div>
         </div>
       );
     case "assistant":

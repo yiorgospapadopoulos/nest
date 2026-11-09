@@ -64,6 +64,10 @@ backdrop_tint = { light = "rgba(248,248,246,0.82)", dark = "rgba(23,23,23,0.82)"
 # the approved design's 2 percent popover fill.
 sheet = { light = "rgba(251,251,250,0.98)", dark = "rgba(27,27,27,0.98)" }
 selection = { light = "rgba(28,28,29,0.06)", dark = "rgba(235,235,235,0.1)" }
+# Selected text in the user's own message: the Mac's classic blue highlight, with its text,
+# so it shows on any bubble colour.
+text_highlight = { light = "#b3d7ff", dark = "#3f638b" }
+text_on_highlight = { light = "#1c1c1d", dark = "#ffffff" }
 # Faint fills: the composer, cards and fields, hovered rows, and the user's message and bar
 # tracks.
 composer = { light = "rgba(28,28,29,0.03)", dark = "rgba(235,235,235,0.03)" }
