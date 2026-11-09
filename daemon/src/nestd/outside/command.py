@@ -152,19 +152,29 @@ def _open(nest: NestClient, chat: ChatDetails) -> int:
     web = f"{nest.base_url}/chat/{chat.id}"
     if sys.platform == "darwin":
         link = f"nest://chat/{chat.id}?project={quote(chat.project)}"
-        if _launch(["/usr/bin/open", link]) or _launch(["/usr/bin/open", web]):
+        if launch(["/usr/bin/open", link]) or launch(["/usr/bin/open", web]):
             print(f'Opened chat {chat.id[:SHORT_ID]} "{chat.title}".')
             return 0
-    elif _launch(["xdg-open", web]):
+    elif launch(["xdg-open", web]):
         print(f'Opened chat {chat.id[:SHORT_ID]} "{chat.title}" in the browser.')
         return 0
     print(f"nest: could not open it; it is at {web}", file=sys.stderr)
     return 1
 
 
-def _launch(argv: Sequence[str]) -> bool:
+def launch(argv: Sequence[str]) -> bool:
+    """Runs an opener such as xdg-open. Its output goes nowhere: a browser it starts keeps
+    what it was given open, and a pipe it held would keep this waiting until the time
+    limit, as if the opener had failed."""
     try:
-        done = subprocess.run(argv, capture_output=True, check=False, timeout=10)  # noqa: S603
+        done = subprocess.run(  # noqa: S603
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=10,
+        )
     except (OSError, subprocess.TimeoutExpired):
         return False
     return done.returncode == 0
