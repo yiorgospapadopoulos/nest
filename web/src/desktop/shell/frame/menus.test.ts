@@ -1,6 +1,7 @@
 // The frame's menus list what the Mac's do, in each state (ProjectHeader.swift, ChatRow.swift,
 // ClaudeChatRow.swift, TabStrip.swift).
 import { describe, expect, it, vi } from "vitest";
+import type { Editors } from "../../../api/types.ts";
 import { claudeChat, repo, session } from "../../../test/fixtures.ts";
 import type { MenuEntry } from "../../ui/menuItems.ts";
 import {
@@ -30,15 +31,26 @@ describe("the project menu", () => {
     settings: vi.fn(),
   };
 
-  it("has the terminal, the folder's apps, Copy path and Project settings", () => {
-    const entries = projectMenu("todo-ui", "Ctrl+Shift+O", run);
+  const editors: Editors = {
+    installed: [
+      { id: "vscode", name: "VS Code" },
+      { id: "zed", name: "Zed" },
+    ],
+    default: "zed",
+  };
+  const openIn = (entries: MenuEntry[]) => {
+    const entry = entries.find((e) => e.type === "submenu");
+    if (entry?.type !== "submenu") throw new Error("no Open in");
+    return entry.items;
+  };
+
+  it("has the terminal, Open in, Copy path and Project settings", () => {
+    const entries = projectMenu("todo-ui", editors, "Ctrl+Shift+O", run);
     expect(titles(entries)).toEqual([
       "New terminal",
       "New browser",
       "---",
-      "Open in VS Code",
-      "Show in Files",
-      "Open in Terminal",
+      "Open in",
       "---",
       "Copy path",
       "---",
@@ -46,17 +58,38 @@ describe("the project menu", () => {
     ]);
     choose(entries, "Project settings…");
     expect(run.settings).toHaveBeenCalled();
-    choose(entries, "Show in Files");
+  });
+
+  it("opens in every installed editor, the default with the shortcut, then Files and Terminal (B152)", () => {
+    const items = openIn(projectMenu("todo-ui", editors, "Ctrl+Shift+O", run));
+    expect(titles(items)).toEqual(["VS Code", "Zed", "---", "Files", "Terminal"]);
+    expect(items.map((e) => ("shortcut" in e ? e.shortcut : undefined))).toEqual([
+      undefined,
+      "Ctrl+Shift+O",
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    choose(items, "Zed");
+    expect(run.openIn).toHaveBeenCalledWith("zed");
+    choose(items, "Files");
     expect(run.openIn).toHaveBeenCalledWith("finder");
   });
 
+  it("offers only Files and Terminal while no editor is installed or listed yet", () => {
+    for (const none of [null, { installed: [], default: null }]) {
+      expect(titles(openIn(projectMenu("todo-ui", none, "Ctrl+Shift+O", run)))).toEqual([
+        "Files",
+        "Terminal",
+      ]);
+    }
+  });
+
   it("offers General no terminal, no path and no settings (B110)", () => {
-    expect(titles(projectMenu("general", "", run))).toEqual([
+    expect(titles(projectMenu("general", editors, "", run))).toEqual([
       "New browser",
       "---",
-      "Open in VS Code",
-      "Show in Files",
-      "Open in Terminal",
+      "Open in",
     ]);
   });
 });
