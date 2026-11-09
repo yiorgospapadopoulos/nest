@@ -6,6 +6,7 @@ import {
   authorsLabel,
   GITHUB_EVENTS,
   GITHUB_NOTE,
+  OUTSIDERS_WARNING,
   projectsText,
   toggled,
   type GitHubDraft,
@@ -93,6 +94,7 @@ export function GitHubRows({
               }))
             }
           />
+          {draft.authors !== "members" && <DetailNote text={OUTSIDERS_WARNING} />}
         </>
       )}
       <DetailNote text={GITHUB_NOTE} />

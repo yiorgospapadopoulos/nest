@@ -4,6 +4,7 @@ import {
   AUTHORS,
   GITHUB_EVENTS,
   GITHUB_NOTE,
+  OUTSIDERS_WARNING,
   toggled,
   type GitHubDraft,
 } from "../../triggers/github.ts";
@@ -112,6 +113,9 @@ export function GitHubFields({
             </div>
           </div>
         </>
+      )}
+      {draft.events.length > 0 && draft.authors !== "members" && (
+        <p className="hint gnote acwarn">{OUTSIDERS_WARNING}</p>
       )}
       <p className="hint gnote">{GITHUB_NOTE}</p>
     </>
