@@ -173,6 +173,8 @@ final class FakeAPI: NestAPI {
         var computerSettings = ComputerUseSettings()
         var computerStatus = ComputerStatus(enabled: false, kinds: [])
         var computerFrames: [String: Data] = [:]
+        /// Terminal agents (B151).
+        var outsideClients: [OutsideClient] = []
     }
 
     let state = Mutex(State())
@@ -1889,5 +1891,37 @@ final class FakeAPI: NestAPI {
 
     func computerFrame(_ id: String) async throws -> Data? {
         try call("computerFrame", id) { $0.computerFrames[id] }
+    }
+
+    func outsideClients() async throws -> [OutsideClient] {
+        try call("outsideClients") { $0.outsideClients }
+    }
+
+    func turnOnOutsideClient(_ kind: OutsideClientKind, _ access: OutsideAccess) async throws
+        -> OutsideClient
+    {
+        try call("turnOnOutsideClient", "\(kind.rawValue) \(access.rawValue)") { state in
+            changeClient(kind, in: &state) {
+                $0.on = true
+                $0.access = access
+            }
+        }
+    }
+
+    func turnOffOutsideClient(_ kind: OutsideClientKind) async throws -> OutsideClient {
+        try call("turnOffOutsideClient", kind.rawValue) { state in
+            changeClient(kind, in: &state) {
+                $0.on = false
+                $0.access = nil
+            }
+        }
+    }
+
+    private func changeClient(
+        _ kind: OutsideClientKind, in state: inout State, change: (inout OutsideClient) -> Void
+    ) -> OutsideClient {
+        let index = state.outsideClients.firstIndex { $0.kind == kind }!
+        change(&state.outsideClients[index])
+        return state.outsideClients[index]
     }
 }

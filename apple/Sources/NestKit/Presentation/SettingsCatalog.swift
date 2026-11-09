@@ -5,6 +5,8 @@ public enum SettingsPage: Sendable, Hashable {
     case general, appearance, notifications, agents, usage, storage, pixies, accounts
     /// Letting chats use apps on this Mac, simulators and the shared browser (B150).
     case computer
+    /// Claude Code, Codex, other AI apps and the `nest` command working with chats (B151).
+    case terminal
     /// How fast and how costly Nest is, run on request (B115).
     case performance
     case devices
@@ -19,8 +21,8 @@ public enum SettingsPage: Sendable, Hashable {
 
     /// The pages before the projects, in order.
     public static let fixed: [SettingsPage] = [
-        .general, .appearance, .notifications, .agents, .computer, .usage, .performance, .storage,
-        .pixies, .accounts, .devices, .shortcuts, .configuration, .features,
+        .general, .appearance, .notifications, .agents, .computer, .terminal, .usage, .performance,
+        .storage, .pixies, .accounts, .devices, .shortcuts, .configuration, .features,
     ]
 
     public var title: String {
@@ -30,6 +32,7 @@ public enum SettingsPage: Sendable, Hashable {
         case .notifications: "Notifications"
         case .agents: "Agents"
         case .computer: "Computer use"
+        case .terminal: "Terminal agents"
         case .usage: "Usage"
         case .performance: "Performance"
         case .storage: "Storage"
@@ -89,6 +92,9 @@ public enum SettingsPage: Sendable, Hashable {
                 "Let chats use apps", "Permissions", "Accessibility", "Screen Recording",
                 "Pixies may use it", "Always allowed", "Simulators and browser",
             ] + [ComputerKind.ios, .android, .browser].map(\.title)
+        case .terminal:
+            ["Claude Code", "Codex", "Other MCP apps", "nest command", "Access"]
+                + OutsideAccess.choices.map(\.title)
         case .usage:
             ["Limits", "5 hour", "Weekly", "Refresh"] + UsageUnit.allCases.map(\.title)
                 + [
