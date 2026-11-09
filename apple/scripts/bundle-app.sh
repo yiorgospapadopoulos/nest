@@ -3,7 +3,8 @@
 # It signs with the local "Nest Local Signing" certificate when the login keychain has
 # it, or with "Harness Local Signing", made before the rename to Nest (B43), so the
 # Keychain keeps trusting the app across builds (D042); otherwise ad hoc. A release sets
-# NEST_SIGNING_IDENTITY: that certificate or nothing.
+# NEST_SIGNING_IDENTITY to its Developer ID: that certificate or nothing, with a secure
+# timestamp, which notarization needs (B156).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -56,8 +57,14 @@ for name in ${NEST_SIGNING_IDENTITY:+"$NEST_SIGNING_IDENTITY"} "Nest Local Signi
         exit 1
     fi
 done
-# The helper is signed first, then the app around it (no --deep).
-codesign --force --sign "$identity" "$helper"
-codesign --force --sign "$identity" "$app"
+# Every build runs under the hardened runtime, so a developer build meets what a release
+# meets. The app's only entitlement is the microphone, for dictation; the helper needs
+# none (B156). The helper is signed first, then the app around it (no --deep).
+sign() {
+    codesign --force --sign "$identity" --options runtime \
+        ${NEST_SIGNING_IDENTITY:+--timestamp} "$@"
+}
+sign "$helper"
+sign --entitlements support/Nest.entitlements "$app"
 
 echo "Built $(pwd)/$app"

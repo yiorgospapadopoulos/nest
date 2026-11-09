@@ -7,7 +7,11 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
-identity="Nest Local Signing"
+# The Mac app is signed with the Developer ID and notarized with the notarytool profile,
+# both only in this Mac's login Keychain (B156).
+team="Y46V894D78"
+identity="$(security find-identity -v -p codesigning | grep -o -m 1 "Developer ID Application: .* ($team)" || true)"
+notary_profile="nest-notary"
 version="$(tr -d '[:space:]' < VERSION)"
 notes="release/notes/$version.md"
 out="release/out/$version"
@@ -19,14 +23,45 @@ wants() { [[ " $parts " == *" $1 "* ]]; }
   exit 1
 }
 [[ -f "$notes" ]] || { echo "release: write $notes first" >&2; exit 1; }
-# Every installed Nest trusts this one certificate. Falling back would make macOS ask each
-# user for every permission again, so a missing certificate stops the release (D163).
-security find-identity -v -p codesigning | grep -q "\"$identity\"" || {
-  echo "release: no Developer ID Application certificate for team $team in the keychain" >&2
-  exit 1
-}
+if wants macos; then
+  # macOS keeps an installed Nest's permissions for one team only. Falling back would make
+  # every user grant them again, so a missing certificate stops the release (D163).
+  security find-identity -v -p codesigning | grep -q "\"$identity\"" || {
+    echo "release: no Developer ID Application certificate for team $team in the keychain" >&2
+    exit 1
+  }
+  xcrun notarytool history --keychain-profile "$notary_profile" >/dev/null || {
+    echo "release: the notarytool profile \"$notary_profile\" does not work" >&2
+    exit 1
+  }
+fi
 # latest.json is signed at the end with the release key, only ever in this Keychain (D184).
 (cd daemon && uv run python ../release/release_key.py check)
+
+# Apple checks the app and returns a ticket, stapled to it so it opens offline too. A
+# ticket cannot be stapled to a zip, so the stapled app is zipped after (B156).
+notarize() {
+  local app="$1" upload="apple/build/Nest-notarize.zip" result id status
+  rm -f "$upload"
+  ditto -c -k --keepParent "$app" "$upload"
+  result="$(xcrun notarytool submit "$upload" --keychain-profile "$notary_profile" --wait \
+    --output-format json)" || true
+  rm -f "$upload"
+  id="$(plutil -extract id raw -o - - <<<"$result" 2>/dev/null)" || id=""
+  status="$(plutil -extract status raw -o - - <<<"$result" 2>/dev/null)" || status=""
+  if [[ "$status" != "Accepted" ]]; then
+    echo "release: notarization ended with \"${status:-no answer}\": $result" >&2
+    [[ -z "$id" ]] || xcrun notarytool log "$id" --keychain-profile "$notary_profile" >&2
+    exit 1
+  fi
+  # Stapling checks the ticket it attaches. A separate `stapler validate` asks Apple again,
+  # which can fail for a while right after the ticket appears.
+  xcrun stapler staple "$app"
+  [[ "$(spctl --assess --type execute -vv "$app" 2>&1)" == *"source=Notarized Developer ID"* ]] || {
+    echo "release: Gatekeeper does not accept the notarized Nest.app" >&2
+    exit 1
+  }
+}
 
 mkdir -p "$out"
 (cd web && npm ci --no-audit --no-fund && npm run build)
@@ -44,11 +79,14 @@ fi
 
 if wants macos; then
   NEST_SIGNING_IDENTITY="$identity" apple/scripts/bundle-app.sh
+  codesign --verify --deep --strict apple/build/Nest.app
   signature="$(codesign -dvv apple/build/Nest.app 2>&1)"
-  [[ "$signature" == *"Authority=$identity"* ]] || {
-    echo "release: Nest.app is not signed by $identity" >&2
+  [[ "$signature" == *"Authority=$identity"* && "$signature" == *"TeamIdentifier=$team"* &&
+    "$signature" == *"(runtime)"* ]] || {
+    echo "release: Nest.app is not signed by $identity with the hardened runtime" >&2
     exit 1
   }
+  notarize apple/build/Nest.app
   rm -f "$out/Nest-$version-macos-arm64.zip"
   ditto -c -k --keepParent apple/build/Nest.app "$out/Nest-$version-macos-arm64.zip"
 fi

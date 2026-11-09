@@ -22,7 +22,7 @@ Nest goes in `/Applications` on a Mac (run it from an administrator account) and
 
 On Linux Nest needs a systemd user session and the Secret Service, which Ubuntu has. Without them the script says what is missing and stops.
 
-Downloading the Mac app from the Releases page in a browser also works, but as the app has no paid Apple signing, macOS blocks it once: open System Settings > Privacy & Security > Open Anyway. The line above skips that.
+Downloading the Mac app from the Releases page in a browser also works. It is signed and notarized by Apple, so it opens like any other app.
 
 ## First run
 
