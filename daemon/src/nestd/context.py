@@ -143,8 +143,10 @@ from nestd.providers.codex_trust import forget_trust
 from nestd.providers.one_off import cheapest
 from nestd.providers.shell_env import LoginShellEnv, ShellEnvSource, login_shell
 from nestd.prs.adopt import PrAdopter
+from nestd.prs.guide import ReviewGuides
 from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
+from nestd.prs.stacks import Stacks
 from nestd.reactions import SessionReactions, StateFollower
 from nestd.repos.branch_watch import BranchWatch
 from nestd.repos.fetching import RepoFetcher
@@ -170,6 +172,11 @@ from nestd.storage.archiver import ChatArchiver
 from nestd.storage.db import Database
 from nestd.stuck.watcher import StuckWatcher
 from nestd.tracking.service import Tracking
+from nestd.triggers.access import WriteAccess
+from nestd.triggers.chats import TriggeredChats
+from nestd.triggers.poller import GitHubPoller
+from nestd.triggers.service import ChatTriggerService
+from nestd.triggers.store import TriggerStore
 from nestd.updates.service import UpdateService, UpdateSetup
 from nestd.usage.probe import ProbeClientFactory, UsageProbe
 from nestd.usage.refresher import UsageRefresher
@@ -219,6 +226,8 @@ class AppContext:
     usage_refresher: UsageRefresher
     commands: CommandStore
     prs: PullRequests
+    stacks: Stacks
+    guides: ReviewGuides
     pr_adopter: PrAdopter
     # Open GitHub issues for new chats (B101).
     issues: IssueService
@@ -241,6 +250,9 @@ class AppContext:
     habits: HabitService
     habit_scheduler: HabitScheduler
     habit_triggers: HabitTriggers
+    # GitHub events that start habits and project chats (B148).
+    chat_triggers: ChatTriggerService
+    github_triggers: GitHubPoller
     reports: Reports
     composer: ComposerActions
     archiver: ChatArchiver
@@ -793,13 +805,46 @@ class AppContext:
             check_soon=monitor.check_soon,
         )
         followers.append(pr_adopter)
+        publisher = GitPublisher(runner, store, bus, paths.data_dir)
         reviews = ReviewActions(
             sessions=sessions,
             repos=repos,
             approvals=approvals,
             tracking=tracking,
-            publisher=GitPublisher(runner, store, bus, paths.data_dir),
+            publisher=publisher,
             prs=monitor,
+        )
+        prs = PullRequests(
+            sessions=sessions,
+            store=store,
+            approvals=approvals,
+            monitor=monitor,
+            bus=bus,
+            run=runner,
+            cwd=paths.data_dir,
+        )
+        stacks = Stacks(
+            store=store,
+            sessions=sessions,
+            approvals=approvals,
+            publisher=publisher,
+            repos=repos,
+            monitor=monitor,
+            bus=bus,
+            run=runner,
+            neutral_cwd=paths.data_dir,
+        )
+        prs.on_merged(stacks.parent_merged)
+        guides = ReviewGuides(
+            store=store,
+            bus=bus,
+            clock=clock,
+            engines=sessions.engines,
+            local=local,
+            artifacts=artifacts,
+            run=runner,
+            cwd=paths.data_dir,
+            folder=paths.guides_dir,
         )
         notifications = NotificationDelivery(
             bus,
@@ -914,6 +959,27 @@ class AppContext:
             setup=update_setup or UpdateSetup(),
             engines_wait=local.engine_updates_wait,
         )
+        trigger_store = TriggerStore(db, clock)
+        github_triggers = GitHubPoller(
+            repos=repos.list_repos,
+            habits=habit_store,
+            scheduler=scheduler,
+            chats=TriggeredChats(
+                start=lambda request, ref: sessions.create(request, started_by_trigger=ref),
+                store=trigger_store,
+                usage=usage,
+                clock=clock,
+                # Read for each event, so edits through the API apply at once.
+                pixie_settings=lambda: context.settings.pixies,
+                can_push=can_push,
+            ),
+            store=trigger_store,
+            bus=bus,
+            run=runner,
+            cwd=paths.data_dir,
+            clock=clock,
+            access=WriteAccess(runner, paths.data_dir, clock),
+        )
         context = cls(
             paths=paths,
             platform=system,
@@ -948,15 +1014,9 @@ class AppContext:
             fetcher=RepoFetcher(bus),
             usage_refresher=usage_refresher,
             commands=commands,
-            prs=PullRequests(
-                sessions=sessions,
-                store=store,
-                approvals=approvals,
-                monitor=monitor,
-                bus=bus,
-                run=runner,
-                cwd=paths.data_dir,
-            ),
+            prs=prs,
+            stacks=stacks,
+            guides=guides,
             search=search,
             issues=issues,
             pr_adopter=pr_adopter,
@@ -1010,6 +1070,8 @@ class AppContext:
                 push=notifications.push,
             ),
             github=GithubAccount(runner, paths.data_dir, clock),
+            chat_triggers=ChatTriggerService(repos, trigger_store),
+            github_triggers=github_triggers,
             claude_code=claude_code,
             accounts=accounts,
             extensions=extensions,

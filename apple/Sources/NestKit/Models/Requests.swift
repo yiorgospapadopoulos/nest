@@ -436,6 +436,8 @@ public struct CreateHabitRequest: Encodable, Sendable, Hashable {
     public var prompt: String
     public var schedule: HabitSchedule?
     public var triggers: [HabitTrigger]
+    /// Events on GitHub that run it (B148).
+    public var github: [GitHubWatch]
     public var maxMinutes: Int
     public var enabled: Bool
     /// Its runs go on Autopilot (B120).
@@ -443,19 +445,21 @@ public struct CreateHabitRequest: Encodable, Sendable, Hashable {
 
     public init(
         name: String, prompt: String, schedule: HabitSchedule?, triggers: [HabitTrigger],
-        maxMinutes: Int, enabled: Bool = true, autopilot: Bool = false
+        github: [GitHubWatch] = [], maxMinutes: Int, enabled: Bool = true,
+        autopilot: Bool = false
     ) {
         self.name = name
         self.prompt = prompt
         self.schedule = schedule
         self.triggers = triggers
+        self.github = github
         self.maxMinutes = maxMinutes
         self.enabled = enabled
         self.autopilot = autopilot
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, prompt, schedule, triggers, enabled, autopilot
+        case name, prompt, schedule, triggers, github, enabled, autopilot
         case maxMinutes = "max_minutes"
     }
 
@@ -465,6 +469,10 @@ public struct CreateHabitRequest: Encodable, Sendable, Hashable {
         try container.encode(prompt, forKey: .prompt)
         try container.encode(schedule, forKey: .schedule)
         try container.encode(triggers, forKey: .triggers)
+        // None is the daemon's default, and what a daemon before B148 accepts.
+        if !github.isEmpty {
+            try container.encode(github, forKey: .github)
+        }
         try container.encode(maxMinutes, forKey: .maxMinutes)
         try container.encode(enabled, forKey: .enabled)
         // Off is the daemon's default.
@@ -482,27 +490,30 @@ public struct UpdateHabitRequest: Encodable, Sendable, Hashable {
     /// True sends `"schedule": null`: the habit runs on its triggers only.
     public var clearsSchedule: Bool
     public var triggers: [HabitTrigger]?
+    public var github: [GitHubWatch]?
     public var maxMinutes: Int?
     public var enabled: Bool?
     public var autopilot: Bool?
 
     public init(
         name: String? = nil, prompt: String? = nil, schedule: HabitSchedule? = nil,
-        clearsSchedule: Bool = false, triggers: [HabitTrigger]? = nil, maxMinutes: Int? = nil,
-        enabled: Bool? = nil, autopilot: Bool? = nil
+        clearsSchedule: Bool = false, triggers: [HabitTrigger]? = nil,
+        github: [GitHubWatch]? = nil, maxMinutes: Int? = nil, enabled: Bool? = nil,
+        autopilot: Bool? = nil
     ) {
         self.name = name
         self.prompt = prompt
         self.schedule = schedule
         self.clearsSchedule = clearsSchedule
         self.triggers = triggers
+        self.github = github
         self.maxMinutes = maxMinutes
         self.enabled = enabled
         self.autopilot = autopilot
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, prompt, schedule, triggers, enabled, autopilot
+        case name, prompt, schedule, triggers, github, enabled, autopilot
         case maxMinutes = "max_minutes"
     }
 
@@ -516,6 +527,7 @@ public struct UpdateHabitRequest: Encodable, Sendable, Hashable {
             try container.encodeNil(forKey: .schedule)
         }
         try container.encodeIfPresent(triggers, forKey: .triggers)
+        try container.encodeIfPresent(github, forKey: .github)
         try container.encodeIfPresent(maxMinutes, forKey: .maxMinutes)
         try container.encodeIfPresent(enabled, forKey: .enabled)
         try container.encodeIfPresent(autopilot, forKey: .autopilot)

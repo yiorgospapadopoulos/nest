@@ -96,6 +96,7 @@ async def test_a_suggested_habit(ctx: AppContext, provider: FakeProvider) -> Non
                 "prompt": "Check CI on main; report failures.",
                 "schedule": {"kind": "weekdays", "time": "09:00"},
                 "triggers": [],
+                "github": [],
             },
         }
     ]

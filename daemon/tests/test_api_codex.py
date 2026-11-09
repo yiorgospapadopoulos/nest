@@ -51,7 +51,7 @@ async def test_providers_list_the_default_engine_then_codex_with_its_login(api: 
         "organization": None,
     }
     # B145: Codex chats rewind, fork, review plans and save memories like Claude's.
-    assert set(codex["unsupported"]) == {"slash_commands", "withdraw"}
+    assert set(codex["unsupported"]) == {"slash_commands", "withdraw", "review_guide"}
 
 
 async def test_a_signed_out_codex_stays_offered_with_how_to_sign_in(

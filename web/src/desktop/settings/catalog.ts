@@ -295,12 +295,13 @@ export function listed(
   };
 }
 
-// The tabs of a project's page; a plain folder has no worktrees.
+// The tabs of a project's page; a plain folder has no worktrees or triggers.
 export const PROJECT_TABS = [
   "General",
   "Configuration",
   "Chats",
   "Worktrees",
+  "Triggers",
   "Look",
   "Artifacts",
 ] as const;
@@ -308,5 +309,5 @@ export const PROJECT_TABS = [
 export type ProjectTab = (typeof PROJECT_TABS)[number];
 
 export function projectTabs(git: boolean): ProjectTab[] {
-  return PROJECT_TABS.filter((tab) => git || tab !== "Worktrees");
+  return PROJECT_TABS.filter((tab) => git || (tab !== "Worktrees" && tab !== "Triggers"));
 }

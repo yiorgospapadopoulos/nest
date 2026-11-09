@@ -55,6 +55,51 @@ export interface PrStatus {
   created_at: string | null;
   changed_at: string;
   updated_at: string;
+  // The branch it merges into. This and `auto_merge` are missing on daemons before B149.
+  base_branch?: string | null;
+  // Set while GitHub's own auto-merge is on (B149).
+  auto_merge?: { method: MergeMethod; enabled_at: string | null } | null;
+}
+
+export type MergeMethod = "squash" | "merge" | "rebase";
+
+/** The user asked Nest to merge the pull request once its checks pass (B149). */
+export interface MergeWhenReady {
+  method: MergeMethod;
+  delete_branch: boolean;
+}
+
+/** Moving a stacked chat's branch onto where the branch under it went (B149). */
+export interface Restack {
+  upstream: string;
+  onto: string;
+  fetch: string | null;
+  // The branch it moves onto.
+  base: string;
+  // Set once the branch was rebased and only a push is left.
+  rebased: string | null;
+  error: string | null;
+}
+
+/** A chat whose branch starts from another open chat's branch (B149). */
+export interface ChatStack {
+  // The session id of the chat under this one.
+  parent: string | null;
+  parent_branch: string | null;
+  // Set while the branch has to move.
+  restack: Restack | null;
+}
+
+/** A guide for reviewing the pull request, written as a markdown artifact (B149). */
+export interface PrGuide {
+  state: "writing" | "ready" | "failed";
+  // The pull request's head it was written for.
+  head_sha: string | null;
+  artifact_id: string | null;
+  error: string | null;
+  // Set once it was posted on the pull request.
+  comment_url: string | null;
+  written_at: string | null;
 }
 
 export type StuckReason = "waiting" | "silent" | "repeating" | "long_turn";
@@ -203,6 +248,8 @@ export interface Session {
   autopilot: AutopilotRun | null;
   // The GitHub issue the chat was started from (B101).
   issue: IssueRef | null;
+  // The project's GitHub trigger that started the chat (B148); missing on older daemons.
+  started_by_trigger?: TriggerRef | null;
   // The pull request's review comments and which went to the agent (B101); null until read.
   review: PrReview | null;
   // Whether the chat can change worktree (B119). The next three are missing on daemons
@@ -213,6 +260,10 @@ export interface Session {
   moved_at?: string | null;
   // Computer use (B150): the targets the user let the chat use.
   computer_targets: string[];
+  // The next three are missing on daemons before B149.
+  merge_when_ready?: MergeWhenReady | null;
+  stack?: ChatStack | null;
+  pr_guide?: PrGuide | null;
 }
 
 /** A Claude Code or Codex chat of a registered repo that Nest does not own (D028, B113). */
@@ -353,7 +404,9 @@ export type ApprovalKind =
   | "plan"
   | "merge"
   // Pull request review comments waiting to go to the agent (B101).
-  | "review_comments";
+  | "review_comments"
+  // A stacked chat's branch has to move onto where the branch under it went (B149).
+  | "restack";
 export type ApprovalStatus = "pending" | "resolved" | "expired" | "superseded";
 
 export interface Approval {
@@ -410,6 +463,8 @@ export interface RepoConfig {
   // Null is the default colour.
   icon_color: string | null;
   worktree: WorktreeConfig;
+  // GitHub events that start a chat in the project (B148); missing on older daemons.
+  triggers?: ChatTrigger[];
 }
 
 export interface DiffLine {
@@ -825,8 +880,12 @@ export interface SearchResults {
 }
 
 export interface MergeBody {
-  method?: "squash" | "merge" | "rebase";
+  method?: MergeMethod;
   delete_branch?: boolean;
+}
+
+export interface AutoMergeBody extends MergeBody {
+  enabled: boolean;
 }
 
 export interface QuietHours {
@@ -909,7 +968,8 @@ export type ProviderFeature =
   | "pixies"
   | "memory"
   | "pixie_skills"
-  | "compact_window";
+  | "compact_window"
+  | "review_guide";
 
 /** Whether an engine can run chats on this Mac (B107); only "ready" can. */
 export type EngineState = "ready" | "not_installed" | "installing" | "install_failed";
@@ -1186,6 +1246,61 @@ export type HabitSchedule =
 
 export type HabitTrigger = "stuck" | "failed" | "review_ready" | "ci_failed";
 
+// Events on GitHub that start habits and chats (B148).
+export type GitHubEventKind =
+  "issue_opened" | "pr_opened" | "comment" | "review" | "ci_failed" | "ci_passed";
+// Whose events count: people with write access to the repository (the default), anyone
+// but bots, or every one.
+export type TriggerAuthors = "members" | "humans" | "everyone";
+
+/** Labels apply to issues and pull requests, branches to CI runs and pull requests. */
+// A type, not an interface, so a project with its triggers stays a JSON value in events.
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type EventFilter = {
+  events: GitHubEventKind[];
+  labels: string[];
+  branches: string[];
+  authors: TriggerAuthors;
+};
+
+/** A habit's GitHub trigger; no projects is every project on GitHub. */
+export type GitHubWatch = EventFilter & {
+  projects: string[];
+};
+
+// The modes a trigger's chats may start in; Auto is left out, as only some models take it.
+export type TriggerMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
+
+/** A project's trigger: each matching event starts a chat in its own worktree. */
+export type ChatTrigger = EventFilter & {
+  id: string;
+  name: string;
+  prompt: string;
+  enabled: boolean;
+  // Ask until the user picks another; missing on daemons before it.
+  permission_mode?: TriggerMode;
+};
+
+export type ChatTriggerBody = Omit<ChatTrigger, "id">;
+
+/** What a project's trigger did last. */
+export interface TriggerActivity {
+  trigger_id: string;
+  outcome: "started" | "queued" | "skipped" | "failed";
+  reason: string | null;
+  at: string;
+  title: string;
+  url: string;
+  session_id: string | null;
+}
+
+export interface TriggerRef {
+  id: string;
+  name: string;
+  event_title: string;
+  event_url: string;
+}
+
 export type HabitOutcome =
   "queued" | "running" | "reported" | "quiet" | "failed" | "stalled" | "timed_out" | "skipped";
 
@@ -1212,6 +1327,8 @@ export interface Habit {
   prompt: string;
   schedule: HabitSchedule | null;
   triggers: HabitTrigger[];
+  // Missing on daemons before B148.
+  github?: GitHubWatch[];
   max_minutes: number;
   enabled: boolean;
   // Its runs go on Autopilot (B120).
@@ -1228,6 +1345,7 @@ export interface HabitBody {
   prompt: string;
   schedule?: HabitSchedule | null;
   triggers?: HabitTrigger[];
+  github?: GitHubWatch[];
   max_minutes?: number;
   enabled?: boolean;
   autopilot?: boolean;

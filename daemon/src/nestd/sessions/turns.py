@@ -1081,9 +1081,14 @@ def _pixie_run(session: Session) -> bool:
 
 def _guarded(session: Session) -> bool:
     """A pixie may commit, but pushing and opening or merging a pull request stay blocked for
-    it and for Autopilot while the user has not let agents push (D072, D078, D123, D160).
+    it, for Autopilot and for a chat a GitHub trigger started while the user has not let
+    agents push (D072, D078, D123, D160, B148).
     """
-    return _pixie_run(session) or session.autopilot is not None
+    return (
+        _pixie_run(session)
+        or session.autopilot is not None
+        or session.started_by_trigger is not None
+    )
 
 
 def _on_autopilot(session: Session, prompt: str | None, can_push: bool) -> str | None:

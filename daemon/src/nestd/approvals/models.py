@@ -12,6 +12,8 @@ class ApprovalKind(StrEnum):
     MERGE = "merge"  # a pull request whose checks passed, waiting to be merged
     # New review comments on a pull request Nest opened, to send to the agent (B101).
     REVIEW_COMMENTS = "review_comments"
+    # A stacked chat's branch to push after it moved onto a new base (B149).
+    RESTACK = "restack"
 
 
 class ApprovalStatus(StrEnum):

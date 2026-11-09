@@ -123,6 +123,12 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var issue: IssueRef?
     /// The open pull request's review feedback, as Nest last read it (B101).
     public var review: PRReview?
+    /// Set while Nest merges the pull request itself once its checks pass (B149). This and
+    /// the next two are missing on daemons before it.
+    public var mergeWhenReady: MergeWhenReady?
+    /// Set when the chat's branch starts from another chat's branch.
+    public var stack: ChatStack?
+    public var prGuide: ReviewGuide?
     public var allowedTools: [String]
     public var pinned: Bool
     public var archivedAt: Date?
@@ -192,7 +198,9 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, repo, title, prompt, mode, cwd, model, effort, provider, state, branch, pinned
-        case pr, issue, review
+        case pr, issue, review, stack
+        case mergeWhenReady = "merge_when_ready"
+        case prGuide = "pr_guide"
         case tasks, agents, background, context, queued, stuck
         case titlePending = "title_pending"
         case pixieID = "pixie_id"

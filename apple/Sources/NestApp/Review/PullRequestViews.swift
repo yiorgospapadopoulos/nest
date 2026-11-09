@@ -124,17 +124,20 @@ struct IssueChip: View {
 }
 
 /// The pull request with its state and, for a chat from an issue, the issue it closes on
-/// merge below it, an arrow pointing up from the issue to the pull request; then its
-/// checks, whether review comments go to the agent on their own, Refresh and Open on
-/// GitHub.
+/// merge below it, an arrow pointing up from the issue to the pull request, and the chat
+/// under it when stacked; then its checks, its branch to move onto a new base, whether
+/// review comments go to the agent on their own, Merge when checks pass, the review guide,
+/// New chat on top, Refresh and Open on GitHub.
 struct PRDetails: View {
     let session: String
     let pr: PullRequest
     @Environment(Shell.self) private var shell
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let refreshing = shell.sessions.refreshingPR.contains(session)
         let chat = shell.sessions.session(session)
+        let under = chat?.stack?.parent.flatMap(shell.sessions.session)
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 LinkLine(
@@ -169,6 +172,12 @@ struct PRDetails: View {
                 .foregroundStyle(Palette.t3)
                 .padding(.leading, 20)
                 .padding(.top, chat?.issue == nil ? 0 : 2)
+                if let line = chat?.stack?.onTopLabel(parent: under) {
+                    Text(line)
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                        .padding(.leading, 20)
+                }
             }
             if !pr.checks.items.isEmpty {
                 VStack(alignment: .leading, spacing: 1) {
@@ -179,21 +188,37 @@ struct PRDetails: View {
                 .padding(.vertical, 2)
                 .softFill()
             }
+            if let chat, let restack = chat.stack?.restack {
+                RestackRows(chat: chat, restack: restack)
+            }
             if let chat, pr.state == .open {
-                let on = PRBadge.autoSends(chat)
-                HStack(alignment: .center, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(PRBadge.autoSendTitle)
-                            .font(.ui(TypeSize.ui))
-                            .foregroundStyle(Palette.t1)
-                        Text(PRBadge.autoSendDetail(on))
-                            .font(.ui(TypeSize.meta))
-                            .foregroundStyle(Palette.t3)
-                    }
-                    Spacer(minLength: 0)
-                    Switch(isOn: on, accent: true) { shell.setReviewAutoSend(session, !on) }
-                        .accessibilityLabel(PRBadge.autoSendTitle)
+                let sends = PRBadge.autoSends(chat)
+                SwitchRow(
+                    title: PRBadge.autoSendTitle, detail: PRBadge.autoSendDetail(sends), on: sends
+                ) {
+                    shell.setReviewAutoSend(session, !sends)
                 }
+                let merges = PRBadge.mergesWhenReady(chat)
+                SwitchRow(
+                    title: PRBadge.mergeWhenReadyTitle, detail: PRBadge.mergeWhenReadyDetail(chat),
+                    on: merges
+                ) {
+                    shell.setAutoMerge(session, !merges)
+                }
+                if shell.supports(.reviewGuide, chat: session) {
+                    ReviewGuideRows(chat: chat, pr: pr)
+                }
+            }
+            if let chat, chat.branch != nil, chat.mode == .worktree {
+                Button {
+                    dismiss()
+                    shell.newChat(onTopOf: chat)
+                } label: {
+                    Label("New chat on top", systemImage: Icon.plus)
+                }
+                .buttonStyle(.nest(.soft))
+                .fixedSize()
+                .help("A new chat in a worktree that starts from this chat's branch")
             }
             HStack(spacing: 6) {
                 Button {
@@ -217,6 +242,33 @@ struct PRDetails: View {
         }
         .padding(14)
         .frame(width: 300, alignment: .leading)
+    }
+}
+
+/// A setting of the pull request: its title, the line under it when there is one, and the
+/// switch.
+private struct SwitchRow: View {
+    let title: String
+    let detail: String?
+    let on: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(Palette.t1)
+                if let detail {
+                    Text(detail)
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                }
+            }
+            Spacer(minLength: 0)
+            Switch(isOn: on, accent: true, toggle: toggle)
+                .accessibilityLabel(title)
+        }
     }
 }
 

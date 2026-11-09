@@ -8,6 +8,8 @@ import {
   type PushStatus,
 } from "../pwa/push.ts";
 import type {
+  ChatTriggerBody,
+  TriggerActivity,
   AgentDefaults,
   AgentWork,
   Approval,
@@ -694,6 +696,23 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       dispatch({ type: "habitRemoved", pixieId, id });
       return true;
     },
+    /** A project's GitHub triggers (B148); the project comes back as `repo.updated`. */
+    async saveTrigger(repo: string, id: string | null, body: ChatTriggerBody): Promise<boolean> {
+      const saved = await attempt(() =>
+        id === null ? api.createTrigger(repo, body) : api.updateTrigger(repo, id, body),
+      );
+      return saved !== null;
+    },
+    async setTriggerOn(repo: string, id: string, enabled: boolean): Promise<boolean> {
+      return (await attempt(() => api.updateTrigger(repo, id, { enabled }))) !== null;
+    },
+    async deleteTrigger(repo: string, id: string): Promise<boolean> {
+      return (await attempt(() => api.deleteTrigger(repo, id).then(() => true))) !== null;
+    },
+    /** What each trigger did last; null when the Mac cannot answer. */
+    triggerActivity(repo: string): Promise<TriggerActivity[] | null> {
+      return quietly(() => api.triggerActivity(repo));
+    },
     /** Run now: queued at once, whatever the usage. */
     async runHabit(pixieId: string, id: string): Promise<boolean> {
       const run = await attempt(() => api.runHabit(pixieId, id));
@@ -1001,6 +1020,52 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       const updated = await attempt(() => api.refreshPr(sessionId));
       if (updated === null) return false;
       dispatch({ type: "session", session: updated });
+      return true;
+    },
+
+    /**
+     * Merge (squash) once the checks pass, or not (B149). A pull request that is ready now
+     * is merged at once.
+     */
+    async setMergeWhenReady(sessionId: string, enabled: boolean): Promise<boolean> {
+      const updated = await attempt(() =>
+        api.setAutoMerge(sessionId, enabled ? { enabled, method: "squash" } : { enabled }),
+      );
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      if (updated.pr?.state === "merged") toast(`Merged #${String(updated.pr.number)}`);
+      return true;
+    },
+
+    /**
+     * Moves a stacked chat's branch onto where the branch under it went and pushes it
+     * (B149); the daemon's refusal, such as a conflict, shows as the error.
+     */
+    async restack(sessionId: string, done: string, approval?: Approval): Promise<boolean> {
+      const updated = await attempt(() => api.restack(sessionId));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      if (approval !== undefined) {
+        dispatch({ type: "approval", approval: { ...approval, status: "resolved" } });
+      }
+      toast(done);
+      return true;
+    },
+
+    /** Starts writing the pull request's review guide; `session.updated` says when it is done. */
+    async writePrGuide(sessionId: string): Promise<boolean> {
+      const updated = await attempt(() => api.writePrGuide(sessionId));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      return true;
+    },
+
+    /** Posts the ready review guide on the pull request as a comment. */
+    async postPrGuide(sessionId: string): Promise<boolean> {
+      const updated = await attempt(() => api.postPrGuide(sessionId));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      toast("Review guide posted on GitHub");
       return true;
     },
 

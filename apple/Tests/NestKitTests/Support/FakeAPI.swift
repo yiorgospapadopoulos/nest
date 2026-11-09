@@ -76,6 +76,14 @@ final class FakeAPI: NestAPI {
         var rewinds: [String: RewindPreview] = [:]
         /// Gitignored files a repo suggests linking, by repo name.
         var linkSuggestions: [String: [String]] = [:]
+        /// What each repo's GitHub triggers did last, by repo name (B148).
+        var triggerActivity: [String: [TriggerActivity]] = [:]
+
+        mutating func editRepo(_ name: String, _ change: (inout Repo) -> Void) {
+            if let index = repos.firstIndex(where: { $0.name == name }) {
+                change(&repos[index])
+            }
+        }
         /// Each chat's pixies, by session id (B46).
         var pixieGroups: [String: [ChatPixieEntry]] = [:]
         /// What Send away answers.
@@ -289,6 +297,49 @@ final class FakeAPI: NestAPI {
 
     func linkSuggestions(_ name: String) async throws -> [String] {
         try call("linkSuggestions", name) { $0.linkSuggestions[name] ?? [] }
+    }
+
+    func createTrigger(_ repo: String, _ body: ChatTriggerBody) async throws -> ChatTrigger {
+        try call("createTrigger", repo) { state in
+            let trigger = ChatTrigger(id: "t\(state.calls.count)", body)
+            state.editRepo(repo) { $0.triggers.append(trigger) }
+            return trigger
+        }
+    }
+
+    func updateTrigger(_ repo: String, _ id: String, _ body: ChatTriggerBody) async throws
+        -> ChatTrigger
+    {
+        try call("updateTrigger", "\(repo) \(id)") { state in
+            let trigger = ChatTrigger(id: id, body)
+            state.editRepo(repo) { repo in
+                repo.triggers = repo.triggers.map { $0.id == id ? trigger : $0 }
+            }
+            return trigger
+        }
+    }
+
+    func switchTrigger(_ repo: String, _ id: String, on: Bool) async throws -> ChatTrigger {
+        try call("switchTrigger", "\(repo) \(id) \(on)") { state in
+            var found: ChatTrigger?
+            state.editRepo(repo) { repo in
+                if let index = repo.triggers.firstIndex(where: { $0.id == id }) {
+                    repo.triggers[index].enabled = on
+                    found = repo.triggers[index]
+                }
+            }
+            return found!
+        }
+    }
+
+    func deleteTrigger(_ repo: String, _ id: String) async throws {
+        try call("deleteTrigger", "\(repo) \(id)") { state in
+            state.editRepo(repo) { $0.triggers.removeAll { $0.id == id } }
+        }
+    }
+
+    func triggerActivity(_ repo: String) async throws -> [TriggerActivity] {
+        try call("triggerActivity", repo) { $0.triggerActivity[repo] ?? [] }
     }
 
     /// Sorts the repos as the daemon does: named ones first, the rest after in order.
@@ -525,6 +576,26 @@ final class FakeAPI: NestAPI {
         try call("setReviewAutoSend", "\(id) \(on)") { state in
             session(id, in: &state) { $0.review?.autoSend = on }
         }
+    }
+
+    func setAutoMerge(_ id: String, enabled: Bool) async throws -> Session {
+        try call("setAutoMerge", "\(id) \(enabled)") { state in
+            session(id, in: &state) {
+                $0.mergeWhenReady = enabled ? MergeWhenReady() : nil
+            }
+        }
+    }
+
+    func restack(_ id: String) async throws -> Session {
+        try call("restack", id) { state in session(id, in: &state) { $0.stack?.restack = nil } }
+    }
+
+    func writeReviewGuide(_ id: String) async throws -> Session {
+        try call("writeReviewGuide", id) { state in session(id, in: &state) { _ in } }
+    }
+
+    func postReviewGuide(_ id: String) async throws -> Session {
+        try call("postReviewGuide", id) { state in session(id, in: &state) { _ in } }
     }
 
     func runStatus(_ id: String) async throws -> RunStatus {

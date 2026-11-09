@@ -187,6 +187,31 @@
             [".env", "node_modules/"]
         }
 
+        func createTrigger(_ repo: String, _ body: ChatTriggerBody) async throws
+            -> ChatTrigger
+        {
+            ChatTrigger(id: UUID().uuidString, body)
+        }
+
+        func updateTrigger(_ repo: String, _ id: String, _ body: ChatTriggerBody)
+            async throws -> ChatTrigger
+        {
+            ChatTrigger(id: id, body)
+        }
+
+        func switchTrigger(_ repo: String, _ id: String, on: Bool) async throws
+            -> ChatTrigger
+        {
+            ChatTrigger(
+                id: id,
+                ChatTriggerBody(
+                    name: "Fix failing CI", prompt: "Fix it.", enabled: on, events: [.ciFailed]))
+        }
+
+        func deleteTrigger(_ repo: String, _ id: String) async throws {}
+
+        func triggerActivity(_ repo: String) async throws -> [TriggerActivity] { [] }
+
         func reorderRepos(_ order: [String]) async throws -> [Repo] {
             try await repos().sorted {
                 (order.firstIndex(of: $0.name) ?? order.count)
@@ -534,6 +559,26 @@
             var session = try await session(id)
             session.review?.autoSend = on
             return session
+        }
+
+        func setAutoMerge(_ id: String, enabled: Bool) async throws -> Session {
+            var session = try await session(id)
+            session.mergeWhenReady = enabled ? MergeWhenReady() : nil
+            return session
+        }
+
+        func restack(_ id: String) async throws -> Session {
+            var session = try await session(id)
+            session.stack?.restack = nil
+            return session
+        }
+
+        func writeReviewGuide(_ id: String) async throws -> Session {
+            try await session(id)
+        }
+
+        func postReviewGuide(_ id: String) async throws -> Session {
+            try await session(id)
         }
 
         func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {

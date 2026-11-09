@@ -6,11 +6,13 @@ import {
   planOf,
   questionsOf,
   reviewCommentsDetail,
+  restackOf,
   reviewOf,
   str,
   toolCall,
 } from "../../api/payloads.ts";
 import type { Approval, GroupEntry, Pixie, StuckFlag, StuckReason } from "../../api/types.ts";
+import { restackTitle } from "../chat/prWork.ts";
 
 /** What needs the user, in the one grey line under a Needs you row (B77, NestKit's NeedsYouLine). */
 export interface NeedsLine {
@@ -53,6 +55,8 @@ export function approvalLine(approval: Approval, root: string | null): NeedsLine
     }
     case "review_comments":
       return { kind: "Review comments", detail: reviewCommentsDetail(approval) };
+    case "restack":
+      return { kind: "Branch to move", detail: restackTitle(restackOf(approval)) };
     case "permission": {
       const computer = computerAskOf(approval);
       if (computer !== null) return { kind: "Permission", detail: computer.question };

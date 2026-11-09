@@ -18,6 +18,7 @@ from nestd.pixies.habit_models import (
     Trigger,
 )
 from nestd.storage.db import Database
+from nestd.triggers.models import GitHubWatch
 
 # Finished runs kept per habit; queued and running ones are always kept.
 KEEP_RUNS = 20
@@ -35,6 +36,7 @@ class StoredHabit(BaseModel):
     prompt: str
     schedule: Schedule | None
     triggers: list[Trigger]
+    github: list[GitHubWatch] = Field(default_factory=list[GitHubWatch])
     max_minutes: int
     enabled: bool
     autopilot: bool
@@ -262,6 +264,7 @@ def _habit(row: sqlite3.Row) -> StoredHabit:
     data = dict(row)
     data["schedule"] = None if data["schedule"] is None else json.loads(data["schedule"])
     data["triggers"] = json.loads(data["triggers"])
+    data["github"] = json.loads(data["github"])
     data["enabled"] = bool(data["enabled"])
     data["autopilot"] = bool(data["autopilot"])
     return StoredHabit.model_validate(data)

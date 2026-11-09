@@ -4,6 +4,7 @@ import { projectTabs, type ProjectTab } from "../catalog.ts";
 import { ConfigurationTab } from "../project/ConfigurationTab.tsx";
 import { GeneralTab } from "../project/GeneralTab.tsx";
 import { ArtifactsTab, ChatsTab, LookTab, WorktreesTab } from "../project/ProjectTabs.tsx";
+import { TriggersTab } from "../project/TriggersTab.tsx";
 import { useProjectSaver } from "../project/useProjectSaver.ts";
 import { SettingsTabs } from "../rows.tsx";
 
@@ -25,6 +26,7 @@ export function ProjectPage({ repo }: { repo: RepoConfig }) {
       {tab === "Configuration" && <ConfigurationTab repo={repo} />}
       {tab === "Chats" && <ChatsTab repo={repo} save={save} />}
       {tab === "Worktrees" && <WorktreesTab repo={repo} save={save} />}
+      {tab === "Triggers" && <TriggersTab repo={repo} />}
       {tab === "Look" && <LookTab repo={repo} save={save} />}
       {tab === "Artifacts" && <ArtifactsTab repo={repo} />}
     </>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Habit, HabitRun, Pixie } from "../../api/types.ts";
 import { activityTime } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
+import { githubText } from "../../triggers/github.ts";
 import { ActionSheet, Sheet } from "../../ui/Sheet.tsx";
 import { AddHeading } from "./AddHeading.tsx";
 import { Confirm } from "./Confirm.tsx";
@@ -148,12 +149,14 @@ function HabitRow({
   onToggle: () => void;
 }) {
   const triggers = triggersText(habit.triggers);
+  const github = githubText(habit.github ?? []);
   return (
     <li className="srow pxhab">
       <button className="pxdt pxhabb" aria-haspopup="menu" onClick={onMenu}>
         <b>{habit.name}</b>
         <span>{scheduleText(habit.schedule)}</span>
         {triggers !== "" && <span>{triggers}</span>}
+        {github !== null && <span>{github}</span>}
         <small className="pxhabm">
           <LastRun run={habit.last_run} />
           <span>{nextText(habit)}</span>

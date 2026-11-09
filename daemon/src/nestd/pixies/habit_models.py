@@ -13,6 +13,7 @@ from pydantic import (
 )
 
 from nestd.config.models import Severity
+from nestd.triggers.models import GitHubWatch
 
 SEVERITIES: tuple[Severity, ...] = ("info", "warn", "action")
 # Events on the chats of any project that can start a habit.
@@ -72,6 +73,9 @@ class Weekly(_Strict):
 type Schedule = Annotated[Hourly | Daily | Weekdays | Weekly, Field(discriminator="kind")]
 
 NEEDS_A_START = "a habit needs a schedule or at least one trigger"
+# GitHub triggers one habit has at most (B148).
+MAX_GITHUB = 10
+type GitHubWatches = Annotated[list[GitHubWatch], Field(max_length=MAX_GITHUB)]
 
 
 def _unique(triggers: list[Trigger]) -> list[Trigger]:
@@ -85,11 +89,13 @@ class HabitIdea(_Strict):
     prompt: HabitPrompt
     schedule: Schedule | None = None
     triggers: list[Trigger] = Field(default_factory=list[Trigger])
+    # Events on GitHub that run it (B148).
+    github: GitHubWatches = Field(default_factory=list[GitHubWatch])
 
     @model_validator(mode="after")
     def _starts(self) -> Self:
         self.triggers = _unique(self.triggers)
-        if self.schedule is None and not self.triggers:
+        if self.schedule is None and not self.triggers and not self.github:
             raise ValueError(NEEDS_A_START)
         return self
 
@@ -108,6 +114,7 @@ class UpdateHabit(_Strict):
     prompt: HabitPrompt | None = None
     schedule: Schedule | None = None
     triggers: list[Trigger] | None = None
+    github: GitHubWatches | None = None
     max_minutes: MaxMinutes | None = None
     enabled: bool | None = None
     autopilot: bool | None = None
@@ -135,6 +142,7 @@ class Habit(BaseModel):
     prompt: str
     schedule: Schedule | None
     triggers: list[Trigger]
+    github: list[GitHubWatch] = Field(default_factory=list[GitHubWatch])
     max_minutes: int
     enabled: bool
     autopilot: bool = False

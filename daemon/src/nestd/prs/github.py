@@ -7,14 +7,24 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field
 
 from nestd.gitops.runner import CommandRunner
-from nestd.prs.models import ChecksState, CheckState, PrCheck, PrChecks, PrState, PrStatus
+from nestd.prs.models import (
+    AutoMerge,
+    ChecksState,
+    CheckState,
+    MergeMethod,
+    PrCheck,
+    PrChecks,
+    PrState,
+    PrStatus,
+)
 
 FIELDS = (
     "state,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,headRefOid,url,number,"
-    "title,createdAt"
+    "title,createdAt,baseRefName,autoMergeRequest"
 )
 _STATES: dict[str, PrState] = {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}
 _MERGEABLE = {"MERGEABLE": True, "CONFLICTING": False}
+_METHODS: dict[str, MergeMethod] = {"SQUASH": "squash", "MERGE": "merge", "REBASE": "rebase"}
 # A finished check run's conclusion; anything else (failure, cancelled, timed out, action
 # required, startup failure, stale) is a failure.
 _CONCLUSIONS: dict[str, CheckState] = {
@@ -45,6 +55,13 @@ class _GhCheck(BaseModel):
     target_url: str = Field(default="", alias="targetUrl")
 
 
+class _GhAutoMerge(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    merge_method: str = Field(default="", alias="mergeMethod")
+    enabled_at: datetime | None = Field(default=None, alias="enabledAt")
+
+
 class _GhPr(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -58,6 +75,8 @@ class _GhPr(BaseModel):
     head_sha: str = Field(default="", alias="headRefOid")
     created_at: datetime | None = Field(default=None, alias="createdAt")
     checks: list[_GhCheck] | None = Field(default=None, alias="statusCheckRollup")
+    base_branch: str = Field(default="", alias="baseRefName")
+    auto_merge: _GhAutoMerge | None = Field(default=None, alias="autoMergeRequest")
 
 
 async def fetch_status(run: CommandRunner, url: str, cwd: Path, now: datetime) -> PrStatus:
@@ -79,6 +98,13 @@ def parse_status(output: str, now: datetime) -> PrStatus:
         review_decision=pr.review_decision.lower() or None,
         head_sha=pr.head_sha or None,
         created_at=pr.created_at,
+        base_branch=pr.base_branch or None,
+        auto_merge=None
+        if pr.auto_merge is None
+        else AutoMerge(
+            method=_METHODS.get(pr.auto_merge.merge_method, "merge"),
+            enabled_at=pr.auto_merge.enabled_at,
+        ),
         changed_at=now,
         updated_at=now,
     )

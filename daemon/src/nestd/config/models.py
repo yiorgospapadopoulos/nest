@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+from nestd.triggers.models import ChatTrigger
+
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 PermissionMode = Literal["default", "acceptEdits", "bypassPermissions", "plan", "auto"]
 # How many tokens a chat's context holds before its engine compacts it by itself (B146), in
@@ -516,6 +518,10 @@ class RunConfig(_Strict):
     after_setup: bool = False
 
 
+# Chat triggers one project has at most (B148).
+MAX_CHAT_TRIGGERS = 20
+
+
 class RepoConfig(_Strict):
     # The name doubles as the config file name, so it must be a safe file name.
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -535,6 +541,10 @@ class RepoConfig(_Strict):
     issues: IssuesConfig = Field(default_factory=IssuesConfig)
     # None: the project has no dev server command, so its chats show no Run control.
     run: RunConfig | None = None
+    # `[[triggers]]` (B148): GitHub events that start a chat in the project.
+    triggers: Annotated[list[ChatTrigger], Field(max_length=MAX_CHAT_TRIGGERS)] = Field(
+        default_factory=list[ChatTrigger]
+    )
 
     @model_validator(mode="after")
     def _plain_folders_have_no_branch(self) -> "RepoConfig":

@@ -15,6 +15,14 @@ public protocol NestAPI: Sendable {
     func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo
     /// Gitignored files in the checkout worth linking into worktrees.
     func linkSuggestions(_ name: String) async throws -> [String]
+    /// A project's GitHub triggers (B148); the project itself comes back as `repo.updated`.
+    func createTrigger(_ repo: String, _ body: ChatTriggerBody) async throws -> ChatTrigger
+    func updateTrigger(_ repo: String, _ id: String, _ body: ChatTriggerBody) async throws
+        -> ChatTrigger
+    func switchTrigger(_ repo: String, _ id: String, on: Bool) async throws -> ChatTrigger
+    func deleteTrigger(_ repo: String, _ id: String) async throws
+    /// What each of the project's triggers did last.
+    func triggerActivity(_ repo: String) async throws -> [TriggerActivity]
     /// Saves the project order every device shows (D090); answers the repos in that order.
     func reorderRepos(_ order: [String]) async throws -> [Repo]
     /// The repo's open GitHub issues, newest updated first: all, or the user's; nil leaves
@@ -81,6 +89,15 @@ public protocol NestAPI: Sendable {
     func reviewFeedback(_ id: String, ids: [String]?) async throws
     /// Whether new review comments go to the agent as they arrive; answers the session.
     func setReviewAutoSend(_ id: String, _ on: Bool) async throws -> Session
+    /// Merge when checks pass (B149): a pull request ready now merges at once.
+    func setAutoMerge(_ id: String, enabled: Bool) async throws -> Session
+    /// Rebases a stacked chat's branch onto its new base when that has not happened, then
+    /// pushes it for an open pull request (B149).
+    func restack(_ id: String) async throws -> Session
+    /// Starts writing the review guide; the session shows it writing, then ready or failed.
+    func writeReviewGuide(_ id: String) async throws -> Session
+    /// Posts the written guide as a comment on the pull request.
+    func postReviewGuide(_ id: String) async throws -> Session
 
     // MARK: Dev servers (B108)
 

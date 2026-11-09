@@ -212,6 +212,29 @@ export function mergeOf(approval: Approval): MergeView {
   };
 }
 
+export interface RestackView {
+  branch: string | null;
+  base: string;
+  rebased: boolean;
+  error: string | null;
+  // The chat's open pull request; null when it has none.
+  number: number | null;
+  url: string | null;
+}
+
+/** A `restack` approval: a stacked chat's branch that has to move onto `base` (B149). */
+export function restackOf(approval: Approval): RestackView {
+  const p = approval.payload;
+  return {
+    branch: str(p.branch),
+    base: str(p.base) ?? "",
+    rebased: p.rebased === true,
+    error: str(p.error),
+    number: typeof p.number === "number" ? p.number : null,
+    url: str(p.url),
+  };
+}
+
 export interface ReviewCommentView {
   id: string;
   path: string | null;

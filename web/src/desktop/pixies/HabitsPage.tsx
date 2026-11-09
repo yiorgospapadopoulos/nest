@@ -9,6 +9,7 @@ import { useShell } from "../shell/context.ts";
 import { Button, Toggle } from "../ui/controls.tsx";
 import { separator } from "../ui/menuItems.ts";
 import { RowActionsMenu, StatusDot } from "./bits.tsx";
+import { GitHubRows } from "./GitHubRows.tsx";
 import { TimeField } from "./TimeField.tsx";
 import { useNow } from "./useNow.ts";
 import { PxGlyph } from "./glyphs.tsx";
@@ -334,6 +335,12 @@ export function HabitEditor({
               );
             })}
             <DetailNote text="In any project's chats. At most once in 5 minutes." />
+            <GitHubRows
+              draft={draft.github}
+              change={(patch) => {
+                change({ github: { ...draft.github, ...patch } });
+              }}
+            />
             <DetailHeading title="Limit" />
             <StepperRow
               title="Longest run"

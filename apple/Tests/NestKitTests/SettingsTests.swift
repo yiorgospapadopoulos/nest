@@ -325,10 +325,11 @@ import Testing
     @Test func projectTabs() {
         #expect(
             ProjectSettingsTab.tabs(git: true).map(\.rawValue) == [
-                "General", "Configuration", "Chats", "Worktrees", "Look", "Artifacts",
+                "General", "Configuration", "Chats", "Worktrees", "Triggers", "Look", "Artifacts",
             ])
         #expect(SettingsPage.project("x").matches(".mcp.json"))
         #expect(!ProjectSettingsTab.tabs(git: false).contains(.worktrees))
+        #expect(!ProjectSettingsTab.tabs(git: false).contains(.triggers))
     }
 }
 

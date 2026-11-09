@@ -18,7 +18,8 @@ class ResolveApproval(BaseModel):
     An approved plan continues in `mode`: acceptEdits (the default), default, or auto with
     a model that supports it. Merge: `dismiss` only; merging goes through the session's
     merge action. Review comments: `dismiss` only; sending goes through the session's
-    review-feedback action (B101).
+    review-feedback action (B101). Restack: `dismiss` only; the push goes through the
+    session's restack action (B149).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -46,6 +47,8 @@ def resolution_for(approval: Approval, body: ResolveApproval) -> dict[str, JsonV
         return _merge(body)
     if approval.kind is ApprovalKind.REVIEW_COMMENTS:
         return _review_comments(body)
+    if approval.kind is ApprovalKind.RESTACK:
+        return _restack(body)
     msg = "reviews are resolved with the session's approve or feedback actions"
     raise InvalidInputError(msg)
 
@@ -73,6 +76,13 @@ def _merge(body: ResolveApproval) -> dict[str, JsonValue]:
 def _review_comments(body: ResolveApproval) -> dict[str, JsonValue]:
     if not body.dismiss or body.behavior or body.answers is not None or body.decision or body.mode:
         msg = "review comments are sent with the session's review-feedback action, or dismissed"
+        raise InvalidInputError(msg)
+    return {"dismissed": True}
+
+
+def _restack(body: ResolveApproval) -> dict[str, JsonValue]:
+    if not body.dismiss or body.behavior or body.answers is not None or body.decision or body.mode:
+        msg = "a stacked branch is pushed with the session's restack action, or dismissed"
         raise InvalidInputError(msg)
     return {"dismissed": True}
 

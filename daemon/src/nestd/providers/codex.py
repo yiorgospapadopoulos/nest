@@ -72,7 +72,10 @@ from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
 logger = logging.getLogger(__name__)
 
-CODEX_UNSUPPORTED: frozenset[ProviderFeature] = frozenset({"slash_commands", "withdraw"})
+# A review guide needs a run with every tool off, which Codex has no setting for (B149).
+CODEX_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
+    {"slash_commands", "withdraw", "review_guide"}
+)
 # Codex's own words when its plan is approved (B145).
 IMPLEMENT_PLAN = "Implement the plan."
 NO_REWIND = (

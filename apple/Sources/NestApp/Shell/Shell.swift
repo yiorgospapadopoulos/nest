@@ -163,6 +163,8 @@ final class Shell {
     var configurationFolds: Set<String> = ["claude:plugins"]
     /// The Add server, Edit server or New skill form over Settings (B97).
     var configurationForm: ConfigurationForm?
+    /// A project's trigger being added or edited, over Settings (B148).
+    var triggerForm: TriggerForm?
     /// The Add local model sheet over Settings (B106).
     var addLocal: AddLocalFlow?
     /// Opens the window by scene id; the window sets it once it shows.
@@ -1923,7 +1925,8 @@ final class Shell {
     var settingsSheetOpen: Bool {
         let configuration = model.configuration
         return configuration.editor != nil || configuration.copy != nil
-            || configurationForm != nil || addLocal != nil || setupSheet != nil
+            || configurationForm != nil || triggerForm != nil || addLocal != nil
+            || setupSheet != nil
     }
 
     // MARK: Setup (B130)
@@ -2026,6 +2029,8 @@ final class Shell {
             configuration.cancelCopy()
         } else if configurationForm != nil {
             configurationForm = nil
+        } else if triggerForm != nil {
+            triggerForm = nil
         } else if setupSheet != nil {
             setupSheet = nil
         } else {
@@ -2306,6 +2311,51 @@ final class Shell {
         run("Could not change how review comments are sent") {
             try await self.sessions.setReviewAutoSend(session, on)
         }
+    }
+
+    func setAutoMerge(_ session: String, _ on: Bool) {
+        run("Could not change Merge when checks pass") {
+            try await self.sessions.setAutoMerge(session, on)
+        }
+    }
+
+    /// The pull request popover's restack button (B149).
+    func restack(_ session: Session, _ action: RestackAction) {
+        run(action.failure) {
+            try await self.sessions.restack(session.id)
+            self.show("\(action == .rebase ? "Rebased" : "Pushed") \(session.title)", kind: .done)
+        }
+    }
+
+    /// The restack card's button; the daemon resolves the card.
+    func restack(_ approval: Approval, _ action: RestackAction) {
+        run(action.failure) {
+            self.sessions.insert(try await self.approvals.restack(approval))
+            self.show("\(action == .rebase ? "Rebased" : "Pushed") \(approval.title)", kind: .done)
+        }
+    }
+
+    func writeReviewGuide(_ session: String) {
+        run("Could not write the review guide") {
+            try await self.sessions.writeReviewGuide(session)
+        }
+    }
+
+    func postReviewGuide(_ session: String) {
+        run("Could not post the review guide") {
+            try await self.sessions.postReviewGuide(session)
+            self.show("Posted the review guide on GitHub", kind: .done)
+        }
+    }
+
+    /// A new chat whose worktree starts from the chat's branch; the daemon stacks it on
+    /// that chat (B149).
+    func newChat(onTopOf session: Session) {
+        guard let branch = session.branch else { return }
+        if project != session.repo {
+            openProject(session.repo)
+        }
+        newChat().chosenPlace = .newWorktree(from: branch)
     }
 
     /// A start screen issue row: the start draft gets the issue, its first message (B101).

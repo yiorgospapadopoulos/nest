@@ -4,12 +4,14 @@ import {
   permissionOf,
   planOf,
   questionsOf,
+  restackOf,
   reviewCommentsDetail,
   reviewOf,
 } from "../../api/payloads.ts";
 import type { Approval, IssueSummary, Session } from "../../api/types.ts";
 import { ciFailure, pendingFor, stuckChats, type Tone } from "../../store/selectors.ts";
 import type { State } from "../../store/state.ts";
+import { restackTitle } from "./prWork.ts";
 
 // The new chat screen (B90 design I fitted to the phone, B102), as NestKit's StartScreen.
 
@@ -80,6 +82,8 @@ export function needsYouLine(approval: Approval): string {
     }
     case "review_comments":
       return line("Review comments", reviewCommentsDetail(approval));
+    case "restack":
+      return line("Branch to move", restackTitle(restackOf(approval)));
     default: {
       const computer = computerAskOf(approval);
       if (computer !== null) return line("Permission", computer.question);

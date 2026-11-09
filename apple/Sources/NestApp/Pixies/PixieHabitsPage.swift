@@ -241,6 +241,8 @@ struct HabitEditor: View {
                     DetailNote(
                         text: "In any project's chats. At most once in 5 minutes.")
 
+                    HabitGitHubRows(draft: $draft.github)
+
                     DetailHeading(title: "Limit")
                     StepperRow(
                         title: "Longest run", value: draft.maxMinutes, unit: "min",

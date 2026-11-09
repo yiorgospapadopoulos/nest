@@ -34,6 +34,7 @@ from nestd.issues.message import issue_message, issue_meta
 from nestd.issues.models import Issue
 from nestd.local.models import is_local
 from nestd.providers.base import AgentProvider, AgentTask, ApprovalHandler, MessageBlock
+from nestd.prs.models import Stack
 from nestd.prs.untrusted import one_line
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
 from nestd.sessions.bookkeeping import isolated
@@ -100,6 +101,7 @@ from nestd.sessions.titles import short_title
 from nestd.sessions.turns import TurnRunner
 from nestd.sessions.updates import save_changes
 from nestd.sessions.workspace import publish_workspace
+from nestd.triggers.models import TriggerRef
 from nestd.worktrees.manager import Worktree, WorktreeManager, issue_branch_name
 from nestd.worktrees.setup import LinkResult
 
@@ -374,17 +376,20 @@ class SessionManager:
         *,
         started_by_pixie: str | None = None,
         pixie_batch: str | None = None,
+        started_by_trigger: TriggerRef | None = None,
     ) -> Session:
         """`started_by_pixie` marks a chat a pixie starts with its tools, in the batch of
         its turn; its prompt is shown as the pixie's. Such a chat needs a git repository,
-        since it must work in its own worktree (B41).
+        since it must work in its own worktree (B41). So does a chat a project's GitHub
+        trigger starts (`started_by_trigger`, B148); both need the engine's git block.
         """
+        unattended = started_by_pixie is not None or started_by_trigger is not None
         try:
             repo = await self._repos.current(request.repo)
         except RepoNotFoundError as error:
             raise InvalidInputError(str(error)) from error
         require_folder(repo)
-        if started_by_pixie is not None and not repo.git:
+        if unattended and not repo.git:
             msg = f"{repo.name} is not a git repository, so a chat cannot get its own worktree"
             raise InvalidInputError(msg)
         defaults = self._defaults()
@@ -393,7 +398,7 @@ class SessionManager:
             if request.provider is not None
             else await self._engines.listing(request.model, self._defaults_engine(defaults))
         )
-        if started_by_pixie is not None:
+        if unattended:
             # Its git block is a promise the engine must keep (B107).
             engine.require("pixies")
         if not is_local(request.model):
@@ -460,7 +465,9 @@ class SessionManager:
             started_by_pixie=started_by_pixie,
             pixie_batch=pixie_batch,
             issue=None if issue is None else issue.ref(),
-            movable=started_by_pixie is None,
+            started_by_trigger=started_by_trigger,
+            # A chat no one started by hand stays in its worktree (B148).
+            movable=not unattended,
         )
         await self._refuse_member_calls(new, request.prompt)
         attachments = await self._attachments.for_session(request.attachment_ids, None)
@@ -474,6 +481,8 @@ class SessionManager:
         session = await self._store.create(
             new, branch=branch, worktree_path=None if joined is None else joined.path
         )
+        if mode == "worktree" and place is None and request.base is not None:
+            session = await self._stack_on(session, request.base)
         if on_autopilot:
             assert request.autopilot is not None  # noqa: S101 (`on_autopilot` says so)
             session = await self.autopilot.start(
@@ -499,6 +508,17 @@ class SessionManager:
             )
         )
         return session
+
+    async def _stack_on(self, session: Session, base: str) -> Session:
+        """A new worktree chat starting from another open chat's branch is stacked on it:
+        its pull request merges into that branch until that one's merges (B149).
+        """
+        parent = await self._store.chat_on_branch(session.repo, base)
+        if parent is None or parent.id == session.id:
+            return session
+        return await self._store.set_quietly(
+            session.id, stack=Stack(parent=parent.id, parent_branch=base)
+        )
 
     async def _place(self, repo: RepoConfig, request: CreateSession) -> Place | None:
         """Where a new chat on an existing branch or worktree works (B96); None for any

@@ -865,6 +865,70 @@ describe("pull request", () => {
 
     expect(api.merge).toHaveBeenCalledWith("s1", { method: "squash", delete_branch: true });
   });
+
+  const details = async (user: Awaited<ReturnType<typeof openChat>>["user"]) => {
+    await user.click(screen.getByRole("button", { name: "Pull request #7, checks passed" }));
+    return screen.getByRole("dialog", { name: "Pull request #7" });
+  };
+
+  it("asks to merge when checks pass, squashing", async () => {
+    const chat = session({ pr_url: url, pr: prStatus() });
+    const { user, api } = await openChat({ chat });
+    api.setAutoMerge.mockResolvedValueOnce({
+      ...chat,
+      merge_when_ready: { method: "squash", delete_branch: false },
+    });
+    const sheet = await details(user);
+    const toggle = within(sheet).getByRole("switch", { name: "Merge when checks pass" });
+
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    expect(api.setAutoMerge).toHaveBeenCalledWith("s1", { enabled: true, method: "squash" });
+    expect(toggle).toBeChecked();
+  });
+
+  it("moves a stacked branch and shows why the daemon refused", async () => {
+    const chat = session({
+      pr_url: url,
+      pr: prStatus(),
+      stack: {
+        parent: "s0",
+        parent_branch: "agent/base",
+        restack: {
+          upstream: "agent/base",
+          onto: "main",
+          fetch: null,
+          base: "main",
+          rebased: null,
+          error: null,
+        },
+      },
+    });
+    const { user, api } = await openChat({ chat });
+    api.restack.mockRejectedValueOnce(
+      new ApiError(409, "Conflicts in src/form.ts", "restack_failed"),
+    );
+    const sheet = await details(user);
+
+    expect(within(sheet).getByText("On top of agent/base")).toBeInTheDocument();
+    expect(within(sheet).getByText("Moves onto main")).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Rebase and push" }));
+
+    expect(api.restack).toHaveBeenCalledWith("s1");
+    expect(await screen.findByText("Conflicts in src/form.ts")).toBeInTheDocument();
+  });
+
+  it("starts a new chat on top of the chat's branch, which can be taken off", async () => {
+    const chat = session({ pr_url: url, pr: prStatus() });
+    const { user, api } = await openChat({ chat });
+    await user.click(within(await details(user)).getByRole("button", { name: "New chat on top" }));
+
+    expect(await screen.findByText("On top of agent/contact")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Message"), "Next step{Enter}");
+    expect(api.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: "todo-ui", mode: "worktree", base: "agent/contact" }),
+    );
+  });
 });
 
 describe("composer", () => {

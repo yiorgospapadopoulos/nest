@@ -11,11 +11,12 @@ import { NameSheet } from "../pixies/NameSheet.tsx";
 import { MASCOTS } from "../pixies/options.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { ProjectConfiguration } from "./ProjectConfiguration.tsx";
+import { ProjectTriggers } from "./ProjectTriggers.tsx";
 import { Row, Section, SegRow, SelectRow, type Choice } from "./rows.tsx";
 import { TextRow } from "./TextRow.tsx";
 import { withCurrent } from "./choices.ts";
 
-type Tab = "General" | "Configuration" | "Chats" | "Worktrees" | "Look" | "Artifacts";
+type Tab = "General" | "Configuration" | "Chats" | "Worktrees" | "Triggers" | "Look" | "Artifacts";
 
 // Where the project's new chats work; null follows the agent default.
 const WORK_IN: Choice<boolean | null>[] = [
@@ -39,9 +40,9 @@ const SPRITE_COLOR = "#8B7CF6";
 
 /** A project's page in Settings (B81), replacing the Project settings sheet. */
 export function ProjectPage({ repo }: { repo: RepoConfig }) {
-  // Chats and Worktrees are about git; a plain folder's chats work in place.
+  // Chats, Worktrees and Triggers are about git; a plain folder's chats work in place.
   const tabs: Tab[] = repo.git
-    ? ["General", "Configuration", "Chats", "Worktrees", "Look", "Artifacts"]
+    ? ["General", "Configuration", "Chats", "Worktrees", "Triggers", "Look", "Artifacts"]
     : ["General", "Configuration", "Look", "Artifacts"];
   const [tab, setTab] = useState<Tab>("General");
   return (
@@ -64,6 +65,7 @@ export function ProjectPage({ repo }: { repo: RepoConfig }) {
         {tab === "Configuration" && <ProjectConfiguration repo={repo} />}
         {tab === "Chats" && <Chats repo={repo} />}
         {tab === "Worktrees" && <Worktrees repo={repo} />}
+        {tab === "Triggers" && <ProjectTriggers repo={repo} />}
         {tab === "Look" && <Look repo={repo} />}
         {tab === "Artifacts" && <Artifacts repo={repo} />}
       </div>

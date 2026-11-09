@@ -13,7 +13,7 @@ import { ComputerAskBody } from "../chat/Computer.tsx";
 import { FoldRow } from "./FoldRow.tsx";
 import { approvalLine, approvalPixie, lineText } from "./needsLine.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
-import { MergeDetail } from "./PrCards.tsx";
+import { MergeDetail, RestackDetail } from "./PrCards.tsx";
 
 interface Props {
   approval: Approval;
@@ -27,6 +27,7 @@ const KIND_LABELS: Record<Approval["kind"], string> = {
   plan: "Plan",
   merge: "Ready to merge",
   review_comments: "Review comments",
+  restack: "Branch to move",
 };
 
 /** A pending approval's row: the chat and what it asks, opening to the full item (B102). */
@@ -89,6 +90,8 @@ function ApprovalDetail({ approval, session }: DetailProps): ReactNode {
       return <MergeDetail approval={approval} session={session} />;
     case "review_comments":
       return <ReviewCommentsDetail approval={approval} />;
+    case "restack":
+      return <RestackDetail approval={approval} />;
   }
 }
 

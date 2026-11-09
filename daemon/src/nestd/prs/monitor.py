@@ -8,11 +8,16 @@ checks passed and that GitHub can merge becomes a merge approval.
 An open pull request's review comments are read with it (B101), kept on the session and
 published as `session.pr_review`. New ones wait in Needs you as a review comments
 approval, or with the session's auto send go to the agent at once.
+
+A pull request the user asked to merge once its checks pass gets no merge approval: GitHub
+merges it with its own auto-merge, or Nest does when it became ready. A pull request seen
+going from open to merged is passed on, so the chats stacked on it move onto its base
+(B149).
 """
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -48,6 +53,8 @@ MAX_FAILING_NAMES = 5
 
 # Sends a message to a session's agent, as the user's messages go (B101).
 type SendMessage = Callable[[str, str, Sender], Awaitable[SendResult]]
+# Called with a session's id when its pull request became ready or was merged (B149).
+type PrCallback = Callable[[str], Coroutine[object, object, None]]
 
 
 class PrMonitor:
@@ -84,16 +91,28 @@ class PrMonitor:
         self._attempts: dict[str, datetime] = {}
         # Sessions to read at the next check whatever their interval, such as after a push.
         self._soon: set[str] = set()
+        self._on_ready: PrCallback | None = None
+        self._on_merged: PrCallback | None = None
+        # Callbacks run as tasks of their own, as they read the pull request again.
+        self._tasks: set[asyncio.Task[None]] = set()
+
+    def listen(self, *, on_ready: PrCallback, on_merged: PrCallback) -> None:
+        """`on_ready` merges a pull request the user asked to merge once its checks pass;
+        `on_merged` moves the chats stacked on a merged one (B149).
+        """
+        self._on_ready = on_ready
+        self._on_merged = on_merged
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._loop())
 
     async def stop(self) -> None:
         task, self._task = self._task, None
-        if task is not None:
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+        tasks = [] if task is None else [task]
+        tasks += list(self._tasks)
+        for each in tasks:
+            each.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     def check_soon(self, session_id: str) -> None:
         """Read the session's pull request at the next check, for example after a push."""
@@ -335,7 +354,34 @@ class PrMonitor:
             more = len(names) - MAX_FAILING_NAMES
             text = f"CI failed: {shown}" + (f" and {more} more" if more > 0 else "")
             await self._notifier.notify("ci_failed", session.id, session.repo, session.title, text)
+        if old is not None and old.state == "open" and new.state == "merged":
+            self._spawn(self._on_merged, session.id)
         await self._merge(session, old, new, was_held)
+
+    async def offer_merge(self, session: Session) -> None:
+        """Ask the user to merge a pull request that is ready, as when it became ready."""
+        pr = session.pr
+        if pr is None or not pr.ready_to_merge() or _held(session) or restacking(session):
+            return
+        await self._approvals.add(
+            session.id,
+            ApprovalKind.MERGE,
+            {
+                "number": pr.number,
+                "title": pr.title,
+                "url": pr.url,
+                "head_sha": pr.head_sha,
+                "checks": pr.checks.model_dump(mode="json", exclude={"items"}),
+            },
+            f"#{pr.number} {_checks_text(pr)}; ready to merge",
+        )
+
+    def _spawn(self, callback: PrCallback | None, session_id: str) -> None:
+        if callback is None:
+            return
+        task = asyncio.create_task(callback(session_id))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _merge(
         self, session: Session, old: PrStatus | None, new: PrStatus, was_held: bool
@@ -346,6 +392,9 @@ class PrMonitor:
         held = _held(session)
         if new.blocked():
             await self._approvals.expire(session.id, (ApprovalKind.MERGE,), _block_reason(new))
+        if restacking(session):
+            await self._approvals.expire(session.id, (ApprovalKind.MERGE,), RESTACKING)
+            return
         if held:
             await self._approvals.expire(
                 session.id, (ApprovalKind.MERGE,), "review comments are open on the pull request"
@@ -357,19 +406,13 @@ class PrMonitor:
             and old.head_sha == new.head_sha
             and not was_held
         )
-        if new.ready_to_merge() and not was_ready:
-            await self._approvals.add(
-                session.id,
-                ApprovalKind.MERGE,
-                {
-                    "number": new.number,
-                    "title": new.title,
-                    "url": new.url,
-                    "head_sha": new.head_sha,
-                    "checks": new.checks.model_dump(mode="json", exclude={"items"}),
-                },
-                f"#{new.number} {_checks_text(new)}; ready to merge",
-            )
+        if not new.ready_to_merge() or was_ready or new.auto_merge is not None:
+            # GitHub's auto-merge merges it by itself.
+            return
+        if session.merge_when_ready is not None and self._on_ready is not None:
+            self._spawn(self._on_ready, session.id)
+            return
+        await self.offer_merge(session.model_copy(update={"pr": new}))
 
     async def _loop(self) -> None:
         while True:
@@ -380,6 +423,16 @@ class PrMonitor:
                 await self.tick()
             except Exception as error:
                 logger.warning("pull request check failed (%s)", type(error).__name__)
+
+
+RESTACKING = "the branch waits to move onto its new base"
+
+
+def restacking(session: Session) -> bool:
+    """A stacked chat's branch waits to move onto its new base: its pull request still
+    points at the branch that merged, so it is not merged (B149).
+    """
+    return session.stack is not None and session.stack.restack is not None
 
 
 def _held(session: Session) -> bool:

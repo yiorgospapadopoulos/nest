@@ -74,6 +74,20 @@ class _Current:
     max_minutes: int
 
 
+async def usage_at_limit(usage: UsageStore, percent: int, now: datetime) -> bool:
+    """Whether the latest known 5-hour or weekly usage is at `percent`; a window that has
+    reset since does not count. Habits and GitHub triggers run only below it (D104, B148).
+    """
+    limits = await usage.limits()
+    level = percent / 100
+    return any(
+        window is not None
+        and window.utilization >= level
+        and (window.resets_at is None or window.resets_at > now)
+        for window in (limits.five_hour, limits.seven_day)
+    )
+
+
 class HabitScheduler:
     def __init__(
         self,
@@ -305,17 +319,7 @@ class HabitScheduler:
         return None
 
     async def _usage_high(self, now: datetime) -> bool:
-        """Whether the latest known 5-hour or weekly usage is at the limit; a window that
-        has reset since does not count.
-        """
-        limits = await self._usage.limits()
-        level = self._pixie_settings().habit_usage_percent / 100
-        return any(
-            window is not None
-            and window.utilization >= level
-            and (window.resets_at is None or window.resets_at > now)
-            for window in (limits.five_hour, limits.seven_day)
-        )
+        return await usage_at_limit(self._usage, self._pixie_settings().habit_usage_percent, now)
 
     async def _start(self, run: StoredRun, habit: StoredHabit, now: datetime) -> None:
         try:

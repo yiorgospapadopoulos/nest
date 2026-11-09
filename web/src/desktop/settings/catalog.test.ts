@@ -75,16 +75,18 @@ describe("the settings catalog", () => {
     expect(listed([], "branch map", ["Branch map"]).pages).toEqual([page("features")]);
   });
 
-  it("gives a plain folder no Worktrees tab", () => {
+  it("gives a plain folder no Worktrees or Triggers tab", () => {
     expect(projectTabs(true)).toEqual([
       "General",
       "Configuration",
       "Chats",
       "Worktrees",
+      "Triggers",
       "Look",
       "Artifacts",
     ]);
     expect(matches({ project: "x" }, ".mcp.json")).toBe(true);
     expect(projectTabs(false)).not.toContain("Worktrees");
+    expect(projectTabs(false)).not.toContain("Triggers");
   });
 });

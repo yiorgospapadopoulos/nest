@@ -465,6 +465,10 @@ class SessionSpec:
     # False: a one-off run the engine keeps no history of, so it never shows in Claude
     # Code's or Codex's own chat lists (B115's performance check).
     keep_history: bool = True
+    # A turn of Nest's own on untrusted text (B149): no tools at all and none of the user's
+    # settings, MCP servers, plugins or skills, so nothing the text says can act. Only an
+    # engine that reports `review_guide` supported honours it.
+    bare: bool = False
 
     @property
     def nest_decides(self) -> bool:
@@ -821,6 +825,8 @@ type ProviderFeature = Literal[
     "pixie_skills",
     # A chosen size the chat compacts at by itself, the engine's own setting (B146).
     "compact_window",
+    # A review guide for a pull request, written by a run with every tool off (B149).
+    "review_guide",
 ]
 
 

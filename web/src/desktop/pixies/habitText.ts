@@ -10,6 +10,7 @@ import type {
   UpdateHabitBody,
 } from "../../api/types.ts";
 import type { Tone } from "../../store/selectors.ts";
+import { githubDraftOf, githubText, watchesOf, type GitHubDraft } from "../../triggers/github.ts";
 
 export const EMPTY_LIST =
   "No habits yet. A habit runs on a schedule or when chats need attention, and reports what it finds.";
@@ -96,11 +97,12 @@ export function triggersText(triggers: HabitTrigger[]): string | null {
   return `When a chat ${phrases.length > 0 ? `${phrases.join(", ")} or ` : ""}${last}`;
 }
 
-/** "Weekdays at 09:00 · When a chat is stuck". */
-export function habitSummary(habit: Pick<Habit, "schedule" | "triggers">): string {
+/** "Weekdays at 09:00 · When a chat is stuck · On GitHub when CI fails". */
+export function habitSummary(habit: Pick<Habit, "schedule" | "triggers" | "github">): string {
   return [
     habit.schedule === null ? null : scheduleText(habit.schedule),
     triggersText(habit.triggers),
+    githubText(habit.github ?? []),
   ]
     .filter((part) => part !== null)
     .join(" · ");
@@ -181,6 +183,8 @@ export interface HabitDraft {
   minute: number;
   weekday: number;
   triggers: HabitTrigger[];
+  // Its first GitHub trigger (B148).
+  github: GitHubDraft;
   maxMinutes: number;
   autopilot: boolean;
 }
@@ -195,6 +199,7 @@ export function newDraft(): HabitDraft {
     minute: 0,
     weekday: 0,
     triggers: [],
+    github: githubDraftOf(undefined),
     maxMinutes: 20,
     autopilot: false,
   };
@@ -207,6 +212,7 @@ export function draftOf(habit: Habit): HabitDraft {
     name: habit.name,
     prompt: habit.prompt,
     triggers: [...habit.triggers],
+    github: githubDraftOf(habit.github),
     maxMinutes: habit.max_minutes,
     autopilot: habit.autopilot,
   };
@@ -281,7 +287,11 @@ export function problemOf(draft: HabitDraft): string | null {
   if (name.length > 60) return "A name has at most 60 characters";
   if (prompt === "") return "Say what it should check";
   if (prompt.length > 4000) return "The instructions have at most 4000 characters";
-  if (scheduleOf(draft) === null && draft.triggers.length === 0) {
+  if (
+    scheduleOf(draft) === null &&
+    draft.triggers.length === 0 &&
+    draft.github.events.length === 0
+  ) {
     return "Choose a schedule or at least one trigger";
   }
   return null;
@@ -297,6 +307,7 @@ export function createBody(draft: HabitDraft): HabitBody {
     prompt: draft.prompt.trim(),
     schedule: scheduleOf(draft),
     triggers: ordered(draft.triggers),
+    github: watchesOf(draft.github, undefined),
     max_minutes: draft.maxMinutes,
     autopilot: draft.autopilot,
   };
@@ -318,6 +329,8 @@ export function updateBody(draft: HabitDraft, habit: Habit): UpdateHabitBody {
   if (prompt !== habit.prompt) body.prompt = prompt;
   if (!sameSchedule(schedule, habit.schedule)) body.schedule = schedule;
   if (triggers.join(" ") !== habit.triggers.join(" ")) body.triggers = triggers;
+  const github = watchesOf(draft.github, habit.github);
+  if (JSON.stringify(github) !== JSON.stringify(habit.github ?? [])) body.github = github;
   if (draft.maxMinutes !== habit.max_minutes) body.max_minutes = draft.maxMinutes;
   if (draft.autopilot !== habit.autopilot) body.autopilot = draft.autopilot;
   return body;

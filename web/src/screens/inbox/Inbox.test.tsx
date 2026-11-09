@@ -1311,6 +1311,35 @@ describe("pull request cards", () => {
     expect(screen.getByRole("button", { name: "Merge (squash)" })).toBeEnabled();
   });
 
+  it("move a stacked branch onto where the one under it went, or dismiss it", async () => {
+    const restack = approval({
+      id: "r1",
+      kind: "restack",
+      title: "Branch to move",
+      payload: {
+        branch: "agent/contact",
+        base: "main",
+        rebased: false,
+        error: null,
+        number: 7,
+        url: "https://github.com/me/todo-ui/pull/7",
+      },
+    });
+    const api = withItems([restack, { ...restack, id: "r2" }], [opened]);
+    const { user } = await renderInbox({ api });
+    const [first, second] = screen.getAllByRole("article", { name: /Branch to move/ });
+
+    expect(within(defined(first)).getAllByText(/Move agent\/contact onto main/)).not.toHaveLength(
+      0,
+    );
+    await user.click(within(defined(first)).getByRole("button", { name: "Rebase and push" }));
+    expect(api.restack).toHaveBeenCalledWith("s1");
+    expect(await screen.findByText("Rebased and pushed")).toBeInTheDocument();
+
+    await user.click(within(defined(second)).getByRole("button", { name: "Dismiss" }));
+    expect(api.resolveApproval).toHaveBeenCalledWith("r2", { dismiss: true });
+  });
+
   it("send failed checks to the agent", async () => {
     const failing = session({
       pr: prStatus({ checks: [check("unit", "failure"), check("lint"), check("e2e", "failure")] }),

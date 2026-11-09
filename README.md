@@ -110,7 +110,7 @@ Click the branch next to the project's name to open the branch map. It draws eve
 
 ### Reviews and pull requests
 
-When a turn changes files, a bar above the message box shows what changed. **Review** opens the diff. **Approve** commits it, and for a worktree chat also pushes the branch and opens a pull request. Nest then follows the pull request's checks: if they fail, it can send the failing log to the chat; when they pass, it offers the merge.
+When a turn changes files, a bar above the message box shows what changed. **Review** opens the diff. **Approve** commits it, and for a worktree chat also pushes the branch and opens a pull request. Nest then follows the pull request's checks: if they fail, it can send the failing log to the chat; when they pass, it offers the merge. You can also have it merge by itself once the checks pass, start a chat on top of another chat's branch for a stacked pull request, and ask an agent for a review guide: what changed, where to look and the risks.
 
 ### The board
 
@@ -146,6 +146,7 @@ While Nest runs, a strip around the MacBook's notch shows your pixies at work: t
 - **Several accounts.** Sign in more than one plan per engine and switch which one chats use. See [Accounts](docs/using-nest.md#settings-storage-pixies-and-accounts).
 - **Your terminal chats.** Chats you started in Claude Code or Codex outside Nest show up too, and **Continue in Nest** picks one up. See [Chats from Claude Code and Codex](docs/using-nest.md#chats-from-claude-code-and-codex).
 - **GitHub issues.** The start screen lists the project's open issues; click one to start a chat on it. See [GitHub issues](docs/using-nest.md#github-issues-and-review-comments).
+- **GitHub triggers.** A new issue, a review or a failing CI run can start a chat or a pixie's habit by itself. See [GitHub triggers](docs/using-nest.md#github-triggers).
 - **Terminals, browsers and dev servers.** Open a terminal or a browser as a pane, and run the project's dev server per chat, each worktree on its own ports. See [Terminal and browser panes](docs/using-nest.md#terminal-and-browser-panes) and [Dev servers](docs/using-nest.md#dev-servers).
 - **Usage limits.** When you hit your plan's limit, a chat pauses and carries on by itself once the limit resets. See [What the agent is doing](docs/using-nest.md#what-the-agent-is-doing).
 - **Files in chats.** Send PDFs, text files and videos up to 500 MB, and open them, or a file the agent names in its reply, in a viewer inside Nest. Replies show pictures, tables and math. See [Files and messages](docs/using-nest.md#files-and-messages).

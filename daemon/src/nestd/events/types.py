@@ -159,6 +159,9 @@ PIXIE_REPORT_READ: Final = "pixie.report_read"
 HABIT_UPDATED: Final = "habit.updated"
 HABIT_DELETED: Final = "habit.deleted"
 HABIT_RUN_UPDATED: Final = "habit.run_updated"
+# A project's GitHub trigger took an event (B148): `{repo, activity}`, the trigger's last
+# activity as `GET /api/repos/{name}/triggers/activity` lists it; global.
+TRIGGER_ACTIVITY: Final = "trigger.activity"
 
 # The pixies a project chat called, as its group (B46): `{group}`, its solo pixies and
 # teams as `GET /api/sessions/{id}/pixies` lists them; after a call starts, changes state
