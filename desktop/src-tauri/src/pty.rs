@@ -21,6 +21,8 @@ pub struct Ptys {
     sessions: Shared<HashMap<String, Session>>,
     /// Variables Nest set for itself (such as GDK_BACKEND), kept out of the shell.
     scrub: Vec<String>,
+    /// What the AppImage pointed into the app's folder, put back for the shell.
+    outside_app: Vec<(String, Option<String>)>,
 }
 
 /// Ids name events (`pty://<id>`), so they keep to the characters event names allow.
@@ -42,9 +44,11 @@ fn size(cols: u16, rows: u16) -> PtySize {
 
 impl Ptys {
     pub fn new(scrub: Vec<String>) -> Self {
+        let vars: Vec<(String, String)> = std::env::vars().collect();
         Self {
             sessions: Arc::default(),
             scrub,
+            outside_app: crate::env::outside_app(&vars),
         }
     }
 
@@ -79,6 +83,12 @@ impl Ptys {
         }
         for name in &self.scrub {
             command.env_remove(name);
+        }
+        for (name, value) in &self.outside_app {
+            match value {
+                Some(value) => command.env(name, value),
+                None => command.env_remove(name),
+            }
         }
         let pair = native_pty_system()
             .openpty(size(cols, rows))
