@@ -133,6 +133,7 @@ public final class LiveSync {
         await chatPixies.load()
         await branchMaps.reload()
         await runs.reload()
+        try? await app.loadEditors()
         await island?.refresh()
         computer?.reset()
         try? await computer?.loadSettings()

@@ -1,6 +1,6 @@
 import { createContext, use } from "react";
-import type { RepoApp } from "../../api/client.ts";
-import type { CreatePixieBody, RepoConfig } from "../../api/types.ts";
+import type { OpenTarget } from "../../api/client.ts";
+import type { CreatePixieBody, EditorId, Editors, RepoConfig } from "../../api/types.ts";
 import type { DraftModel, ProjectState, ProjectView } from "../layout/project.ts";
 import type { DropSide } from "../layout/workspace.ts";
 import type { SettingsPlace, SettingsTarget } from "../settings/catalog.ts";
@@ -25,8 +25,11 @@ export interface Shell {
   closeTab: (name: string) => void;
   // Moves a tab and saves the new project order for every device (D090).
   moveTab: (name: string, index: number) => void;
-  // Opens the shown project's folder in VS Code, the file manager or a terminal.
-  openIn: (app: RepoApp) => void;
+  // Opens the shown project's folder in an editor, the file manager or a terminal.
+  openIn: (app: OpenTarget) => void;
+  // The installed editors (B152); null until the daemon listed them.
+  editors: Editors | null;
+  setDefaultEditor: (editor: EditorId | null) => Promise<void>;
 
   openPane: (pane: string) => void;
   openChat: (id: string, event?: number) => void;

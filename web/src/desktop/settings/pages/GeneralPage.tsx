@@ -10,6 +10,7 @@ import {
 import { Fireflies } from "../../../ui/Fireflies.tsx";
 import type { LinuxSettings } from "../../bridge.ts";
 import { useApi, useBridge } from "../../context.ts";
+import { useShell } from "../../shell/context.ts";
 import { useRelaunch } from "../../shell/useRelaunch.ts";
 import { Button, Toggle } from "../../ui/controls.tsx";
 import { Alert } from "../../sheets/Alert.tsx";
@@ -17,6 +18,7 @@ import { appAnswers } from "./appAnswers.ts";
 import { BugReportSheet } from "./BugReportSheet.tsx";
 import { CheckNestSheet } from "./CheckNestSheet.tsx";
 import {
+  Dropdown,
   Failure,
   SettingsListRow,
   SettingsRow,
@@ -40,6 +42,7 @@ export function GeneralPage() {
           onChange={(on) => void actions.setShowAutomated(on)}
         />
       </SettingsSection>
+      <EditorSection />
       <LinuxSection />
       <SettingsSection title="Nest">
         <VersionRow />
@@ -51,6 +54,36 @@ export function GeneralPage() {
       <HelpSection />
       <UninstallSection />
     </>
+  );
+}
+
+/** The editor Open in's shortcut opens (B152), while any editor is installed. */
+function EditorSection() {
+  const { actions } = useStore();
+  const { editors, setDefaultEditor } = useShell();
+  if (editors === null || editors.installed.length === 0) return null;
+  const current = editors.installed.find((editor) => editor.id === editors.default);
+  return (
+    <SettingsSection title="Open in">
+      <SettingsRow label="Default editor">
+        <Dropdown
+          label="Default editor"
+          title={current?.name ?? editors.installed[0]?.name ?? ""}
+          width={150}
+          items={() =>
+            editors.installed.map((editor) => ({
+              title: editor.name,
+              checked: editor.id === editors.default,
+              onSelect: () => {
+                setDefaultEditor(editor.id).catch(() => {
+                  actions.toast("Could not save the default editor", "error");
+                });
+              },
+            }))
+          }
+        />
+      </SettingsRow>
+    </SettingsSection>
   );
 }
 

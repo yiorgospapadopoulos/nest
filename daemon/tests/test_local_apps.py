@@ -7,6 +7,7 @@ import pytest
 from nestd.errors import ConflictError
 from nestd.gitops.runner import CommandError
 from nestd.local_apps.apps import LIVE_WARNING, LocalApps, RepoApp
+from nestd.local_apps.editors import EDITORS, EditorId
 from nestd.local_apps.errors import AppNotInstalledError, LocalAppError
 from nestd.local_apps.launchers import launcher_script
 from nestd.platform import LINUX, MACOS
@@ -38,7 +39,12 @@ def opener() -> FakeOpener:
 
 @pytest.fixture
 def apps(opener: FakeOpener, tmp_path: Path) -> LocalApps:
-    return LocalApps(opener, tmp_path / "launchers", MACOS)
+    return LocalApps(opener, tmp_path / "launchers", MACOS, editor_folders=[tmp_path / "apps"])
+
+
+def install_mac_apps(tmp_path: Path, *bundles: str) -> None:
+    for bundle in bundles:
+        (tmp_path / "apps" / bundle / "Contents").mkdir(parents=True)
 
 
 def test_the_launcher_quotes_the_folder_and_the_conversation() -> None:
@@ -89,6 +95,9 @@ async def test_open_in_claude_code_needs_a_conversation_and_a_folder(
     ("app", "args"),
     [
         ("vscode", ("open", "-a", "Visual Studio Code")),
+        ("cursor", ("open", "-a", "Cursor")),
+        ("xcode", ("open", "-a", "Xcode")),
+        ("pycharm", ("open", "-a", "PyCharm")),
         ("finder", ("open",)),
         ("terminal", ("open", "-a", "Terminal")),
     ],
@@ -96,9 +105,56 @@ async def test_open_in_claude_code_needs_a_conversation_and_a_folder(
 async def test_open_repo(
     apps: LocalApps, opener: FakeOpener, tmp_path: Path, app: RepoApp, args: tuple[str, ...]
 ) -> None:
-    await apps.open_repo(tmp_path, app)
+    await apps.open_repo(tmp_path, app, None)
 
     assert opener.calls == [((*args, str(tmp_path)), tmp_path / "launchers")]
+
+
+# B152: editors are listed only when installed, and the shortcut opens the default one.
+async def test_mac_lists_the_installed_editors_in_open_in_order(
+    apps: LocalApps, tmp_path: Path
+) -> None:
+    install_mac_apps(tmp_path, "PyCharm CE.app", "Zed.app", "Visual Studio Code.app")
+    (tmp_path / "apps" / "Cursor.app").parent.mkdir(exist_ok=True)
+    (tmp_path / "apps" / "Cursor.app").write_text("not an app bundle")
+
+    installed = await apps.installed_editors()
+
+    assert [editor.id for editor in installed] == ["vscode", "zed", "pycharm"]
+
+
+async def test_mac_opens_the_bundle_it_found(
+    apps: LocalApps, opener: FakeOpener, tmp_path: Path
+) -> None:
+    """A community edition has its own app name, which `open -a` needs."""
+    install_mac_apps(tmp_path, "PyCharm CE.app")
+
+    await apps.open_repo(tmp_path, "pycharm", None)
+
+    assert opener.calls == [(("open", "-a", "PyCharm CE", str(tmp_path)), tmp_path / "launchers")]
+
+
+@pytest.mark.parametrize(
+    ("chosen", "opened"),
+    [("zed", "Zed"), (None, "Visual Studio Code"), ("cursor", "Visual Studio Code")],
+)
+async def test_the_editor_target_opens_the_default_editor(
+    apps: LocalApps, opener: FakeOpener, tmp_path: Path, chosen: EditorId | None, opened: str
+) -> None:
+    """The chosen editor while it is installed, else the first installed one."""
+    install_mac_apps(tmp_path, "Zed.app", "Visual Studio Code.app")
+
+    await apps.open_repo(tmp_path, "editor", chosen)
+
+    assert opener.calls == [(("open", "-a", opened, str(tmp_path)), tmp_path / "launchers")]
+
+
+async def test_the_editor_target_with_no_editor_installed_runs_nothing(
+    apps: LocalApps, opener: FakeOpener, tmp_path: Path
+) -> None:
+    with pytest.raises(AppNotInstalledError, match="No code editor is installed"):
+        await apps.open_repo(tmp_path, "editor", "vscode")
+    assert opener.calls == []
 
 
 async def test_a_missing_app_is_reported(
@@ -108,8 +164,8 @@ async def test_a_missing_app_is_reported(
         ["open"], 1, "Unable to find application named 'Visual Studio Code'\n"
     )
 
-    with pytest.raises(AppNotInstalledError, match="Visual Studio Code is not installed") as caught:
-        await apps.open_repo(tmp_path, "vscode")
+    with pytest.raises(AppNotInstalledError, match="VS Code is not installed") as caught:
+        await apps.open_repo(tmp_path, "vscode", None)
     assert caught.value.status_code == 424
 
 
@@ -126,7 +182,7 @@ async def test_other_open_failures(
     opener.failure = failure
 
     with pytest.raises(LocalAppError) as caught:
-        await apps.open_repo(tmp_path, "finder")
+        await apps.open_repo(tmp_path, "finder", None)
     assert str(caught.value) == f"could not open Finder: {message}"
     assert caught.value.status_code == 502
 
@@ -139,27 +195,59 @@ def linux_apps(opener: FakeOpener, tmp_path: Path, *installed: str) -> LocalApps
     def which(name: str) -> str | None:
         return f"/usr/bin/{name}" if name in installed else None
 
-    return LocalApps(opener, tmp_path / "launchers", LINUX, which=which)
+    folders = [tmp_path / "toolbox", tmp_path / "flatpak"]
+    return LocalApps(opener, tmp_path / "launchers", LINUX, which=which, editor_folders=folders)
 
 
-async def test_linux_opens_vs_code_and_the_file_manager_by_their_commands(
+def install_launcher(folder: Path, name: str, executable: bool = True) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    launcher = folder / name
+    launcher.write_text("#!/bin/sh\n")
+    launcher.chmod(0o755 if executable else 0o644)
+    return launcher
+
+
+async def test_linux_opens_editors_detached_and_the_file_manager_by_their_commands(
     opener: FakeOpener, tmp_path: Path
 ) -> None:
+    """A JetBrains launcher runs as long as the IDE, so editors start detached."""
     apps = linux_apps(opener, tmp_path, "code", "xdg-open")
 
-    await apps.open_repo(tmp_path, "vscode")
-    await apps.open_repo(tmp_path, "finder")
+    await apps.open_repo(tmp_path, "vscode", None)
+    await apps.open_repo(tmp_path, "finder", None)
 
     assert opener.calls == [
-        (("code", str(tmp_path)), tmp_path / "launchers"),
+        ((*DETACH, "/usr/bin/code", str(tmp_path)), tmp_path),
         (("xdg-open", str(tmp_path)), tmp_path / "launchers"),
     ]
+
+
+async def test_linux_finds_editors_off_the_path(opener: FakeOpener, tmp_path: Path) -> None:
+    """The service's PATH is short: Toolbox launchers and flatpaks are looked for too, and
+    a file that cannot run does not count."""
+    install_launcher(tmp_path / "toolbox", "pycharm")
+    zed = install_launcher(tmp_path / "flatpak", "dev.zed.Zed")
+    install_launcher(tmp_path / "toolbox", "goland", executable=False)
+    apps = linux_apps(opener, tmp_path, "cursor")
+
+    installed = await apps.installed_editors()
+    await apps.open_repo(tmp_path, "zed", None)
+
+    assert [editor.id for editor in installed] == ["cursor", "zed", "pycharm"]
+    assert opener.calls == [((*DETACH, str(zed), str(tmp_path)), tmp_path)]
+
+
+def test_xcode_is_never_offered_on_linux() -> None:
+    xcode = next(editor for editor in EDITORS if editor.id == "xcode")
+
+    assert xcode.linux_commands == ()
 
 
 @pytest.mark.parametrize(
     ("app", "message"),
     [
-        ("vscode", "Visual Studio Code is not installed on this computer"),
+        ("vscode", "VS Code is not installed on this computer"),
+        ("rider", "Rider is not installed on this computer"),
         ("finder", "xdg-open is not installed on this computer"),
         ("terminal", "No terminal app is installed on this computer"),
     ],
@@ -170,7 +258,7 @@ async def test_linux_reports_a_missing_app_without_running_anything(
     apps = linux_apps(opener, tmp_path)
 
     with pytest.raises(AppNotInstalledError, match=message):
-        await apps.open_repo(tmp_path, app)
+        await apps.open_repo(tmp_path, app, None)
     assert opener.calls == []
 
 
@@ -180,9 +268,9 @@ async def test_linux_opens_a_terminal_in_the_folder_without_waiting_for_it(
     """A terminal runs until it is closed, so it starts through a shell that exits at once;
     x-terminal-emulator (the system's choice) wins over gnome-terminal."""
     await linux_apps(opener, tmp_path, "x-terminal-emulator", "gnome-terminal").open_repo(
-        tmp_path, "terminal"
+        tmp_path, "terminal", None
     )
-    await linux_apps(opener, tmp_path, "gnome-terminal").open_repo(tmp_path, "terminal")
+    await linux_apps(opener, tmp_path, "gnome-terminal").open_repo(tmp_path, "terminal", None)
 
     assert opener.calls == [
         ((*DETACH, "x-terminal-emulator"), tmp_path),
@@ -210,8 +298,8 @@ async def test_linux_continues_a_conversation_in_a_terminal_running_a_shell_laun
 
 
 async def test_linux_reports_a_failed_command(opener: FakeOpener, tmp_path: Path) -> None:
-    opener.failure = CommandError(["code"], 1, "cannot open display\n")
+    opener.failure = CommandError(["xdg-open"], 1, "cannot open display\n")
 
     with pytest.raises(LocalAppError) as caught:
-        await linux_apps(opener, tmp_path, "code").open_repo(tmp_path, "vscode")
-    assert str(caught.value) == "could not open Visual Studio Code: cannot open display"
+        await linux_apps(opener, tmp_path, "xdg-open").open_repo(tmp_path, "finder", None)
+    assert str(caught.value) == "could not open the file manager: cannot open display"

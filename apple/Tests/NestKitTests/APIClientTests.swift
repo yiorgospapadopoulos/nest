@@ -84,9 +84,23 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase(
             "POST", "/api/repos", body: #"{"name":"cv","path":"/tmp/cv"}"#, response: repoJSON
         ) { _ = try await $0.registerRepo(path: "/tmp/cv", name: "cv") },
-        RouteCase("POST", "/api/repos/todo-ui/open", body: #"{"app":"vscode"}"#, response: "") {
-            try await $0.openRepo("todo-ui", in: .vscode)
+        RouteCase("POST", "/api/repos/todo-ui/open", body: #"{"app":"zed"}"#, response: "") {
+            try await $0.openRepo("todo-ui", in: .editor("zed"))
         },
+        RouteCase("POST", "/api/repos/todo-ui/open", body: #"{"app":"editor"}"#, response: "") {
+            try await $0.openRepo("todo-ui", in: .defaultEditor)
+        },
+        RouteCase(
+            "GET", "/api/editors",
+            response: #"{"installed":[{"id":"zed","name":"Zed"}],"default":"zed"}"#
+        ) {
+            let editors = try await $0.editors()
+            #expect(editors.defaultEditor == Editor(id: "zed", name: "Zed"))
+        },
+        RouteCase(
+            "PUT", "/api/editors/default", body: #"{"default":"zed"}"#,
+            response: #"{"installed":[],"default":null}"#
+        ) { _ = try await $0.setDefaultEditor("zed") },
         RouteCase("GET", "/api/sessions?archived=false", response: Fixture.text("sessions")) {
             _ = try await $0.sessions(repo: nil, archived: false)
         },

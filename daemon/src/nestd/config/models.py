@@ -15,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from nestd.local_apps.editors import EditorId
 from nestd.triggers.models import ChatTrigger
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
@@ -365,6 +366,13 @@ class ComputerUseSettings(_Strict):
     pixies: bool = False
 
 
+class EditorSettings(_Strict):
+    """`[editors]` (B152, D181): the editor Open in's shortcut uses; None, or one that is not
+    installed, means the first installed one."""
+
+    default: EditorId | None = None
+
+
 class ProjectSettings(_Strict):
     # Project names in the order clients show them, set by reordering the Mac app's tabs
     # (D090); projects not listed follow in file name order.
@@ -434,6 +442,7 @@ class Settings(_Strict):
     stuck: StuckSettings = Field(default_factory=StuckSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     computer_use: ComputerUseSettings = Field(default_factory=ComputerUseSettings)
+    editors: EditorSettings = Field(default_factory=EditorSettings)
     projects: ProjectSettings = Field(default_factory=ProjectSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     pixies: PixieDefaults = Field(default_factory=PixieDefaults)

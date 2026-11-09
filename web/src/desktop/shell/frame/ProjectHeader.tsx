@@ -71,7 +71,7 @@ function ProjectMenu() {
     <Menu
       label={`Project ${projectName(repo.name)}`}
       items={() =>
-        projectMenu(repo.name, keysOf("openInVSCode"), {
+        projectMenu(repo.name, shell.editors, keysOf("openInEditor"), {
           // Always one more terminal, as the Mac's newTerminal.
           newTerminal: () => {
             shell.update((s) => {

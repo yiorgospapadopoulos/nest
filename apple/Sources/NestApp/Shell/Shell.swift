@@ -2156,8 +2156,8 @@ final class Shell {
             update { $0.rightCollapsed.toggle() }
         case .showUsage:
             show(.usage)
-        case .openInVSCode:
-            openProject(in: .vscode)
+        case .openInEditor:
+            openProject(in: .defaultEditor)
         case .goToProject(let project):
             selectProject(project)
         case .openMessage(let project, let pane, let event):

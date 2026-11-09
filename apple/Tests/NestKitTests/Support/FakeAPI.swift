@@ -171,6 +171,8 @@ final class FakeAPI: NestAPI {
         var updates = EngineUpdates()
         /// Computer use (B150): its settings and status, and each chat's latest screenshot.
         var computerSettings = ComputerUseSettings()
+        /// The installed editors (B152).
+        var editors = Editors.none
         var computerStatus = ComputerStatus(enabled: false, kinds: [])
         var computerFrames: [String: Data] = [:]
     }
@@ -247,6 +249,17 @@ final class FakeAPI: NestAPI {
 
     func openRepo(_ name: String, in app: RepoApp) async throws {
         try call("openRepo", "\(name) \(app.rawValue)") { _ in }
+    }
+
+    func editors() async throws -> Editors {
+        try call("editors") { $0.editors }
+    }
+
+    func setDefaultEditor(_ id: String?) async throws -> Editors {
+        try call("setDefaultEditor", id ?? "none") { state in
+            state.editors.default = id ?? state.editors.installed.first?.id
+            return state.editors
+        }
     }
 
     func removeRepo(_ name: String, purgeSessions: Bool) async throws {

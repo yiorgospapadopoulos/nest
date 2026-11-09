@@ -61,8 +61,9 @@ public enum SettingsPage: Sendable, Hashable {
         switch self {
         case .general:
             [
-                "Sidebar", "Show automated chats", "Nest", "Version", "Restart Nest", "Setup",
-                "Set up Nest", "Help", "Report a bug", "Uninstall", "Uninstall Nest",
+                "Sidebar", "Show automated chats", "Open in", "Default editor", "Nest",
+                "Version", "Restart Nest", "Setup", "Set up Nest", "Help", "Report a bug",
+                "Uninstall", "Uninstall Nest",
             ]
         case .storage:
             [
