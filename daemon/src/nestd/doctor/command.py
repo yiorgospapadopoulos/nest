@@ -1,4 +1,5 @@
-"""The `nest` command: `nest doctor`, `nest doctor --report` and `nest uninstall`.
+"""The `nest` command: `nest doctor`, `nest doctor --report` and `nest uninstall`, and the
+chat commands of `nestd.outside.command` (B151).
 
 Separate from `nestd`, and light on purpose: it never starts the daemon or opens `AppContext`,
 so it works when the daemon is down, which is when it is needed.
@@ -20,6 +21,7 @@ from nestd.doctor.machine import Machine, this_machine
 from nestd.doctor.models import Check
 from nestd.doctor.report import write_report
 from nestd.doctor.uninstall import NotAReleaseError, Uninstall
+from nestd.outside.command import CHAT_COMMANDS, add_commands, run
 from nestd.paths import AppPaths
 from nestd.platform import current_platform
 
@@ -75,7 +77,7 @@ def uninstall(machine: Machine, *, delete_data: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="nest", description="Check on or remove Nest")
+    parser = argparse.ArgumentParser(prog="nest", description="Nest from the terminal")
     commands = parser.add_subparsers(required=True, dest="command", metavar="command")
     check = commands.add_parser("doctor", help="say what is wrong and how to fix it")
     check.add_argument("--report", action="store_true", help="write a bug report with no secrets")
@@ -83,7 +85,10 @@ def main(argv: list[str] | None = None) -> int:
     remove.add_argument(
         "--delete-data", action="store_true", help="also delete chats, settings and secrets"
     )
+    add_commands(commands.add_parser)
     args = parser.parse_args(argv)
+    if args.command in (*CHAT_COMMANDS, "mcp"):
+        return run(args)
     machine = machine_here()
     if args.command == "doctor":
         return doctor(machine, report=args.report)
