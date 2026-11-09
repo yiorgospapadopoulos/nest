@@ -26,36 +26,37 @@ export function commandLine(client: OutsideClient): string | null {
 
 /**
  * The clients, read again when the page comes back into view, and a change that shows the
- * client as the Mac reports it after; a refused change leaves it as it was.
+ * client as the Mac reports it after. A refused change reads them again, as switching off
+ * can be half done (off in Nest, still in the app's config).
  */
 export function useTerminalAgents() {
   const { actions } = useStore();
   const [clients, setClients] = useState<OutsideClient[] | null>(null);
   const [busy, setBusy] = useState<OutsideClientKind | null>(null);
+  const reload = useCallback(async () => {
+    const found = await actions.outsideClients();
+    if (found !== null) setClients(found);
+  }, [actions]);
   useEffect(() => {
-    let live = true;
-    const load = () => {
-      void actions.outsideClients().then((found) => {
-        if (live && found !== null) setClients(found);
-      });
-    };
+    const load = () => void reload();
     load();
     window.addEventListener("focus", load);
     return () => {
-      live = false;
       window.removeEventListener("focus", load);
     };
-  }, [actions]);
+  }, [reload]);
   const set = useCallback(
     async (kind: OutsideClientKind, access: OutsideAccess | null) => {
       setBusy(kind);
       const changed = await actions.setOutsideClient(kind, access);
       setBusy(null);
-      if (changed !== null) {
-        setClients((now) => now?.map((c) => (c.kind === kind ? changed : c)) ?? null);
+      if (changed === null) {
+        await reload();
+        return;
       }
+      setClients((now) => now?.map((c) => (c.kind === kind ? changed : c)) ?? null);
     },
-    [actions],
+    [actions, reload],
   );
   return { clients, busy, set };
 }
