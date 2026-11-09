@@ -6,6 +6,10 @@ public protocol NestAPI: Sendable {
     func repos() async throws -> [Repo]
     func registerRepo(path: String, name: String?) async throws -> Repo
     func openRepo(_ name: String, in app: RepoApp) async throws
+    /// The editors installed on the daemon's computer, and the default one (B152).
+    func editors() async throws -> Editors
+    /// Nil goes back to the first installed editor.
+    func setDefaultEditor(_ id: String?) async throws -> Editors
     /// The slash commands of the repo's latest agent run, for chats not started yet.
     func repoCommands(_ repo: String) async throws -> CommandList
     /// Unregisters the repo; `purgeSessions` deletes its chats first. The folder stays.

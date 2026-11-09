@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { repo } from "../../test/fixtures.ts";
+import { repo, voiceStatus } from "../../test/fixtures.ts";
 import { openSettings } from "../../test/settings.ts";
 
 const openGeneral = (api = fakeApi()) => openSettings("General", { api });
@@ -96,5 +96,31 @@ describe("general page", () => {
     await waitFor(() => {
       expect(screen.queryByText("9.9.9")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("voice input (B154)", () => {
+  it("saves a model, and the computer's default as no choice", async () => {
+    const api = fakeApi();
+    const { user } = await openGeneral(api);
+    const model = await screen.findByLabelText("Model");
+    expect(screen.getByText("Ready")).toBeVisible();
+
+    await user.selectOptions(model, "Tiny, 75 MB");
+    expect(api.saveVoiceModel).toHaveBeenLastCalledWith("tiny.en");
+    await user.selectOptions(model, "Small (default), 485 MB");
+    expect(api.saveVoiceModel).toHaveBeenLastCalledWith(null);
+  });
+
+  it("offers the download again after it failed, saying why", async () => {
+    const api = fakeApi();
+    api.voiceStatus.mockResolvedValue(
+      voiceStatus({ state: "install_failed", detail: "pip failed (1): no network" }),
+    );
+    const { user } = await openGeneral(api);
+
+    expect(await screen.findByText("pip failed (1): no network")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(api.installVoice).toHaveBeenCalled();
   });
 });

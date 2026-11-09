@@ -156,6 +156,11 @@ class AppPaths:
         return self.data_dir / "artifacts"
 
     @property
+    def voice_dir(self) -> Path:
+        """Voice input's engine and models (B154)."""
+        return self.data_dir / "voice"
+
+    @property
     def engines_dir(self) -> Path:
         """The ACP engines Nest installs, one pinned version each (B107); made on install."""
         return self.data_dir / "engines"

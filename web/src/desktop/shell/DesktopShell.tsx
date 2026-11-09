@@ -46,6 +46,7 @@ import { TabStrip } from "./TabStrip.tsx";
 import { terminals } from "./terminals.ts";
 import { browserClosed, browsers } from "./toolSessions.ts";
 import { useAppSwap } from "./useAppSwap.ts";
+import { useEditors } from "./useEditors.ts";
 import { useWindowWatch } from "./useWindowWatch.ts";
 import { WindowFrame } from "./WindowFrame.tsx";
 import { Workspace } from "./Workspace.tsx";
@@ -67,6 +68,7 @@ export function DesktopShell() {
   const [sheet, setSheet] = useState<Shell["sheet"]>(null);
   const [pixieDetailsOpen, setPixieDetailsOpen] = useState(false);
   const [showsHiddenPixies, setShowsHiddenPixies] = useState(false);
+  const { editors, setDefaultEditor } = useEditors(api);
   const size = useRef({ width: 900, height: 700 });
   const focusEvents = useRef(new Map<string, number>());
   const repoNames = useMemo(() => state.repos.map((r) => r.name), [state.repos]);
@@ -212,6 +214,8 @@ export function DesktopShell() {
           );
         });
       },
+      editors,
+      setDefaultEditor,
       openPane,
       openChat: (id, event) => {
         if (event === undefined) focusEvents.current.delete(id);
@@ -382,6 +386,8 @@ export function DesktopShell() {
     sheet,
     pixieDetailsOpen,
     showsHiddenPixies,
+    editors,
+    setDefaultEditor,
   ]);
 
   useShortcuts(shell);
@@ -592,8 +598,8 @@ function useShortcuts(shell: Shell) {
         case "pixies":
           s.selectTab("pixies");
           break;
-        case "openInVSCode":
-          s.openIn("vscode");
+        case "openInEditor":
+          s.openIn("editor");
           break;
       }
     };

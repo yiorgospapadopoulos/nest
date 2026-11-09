@@ -181,7 +181,12 @@ async def test_a_new_version_is_prepared_checked_and_offered(rig: Rig) -> None:
     assert pins[pins.index("--only-binary") + 1] == ":all:"
     assert "claude-agent-sdk==0.3.0" in pins
     assert "openai-codex-cli-bin==0.10.0" in pins
-    assert rig.npm.installs() == ["opencode-ai@1.1.0", "@google/gemini-cli@0.5.0"]
+    assert rig.npm.installs() == [
+        "opencode-ai@1.1.0",
+        "@google/gemini-cli@0.5.0",
+        "@github/copilot@1.0.0",
+        "@xai-official/grok@1.0.0",
+    ]
     assert rig.bus.sent == ["checking", "preparing", "ready"]
     ready = rig.files.load().ready
     assert ready is not None

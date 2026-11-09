@@ -28,6 +28,8 @@ import type {
   OutsideClient,
   OutsideClientKind,
   ComputerUseSettings,
+  VoiceModelId,
+  VoiceStatus,
   CodexPlugins,
   ConfigurationPage,
   CopyPreview,
@@ -123,6 +125,8 @@ import type {
   WorktreeSettings,
   PixieDefaults,
   StorageSettings,
+  EditorId,
+  Editors,
   PerfView,
   StorageUsage,
   StoredAttachment,
@@ -133,9 +137,10 @@ import type {
   TriggerActivity,
 } from "./types.ts";
 
-// The apps a project's folder opens in (daemon/src/nestd/local_apps/openers.py): VS Code, the
-// file manager ("finder" on every platform) and a terminal.
-export type RepoApp = "vscode" | "finder" | "terminal";
+// The apps a project's folder opens in (daemon/src/nestd/local_apps/openers.py): an editor,
+// the file manager ("finder" on every platform) and a terminal; "editor" is the default editor.
+export type RepoApp = EditorId | "finder" | "terminal";
+export type OpenTarget = RepoApp | "editor";
 
 // The daemon's code for a message refused because Claude Code has the chat open.
 export const OPEN_ELSEWHERE = "open_in_claude_code";
@@ -181,7 +186,10 @@ export interface Api {
   // Saves the project order every client shows (D090); announced as `repos.reordered`.
   reorderRepos(order: string[]): Promise<RepoConfig[]>;
   // Opens the project's folder in an app on the daemon's machine, as the Mac's project menu.
-  openRepo(name: string, app: RepoApp): Promise<null>;
+  openRepo(name: string, app: OpenTarget): Promise<null>;
+  editors(): Promise<Editors>;
+  // Null goes back to the first installed editor.
+  setDefaultEditor(editor: EditorId | null): Promise<Editors>;
   // Gitignored files in the project's checkout worth linking into its worktrees.
   linkSuggestions(name: string): Promise<string[]>;
   // A project's GitHub triggers (B148); the list itself comes with the project.
@@ -225,6 +233,12 @@ export interface Api {
   turnOffOutsideClient(kind: OutsideClientKind): Promise<OutsideClient>;
   // Asks macOS on the daemon's Mac and opens the matching System Settings pane.
   askComputerPermission(name: ComputerPermission): Promise<{ granted: boolean }>;
+  // Voice input (B154): its state, fetching it, the model, and a WAV recording to text.
+  voiceStatus(): Promise<VoiceStatus>;
+  installVoice(): Promise<VoiceStatus>;
+  removeVoice(): Promise<VoiceStatus>;
+  saveVoiceModel(model: VoiceModelId | null): Promise<VoiceStatus>;
+  transcribe(recording: Blob): Promise<{ text: string }>;
   sessionCommands(id: string): Promise<CommandList>;
   repoCommands(name: string): Promise<CommandList>;
   files(id: string, query: string): Promise<{ files: string[] }>;
@@ -616,8 +630,16 @@ export class HttpApi implements Api {
     return this.json<RepoConfig[]>("PUT", "/api/repos/order", { order });
   }
 
-  openRepo(name: string, app: RepoApp) {
+  openRepo(name: string, app: OpenTarget) {
     return this.json<null>("POST", `${repo(name)}/open`, { app });
+  }
+
+  editors() {
+    return this.json<Editors>("GET", "/api/editors");
+  }
+
+  setDefaultEditor(editor: EditorId | null) {
+    return this.json<Editors>("PUT", "/api/editors/default", { default: editor });
   }
 
   linkSuggestions(name: string) {
@@ -1287,6 +1309,30 @@ export class HttpApi implements Api {
 
   askComputerPermission(name: ComputerPermission) {
     return this.json<{ granted: boolean }>("POST", `/api/computer/permissions/${name}`);
+  }
+
+  voiceStatus() {
+    return this.json<VoiceStatus>("GET", "/api/voice");
+  }
+
+  installVoice() {
+    return this.json<VoiceStatus>("POST", "/api/voice/install");
+  }
+
+  removeVoice() {
+    return this.json<VoiceStatus>("DELETE", "/api/voice");
+  }
+
+  saveVoiceModel(model: VoiceModelId | null) {
+    return this.json<VoiceStatus>("PUT", "/api/voice/settings", { model });
+  }
+
+  transcribe(recording: Blob) {
+    return this.send<{ text: string }>("/api/voice/transcribe", {
+      method: "POST",
+      body: recording,
+      headers: { "Content-Type": "audio/wav" },
+    });
   }
 
   worktreeSettings() {

@@ -142,7 +142,7 @@ While Nest runs, a strip around the MacBook's notch shows your pixies at work: t
 
 ### Also in Nest
 
-- **More engines.** Besides Claude Code and Codex, chats can run on OpenCode, Gemini CLI or a model on your own computer (LM Studio, Ollama and others), all from one model menu. See [Local models](docs/using-nest.md#local-models) and [More engines](docs/using-nest.md#more-engines-agent-client-protocol).
+- **More engines.** Besides Claude Code and Codex, chats can run on OpenCode, Gemini CLI, Cursor, Copilot CLI, Antigravity, Grok Build or a model on your own computer (LM Studio, Ollama and others), all from one model menu. See [Local models](docs/using-nest.md#local-models) and [More engines](docs/using-nest.md#more-engines-agent-client-protocol).
 - **Several accounts.** Sign in more than one plan per engine and switch which one chats use. See [Accounts](docs/using-nest.md#settings-storage-pixies-and-accounts).
 - **Your terminal chats.** Chats you started in Claude Code or Codex outside Nest show up too, and **Continue in Nest** picks one up. See [Chats from Claude Code and Codex](docs/using-nest.md#chats-from-claude-code-and-codex).
 - **Terminal agents and the `nest` command.** Let Claude Code, Codex or your shell list, read, message and start Nest chats, at the level you give each. See [Terminal agents](docs/using-nest.md#terminal-agents-and-the-nest-command).
@@ -175,6 +175,7 @@ Every device can be revoked in Settings > Devices.
 | Keychain (Secret Service on Linux) | Device tokens and the keys you give Nest are kept there and nowhere else. The app gets its own token from the background service, so it never asks for your Keychain password. |
 | Notifications | To tell you when a chat needs you, has work to review or finishes. |
 | Microphone and speech recognition | Only for Dictation, while you dictate a message. Speech is turned into text on the Mac. |
+| Microphone on the iPhone and Linux | Only while you dictate a message. The recording goes to Nest on your own computer, is turned into text there and deleted. |
 | Accessibility (optional) | Lets the pixie strip around the notch see where the menu bar is free, so it can grow into that space. |
 | Accessibility for Nest Computer, Screen Recording for Nest (optional) | Only if you turn on computer use: the small helper inside Nest.app reads and uses the windows of apps a chat is allowed to use, and takes their screenshots, which macOS allows through Nest's Screen Recording. |
 | Tailscale sharing | Share with my devices makes Nest reachable at your private tailnet address, so the iPhone can open it. `tailscale serve --https=443 off` stops it. |

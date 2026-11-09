@@ -8,9 +8,12 @@ import argparse
 import asyncio
 import logging
 import os
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
+
+import httpx
 
 from nestd import __version__
 from nestd.accounts.profiles import drop_leaked_env
@@ -25,6 +28,7 @@ from nestd.design.errors import DesignError
 from nestd.design.icon import generate_icons
 from nestd.design.loader import find_root
 from nestd.design.outputs import generate, stale_outputs
+from nestd.engine import acp_registry
 from nestd.engine.acp_install import EngineInstall, run_npm
 from nestd.folder_move import (
     LEGACY_DB_NAME,
@@ -39,7 +43,10 @@ from nestd.gates.rules import ALL_PARTS, Selection, select
 from nestd.logging_setup import configure_logging
 from nestd.paths import AppPaths, is_packaged
 from nestd.perf.gate_times import GateRun, GateTimes, stage_times
+from nestd.providers.acp import sign_in
 from nestd.providers.acp_engines import ACP_ENGINES
+from nestd.providers.acp_process import AcpLaunch
+from nestd.providers.acp_rpc import AcpRpcError
 from nestd.providers.shell_env import LoginShellEnv, login_shell
 from nestd.runtime import Runtime, default_runtime
 from nestd.service.base import ServiceError, ServiceManager
@@ -152,6 +159,16 @@ def _parser() -> argparse.ArgumentParser:
         "--engines-dir", type=Path, help="where the fetched engines are (default: the data folder)"
     )
     selfcheck.set_defaults(handler=_engines_selfcheck)
+    sign_in = engines_actions.add_parser(
+        "sign-in", help="sign an engine in with its own login, for one with no login command"
+    )
+    sign_in.add_argument("engine", help="the engine's name, such as antigravity")
+    sign_in.add_argument("program", type=Path, help="the engine's program Nest installed")
+    sign_in.set_defaults(handler=_engines_sign_in)
+    engines_actions.add_parser(
+        "registry",
+        help="show where the ACP Registry lists newer versions of Nest's engines than it pins",
+    ).set_defaults(handler=_engines_registry)
     return parser
 
 
@@ -343,6 +360,51 @@ def _engines_selfcheck(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -
     report = run_selfcheck_here(args.engines_dir or paths.engines_dir, rt.platform)
     print(report.model_dump_json(), file=rt.out)
     return 0 if report.ok else 1
+
+
+def _engines_sign_in(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> int:
+    """The sign-in Settings shows for an engine Nest signs in itself (B153), run in a
+    throwaway folder.
+    """
+    engine = next((found for found in ACP_ENGINES if found.id == args.engine), None)
+    if engine is None or engine.login_method is None:
+        print(f"nestd: {args.engine} signs in with its own command", file=rt.err)
+        return 2
+    launch = AcpLaunch((str(args.program), *engine.args), {**rt.env, **engine.env})
+    print(f"Finish signing in to {engine.name} in your browser.", file=rt.out)
+    try:
+        with tempfile.TemporaryDirectory(prefix="nest-sign-in-") as folder:
+            asyncio.run(sign_in(launch, Path(folder), engine.login_method))
+    except TimeoutError:
+        print("nestd: the sign-in was not finished in time", file=rt.err)
+        return 1
+    except (AcpRpcError, OSError) as error:
+        print(f"nestd: {engine.name} could not sign in ({type(error).__name__})", file=rt.err)
+        return 1
+    print(f"Signed in to {engine.name}.", file=rt.out)
+    return 0
+
+
+def _engines_registry(_args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> int:
+    """Where the pins in `acp_engines` lag the registry they come from (B153)."""
+    try:
+        entries = asyncio.run(_read_registry())
+    except acp_registry.RegistryError as error:
+        print(f"nestd: {error}", file=rt.err)
+        return 1
+    found = acp_registry.drift(ACP_ENGINES, entries, acp_registry.platform_name())
+    if not found:
+        print("Every engine matches the ACP Registry.", file=rt.out)
+    for item in found:
+        print(
+            f"{item.engine}: pinned {item.pinned}, listed {item.listed}: {item.note}", file=rt.out
+        )
+    return 0
+
+
+async def _read_registry() -> dict[str, acp_registry.Entry]:
+    async with httpx.AsyncClient(timeout=acp_registry.REGISTRY_TIME_LIMIT) as client:
+        return await acp_registry.fetch(client)
 
 
 def _engines_install(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:

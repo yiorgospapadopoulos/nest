@@ -19,6 +19,7 @@ import {
   storageUsage,
   stuckSettings,
   usageSettings,
+  voiceStatus,
   detail,
   diff,
   habit,
@@ -71,6 +72,10 @@ export function fakeApi(): FakeApi {
     updateRepo: vi.fn<Api["updateRepo"]>().mockResolvedValue(repo("todo-ui")),
     reorderRepos: vi.fn<Api["reorderRepos"]>().mockResolvedValue([repo("todo-ui")]),
     openRepo: vi.fn<Api["openRepo"]>().mockResolvedValue(null),
+    editors: vi.fn<Api["editors"]>().mockResolvedValue({ installed: [], default: null }),
+    setDefaultEditor: vi
+      .fn<Api["setDefaultEditor"]>()
+      .mockResolvedValue({ installed: [], default: null }),
     linkSuggestions: vi.fn<Api["linkSuggestions"]>().mockResolvedValue([]),
     createTrigger: vi.fn<Api["createTrigger"]>(),
     updateTrigger: vi.fn<Api["updateTrigger"]>(),
@@ -106,6 +111,17 @@ export function fakeApi(): FakeApi {
       accessibility: null,
       screen_recording: null,
     }),
+    voiceStatus: vi.fn<Api["voiceStatus"]>().mockResolvedValue(voiceStatus()),
+    installVoice: vi
+      .fn<Api["installVoice"]>()
+      .mockResolvedValue(voiceStatus({ state: "installing", step: "packages" })),
+    removeVoice: vi
+      .fn<Api["removeVoice"]>()
+      .mockResolvedValue(voiceStatus({ state: "not_installed", download_mb: 325 })),
+    saveVoiceModel: vi
+      .fn<Api["saveVoiceModel"]>()
+      .mockImplementation((model) => Promise.resolve(voiceStatus({ model: model ?? "small.en" }))),
+    transcribe: vi.fn<Api["transcribe"]>().mockResolvedValue({ text: "run the tests" }),
     askComputerPermission: vi
       .fn<Api["askComputerPermission"]>()
       .mockResolvedValue({ granted: false }),

@@ -17,6 +17,10 @@ gets, in its environment (`push_block`):
 
 Left open: a program that runs gh by its full path, a remote added during the run with a
 push address of its own, and a program that talks to GitHub with a token it already holds.
+An engine whose shell rebuilds PATH puts the user's `gh` back in front where their shell
+setup adds its folder: Grok Build's login shell does (`/opt/homebrew/bin`), and Copilot's
+puts `/usr/local/bin` first (found by B153's check). A command they run is still judged by
+its text; only what a script of theirs runs reaches the user's `gh`.
 
 A normal chat's subagents share its process, so this cannot single them out. On Codex its
 own PreToolUse hook does (`subagent_hook_args`), as Nest's hook does on Claude: only a
@@ -47,6 +51,7 @@ type GitConfig = Sequence[tuple[str, str]]
 
 GH = "gh"
 CODEX_HOOK = "codex-subagent-hook"
+GROK_HOOK = "grok-guarded-hook"
 _REMOTE_TIME_LIMIT = 10.0
 # What Codex calls hooks set with `-c`, and how long one may take (B127).
 _SESSION_HOOK_KEY = "/<session-flags>/config.toml:pre_tool_use:0:0"
@@ -153,6 +158,7 @@ def helper_files(files: Callable[[Path], Mapping[str, str]], *, executable: bool
                 continue
         except OSError:
             pass
+        path.parent.mkdir(parents=True, exist_ok=True)
         written = path.with_suffix(".tmp")
         written.write_text(text, encoding="utf-8")
         written.chmod(0o755 if executable else 0o644)
@@ -195,5 +201,10 @@ case $input in
 \tprintf '%s' {shlex.quote(json.dumps(DENY))}
 \t;;
 esac
+""",
+        GROK_HOOK: f"""#!/bin/sh
+# Nest's command hook for a guarded Grok Build run's shell commands (B153), behind Nest's
+# own answer to Grok's hook. Grok refuses the call when this fails.
+exec {check} grok-hook
 """,
     }

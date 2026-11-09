@@ -34,7 +34,16 @@ public struct APIClient: NestAPI {
     }
 
     public func openRepo(_ name: String, in app: RepoApp) async throws {
-        try await perform("POST", ["repos", name, "open"], body: OpenRepoRequest(app: app))
+        try await perform(
+            "POST", ["repos", name, "open"], body: OpenRepoRequest(app: app.rawValue))
+    }
+
+    public func editors() async throws -> Editors {
+        try await get("editors")
+    }
+
+    public func setDefaultEditor(_ id: String?) async throws -> Editors {
+        try await call("PUT", ["editors", "default"], body: DefaultEditorRequest(default: id))
     }
 
     public func repoCommands(_ repo: String) async throws -> CommandList {
