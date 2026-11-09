@@ -25,6 +25,8 @@ security find-identity -v -p codesigning | grep -q "\"$identity\"" || {
   echo "release: no Developer ID Application certificate for team $team in the keychain" >&2
   exit 1
 }
+# latest.json is signed at the end with the release key, only ever in this Keychain (D184).
+(cd daemon && uv run python ../release/release_key.py check)
 
 mkdir -p "$out"
 (cd web && npm ci --no-audit --no-fund && npm run build)
