@@ -10,6 +10,7 @@ import pytest
 
 from nestd.outside.client import InsideNestError, NestClient
 from nestd.outside.command import add_commands, execute
+from nestd.outside.entry import reply_to
 from nestd.outside.mcp_server import Tools, tools_for
 from nestd.outside.models import ClientKind
 from nestd.providers.base import AgentTool, ToolRefusedError
@@ -123,3 +124,23 @@ async def test_a_tool_above_the_clients_level_says_how_to_raise_it(api: Api) -> 
     with pytest.raises(ToolRefusedError, match="Settings > Terminal agents"):
         await tool(tools, "start_chat").handler({"project": "repo", "prompt": "Go"})
     assert "No chats." in await tool_text(tool(tools, "list_chats"), {})
+
+
+def test_inside_nest_nest_mcp_answers_with_no_tools() -> None:
+    hello = reply_to(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18"},
+        }
+    )
+    tools = reply_to({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+
+    assert hello["result"] == {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {"tools": {}},
+        "serverInfo": {"name": "nest-app", "version": "1"},
+        "instructions": "Inside Nest: use your Nest tools instead.",
+    }
+    assert tools == {"jsonrpc": "2.0", "id": 2, "result": {"tools": []}}
