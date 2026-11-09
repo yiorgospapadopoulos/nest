@@ -80,6 +80,11 @@ export function TranscriptRow({ item }: { item: TranscriptItem }) {
       return (
         <div className="dc-urow" data-ev={ev}>
           {item.from !== undefined && <FromPixie id={item.from} />}
+          {item.client !== undefined && (
+            <div className="dc-from">
+              <span>from {item.client}</span>
+            </div>
+          )}
           <UserBubble
             text={item.text}
             attachments={item.attachments}

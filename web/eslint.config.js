@@ -45,6 +45,7 @@ const DESKTOP_SHARED = [
   "screens/settings/featureNew.ts",
   "screens/settings/featureText.ts",
   "screens/settings/perfText.ts",
+  "screens/settings/terminalAgents.ts",
   "screens/settings/usageText.ts",
   "screens/settings/useUsage.ts",
 ];

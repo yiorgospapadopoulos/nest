@@ -15,6 +15,7 @@ export const SETTINGS_PAGES = [
   "notifications",
   "agents",
   "computer",
+  "terminal",
   "usage",
   "performance",
   "storage",

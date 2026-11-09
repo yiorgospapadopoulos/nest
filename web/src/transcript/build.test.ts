@@ -1309,6 +1309,18 @@ describe("pixie hand-offs (B41)", () => {
     ]);
   });
 
+  it("names the app outside Nest that sent a message (B151)", () => {
+    const items = buildTranscript(
+      [user(1, { text: "Fix it", from_client: "claude_code" })],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([
+      { kind: "user", key: "1", text: "Fix it", attachments: [], client: "Claude Code" },
+    ]);
+  });
+
   it("shows the message Nest sends after a usage limit as Nest's, not the user's (B78)", () => {
     const items = buildTranscript(
       [user(1, { text: "Continue where you left off.", origin: "limit_resume" })],

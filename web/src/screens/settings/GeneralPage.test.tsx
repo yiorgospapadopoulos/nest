@@ -23,6 +23,7 @@ describe("settings list", () => {
       "Notifications",
       "Agents",
       "Computer use",
+      "Terminal agents",
       "Usage",
       "Performance",
       "Storage",

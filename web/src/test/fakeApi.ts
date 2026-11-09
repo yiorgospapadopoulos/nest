@@ -109,6 +109,9 @@ export function fakeApi(): FakeApi {
     askComputerPermission: vi
       .fn<Api["askComputerPermission"]>()
       .mockResolvedValue({ granted: false }),
+    outsideClients: vi.fn<Api["outsideClients"]>().mockResolvedValue([]),
+    turnOnOutsideClient: vi.fn<Api["turnOnOutsideClient"]>(),
+    turnOffOutsideClient: vi.fn<Api["turnOffOutsideClient"]>(),
     sessionCommands: vi.fn<Api["sessionCommands"]>().mockResolvedValue(commandList()),
     repoCommands: vi.fn<Api["repoCommands"]>().mockResolvedValue(commandList({ source: "repo" })),
     files: vi.fn<Api["files"]>().mockResolvedValue({ files: [] }),

@@ -13,6 +13,7 @@ import { AddProjectPage } from "./pages/AddProjectPage.tsx";
 import { AgentsPage } from "./pages/AgentsPage.tsx";
 import { AppearancePage } from "./pages/AppearancePage.tsx";
 import { ComputerPage } from "./pages/ComputerPage.tsx";
+import { TerminalAgentsPage } from "./pages/TerminalAgentsPage.tsx";
 import { ConfigurationPage } from "./pages/ConfigurationPage.tsx";
 import { DevicesPage } from "./pages/DevicesPage.tsx";
 import { FeaturesPage } from "./pages/FeaturesPage.tsx";
@@ -32,6 +33,7 @@ const ICONS: Record<FixedPage | "addProject", IconName> = {
   notifications: "bell",
   agents: "bot",
   computer: "pointer",
+  terminal: "term",
   usage: "chart",
   performance: "gauge",
   storage: "drive",
@@ -50,6 +52,7 @@ const PAGES: Record<FixedPage | "addProject", () => ReactNode> = {
   notifications: () => <NotificationsPage />,
   agents: () => <AgentsPage />,
   computer: () => <ComputerPage />,
+  terminal: () => <TerminalAgentsPage />,
   usage: () => <UsagePage />,
   performance: () => <PerformancePage />,
   storage: () => <StoragePage />,

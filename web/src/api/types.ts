@@ -1501,6 +1501,24 @@ export interface ComputerStatus {
 
 export type ComputerPermission = "accessibility" | "screen_recording";
 
+/** An app or command outside Nest that may work with its chats (B151). */
+export type OutsideClientKind = "claude_code" | "codex" | "other" | "shell";
+
+/** Each level includes the ones before it. */
+export type OutsideAccess = "read" | "message" | "full";
+
+/** `GET /api/outside-clients` (B151): one client as Settings > Terminal agents shows it. */
+export interface OutsideClient {
+  kind: OutsideClientKind;
+  label: string;
+  on: boolean;
+  access: OutsideAccess | null;
+  turned_on_at: string | null;
+  last_seen_at: string | null;
+  // What an app runs to reach Nest, or the `nest` command itself; null when not installed.
+  command: string[] | null;
+}
+
 /** How Nest makes and tidies worktrees, for every project (`/api/worktrees/settings`, B141). */
 export interface WorktreeSettings {
   // Null keeps them inside each project, at .claude/worktrees; else <folder>/<project>/.

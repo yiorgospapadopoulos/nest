@@ -6,6 +6,9 @@ import type {
   CodexPlugins,
   ComputerPermission,
   ComputerStatus,
+  OutsideAccess,
+  OutsideClient,
+  OutsideClientKind,
   ConfigurationPage,
   CopyPreview,
   CopyResult,
@@ -177,6 +180,24 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
     /** What computer use can reach on the Mac now (B150); null when it cannot be read. */
     computerStatus(): Promise<ComputerStatus | null> {
       return quietly(() => api.computerStatus());
+    },
+
+    /** Settings > Terminal agents (B151); null when they cannot be read. */
+    outsideClients(): Promise<OutsideClient[] | null> {
+      return quietly(() => api.outsideClients());
+    },
+
+    /**
+     * Switches an outside client on at `access`, or off with null; the client as it is
+     * now, or null (with a toast) when the Mac refused, as when Claude Code is missing.
+     */
+    setOutsideClient(
+      kind: OutsideClientKind,
+      access: OutsideAccess | null,
+    ): Promise<OutsideClient | null> {
+      return attempt(() =>
+        access === null ? api.turnOffOutsideClient(kind) : api.turnOnOutsideClient(kind, access),
+      );
     },
 
     /** Asks macOS for a permission on the Mac, which opens System Settings there (B150). */
