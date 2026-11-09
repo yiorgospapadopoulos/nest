@@ -4,13 +4,17 @@ import Foundation
 /// ISO 8601 dates with or without fractional seconds.
 public enum NestJSON {
     static let dateStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    /// macOS 15 reads only dates with fractional seconds with `dateStyle`, and only dates
+    /// without them with this one; macOS 26 reads both with either (B158).
+    static let wholeSecondsStyle = Date.ISO8601FormatStyle()
 
     public static var decoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let text = try container.decode(String.self)
-            guard let date = try? dateStyle.parse(text) else {
+            guard let date = (try? dateStyle.parse(text)) ?? (try? wholeSecondsStyle.parse(text))
+            else {
                 throw DecodingError.dataCorruptedError(
                     in: container, debugDescription: "not an ISO 8601 date: \(text)")
             }

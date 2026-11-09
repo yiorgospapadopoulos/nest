@@ -105,6 +105,12 @@ private struct ComputerPermissionRow: View {
 
     private func ask() {
         let store = shell.model.computer
+        // macOS checks Screen Recording against Nest.app, around the helper. macOS 26 lists
+        // Nest when the helper asks; macOS 15 lists nothing and shows no prompt then, so
+        // Nest.app asks itself first (B158).
+        if permission == .screenRecording, !CGPreflightScreenCaptureAccess() {
+            _ = CGRequestScreenCaptureAccess()
+        }
         shell.settingsChange("Could not ask macOS") { try await store.ask(permission) }
     }
 }

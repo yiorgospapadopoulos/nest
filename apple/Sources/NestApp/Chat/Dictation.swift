@@ -5,8 +5,8 @@ import Speech
 
 /// Speech to text into one composer at a time. It uses Apple's on-device SpeechAnalyzer
 /// with SpeechTranscriber (installing the language model on first use), and the older
-/// SFSpeechRecognizer when that is not available. In-progress (volatile) text shows
-/// lighter after the composer's text until a final result replaces it.
+/// SFSpeechRecognizer when that is not available, as on macOS 15. In-progress (volatile)
+/// text shows lighter after the composer's text until a final result replaces it.
 @MainActor @Observable
 final class Dictation {
     /// The chat whose composer is listening.
@@ -123,19 +123,11 @@ final class Dictation {
         }
     }
 
-    /// SpeechAnalyzer when this Mac has a transcriber for the user's language, else
-    /// SFSpeechRecognizer.
+    /// SpeechAnalyzer when this Mac has it (macOS 26) and a transcriber for the user's
+    /// language, else SFSpeechRecognizer (B158).
     private func makeEngine(terms: [String], run: Int) async throws -> any SpeechEngine {
-        if SpeechTranscriber.isAvailable,
-            let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current)
-        {
-            let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
-            do {
-                try await installModel(for: transcriber, locale: locale, run: run)
-                return try await AnalyzerEngine.make(transcriber: transcriber, terms: terms)
-            } catch {
-                // The model could not be installed or prepared: use the older recognizer.
-            }
+        if #available(macOS 26, *), let engine = await makeAnalyzerEngine(terms: terms, run: run) {
+            return engine
         }
         guard let recognizer = SFSpeechRecognizer(), recognizer.isAvailable else {
             throw DictationError.unavailable
@@ -143,7 +135,24 @@ final class Dictation {
         return RecognizerEngine(recognizer: recognizer, terms: terms)
     }
 
+    /// Nil when there is no transcriber for the language, or its model could not be
+    /// installed or prepared: the older recognizer is used then.
+    @available(macOS 26, *)
+    private func makeAnalyzerEngine(terms: [String], run: Int) async -> AnalyzerEngine? {
+        guard SpeechTranscriber.isAvailable,
+            let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current)
+        else { return nil }
+        let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        do {
+            try await installModel(for: transcriber, locale: locale, run: run)
+            return try await AnalyzerEngine.make(transcriber: transcriber, terms: terms)
+        } catch {
+            return nil
+        }
+    }
+
     /// Downloads the language model the first time, with its progress under the composer.
+    @available(macOS 26, *)
     private func installModel(for transcriber: SpeechTranscriber, locale: Locale, run: Int)
         async throws
     {
@@ -199,6 +208,7 @@ protocol SpeechEngine: AnyObject, Sendable {
 
 /// SpeechAnalyzer with a SpeechTranscriber; microphone audio is converted to the
 /// analyzer's format and streamed into its input sequence.
+@available(macOS 26, *)
 private final class AnalyzerEngine: SpeechEngine, @unchecked Sendable {
     let transcripts: AsyncThrowingStream<SpeechPiece, any Error>
     private let output: AsyncThrowingStream<SpeechPiece, any Error>.Continuation
@@ -332,7 +342,8 @@ private final class OneBuffer: @unchecked Sendable {
     }
 }
 
-/// SFSpeechRecognizer, for Macs without a SpeechTranscriber for the user's language.
+/// SFSpeechRecognizer, for macOS 15 and for Macs without a SpeechTranscriber for the user's
+/// language.
 private final class RecognizerEngine: SpeechEngine, @unchecked Sendable {
     let transcripts: AsyncThrowingStream<SpeechPiece, any Error>
     private let output: AsyncThrowingStream<SpeechPiece, any Error>.Continuation

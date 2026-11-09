@@ -28,7 +28,7 @@ fi
 # file (CFBundleIconFile) and replaces the one actool writes. actool exits 0 even when it
 # fails, so the catalog is checked for.
 xcrun actool support/AppIcon.icon --compile "$app/Contents/Resources" --app-icon AppIcon \
-    --platform macosx --minimum-deployment-target 26.0 --target-device mac \
+    --platform macosx --minimum-deployment-target 15.0 --target-device mac \
     --include-all-app-icons --enable-on-demand-resources NO \
     --output-partial-info-plist /dev/null >/dev/null
 test -f "$app/Contents/Resources/Assets.car"

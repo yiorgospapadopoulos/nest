@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "Nest",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "NestKit", targets: ["NestKit"]),
         .executable(name: "NestApp", targets: ["NestApp"]),

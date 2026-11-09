@@ -75,6 +75,22 @@ import Testing
         }
     }
 
+    /// Regression (B158): on macOS 15 a date without fractional seconds, as the daemon
+    /// sends for whole seconds, failed to read, and with it the whole answer.
+    @Test func readsDatesWithAndWithoutFractionalSeconds() throws {
+        let texts = [
+            "2026-11-01T00:00:00Z", "2026-11-01T00:00:00+00:00", "2026-11-01T00:00:00.500Z",
+            "2026-11-01T00:00:00.500000+00:00",
+        ]
+        let dates = try texts.map {
+            try NestJSON.decoder.decode([Date].self, from: Data(#"["\#($0)"]"#.utf8))[0]
+        }
+        #expect(
+            dates.map(\.timeIntervalSince1970) == [
+                1_793_491_200, 1_793_491_200, 1_793_491_200.5, 1_793_491_200.5,
+            ])
+    }
+
     @Test func readsThePixieAChatBelongsTo() throws {
         #expect(Fixture.sessions[0].pixieID == nil)
         let json = Fixture.json(Fixture.sessions[0]).dropLast()
