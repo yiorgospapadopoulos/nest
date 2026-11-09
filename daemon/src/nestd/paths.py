@@ -18,6 +18,8 @@ CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 # Codex's own setting for its home, `~/.codex` by default (B91).
 CODEX_HOME_ENV = "CODEX_HOME"
 DB_NAME = "nest.db"
+# Where outside clients ask for their tokens (B151), beside the Mac app's socket.
+OUTSIDE_SOCKET_NAME = "outside.sock"
 # The PWA build in this checkout: <repo>/web/dist, next to <repo>/daemon/src/nestd.
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 # The same build inside a released wheel, which only `make release` puts there.
@@ -61,6 +63,8 @@ class AppPaths:
     # Where the daemon hands this Mac's device token to the Mac app (D075). None serves
     # none, so tests never open a socket by accident.
     token_socket: Path | None = None
+    # Where the daemon hands outside clients their tokens (B151). None serves none.
+    outside_socket: Path | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str], home: Path, platform: Platform | None = None) -> Self:
@@ -79,6 +83,7 @@ class AppPaths:
             config_dir=Path(config_dir),
             data_dir=Path(data_dir),
             token_socket=Path(data_dir) / SOCKET_NAME,
+            outside_socket=Path(data_dir) / OUTSIDE_SOCKET_NAME,
             web_dist=Path(web_dist),
             claude_dir=Path(claude_dir),
             claude_account_file=account_file,

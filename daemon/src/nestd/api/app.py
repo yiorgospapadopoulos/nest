@@ -33,6 +33,7 @@ from nestd.api.routes import (
     local_models,
     local_proxy,
     notifications,
+    outside,
     pairing,
     perf,
     pixie_groups,
@@ -83,6 +84,8 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         await ctx.settle_defaults()
         if ctx.token_socket is not None:
             await ctx.token_socket.start()
+        if ctx.outside_socket is not None:
+            await ctx.outside_socket.start()
         try:
             await ctx.modules.start_enabled(ctx.settings.modules.enabled, ctx)
             await ctx.notifications.start()
@@ -114,6 +117,8 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             # First, so nothing asks for the token from a daemon that is going away.
             if ctx.token_socket is not None:
                 await ctx.token_socket.stop()
+            if ctx.outside_socket is not None:
+                await ctx.outside_socket.stop()
             await ctx.perf.stop()
             await ctx.updates.stop()
             await ctx.configuration_watcher.stop()
@@ -208,6 +213,8 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         triggers,
     ):
         app.include_router(module.router)
+    app.include_router(outside.router)
+    app.include_router(outside.settings_router)
     # The engines reach local models' servers through it (B106); not under device auth.
     app.include_router(local_proxy.router)
     local_proxy.configure(
