@@ -68,19 +68,8 @@ import Testing
                  "computer": {"target": "mac:com.apple.TextEdit", "name": "TextEdit", "kind": "use"}}
                 """#)
         let ask = try #require(use.computer)
-        #expect(ask.kind == .use)
+        #expect(ask.name == "TextEdit")
         #expect(!use.always)
-
-        let act = Fixture.decode(
-            PermissionRequest.self,
-            json: #"""
-                {"tool": "computer_act", "input": {"kind": "press"}, "title": "Press Send in Mail?",
-                 "always": false,
-                 "computer": {"target": "mac:com.apple.mail", "name": "Mail", "kind": "act", "frame": 7}}
-                """#)
-        #expect(act.computer?.kind == .act)
-        #expect(act.computer?.frame == 7)
-        #expect(!act.always)
     }
 
     // MARK: What a chat holds
@@ -97,6 +86,24 @@ import Testing
         store.apply(Fixture.event(EventType.computerState, #"{"targets": []}"#, id: 2))
         #expect(store.targets(of: "s1").isEmpty)
         #expect(store.frame(of: "s1") == nil)
+    }
+
+    /// The glow follows every app in use, on its window's screen, until the last lets go.
+    @Test func theGlowFollowsEachAppInUse() {
+        #expect(store.inUse.isEmpty)
+        store.apply(
+            Fixture.event(
+                EventType.computerState,
+                #"""
+                {"targets": [{"key": "mac:com.apple.TextEdit", "name": "TextEdit",
+                 "frame": {"x": 100, "y": 80, "width": 586, "height": 488}}]}
+                """#))
+        #expect(
+            store.inUse.map(\.frame)
+                == [ComputerTarget.WindowFrame(x: 100, y: 80, width: 586, height: 488)])
+
+        store.apply(Fixture.event(EventType.computerState, #"{"targets": []}"#, id: 2))
+        #expect(store.inUse.isEmpty)
     }
 
     @Test func eachNewFrameIsReadOnce() async {

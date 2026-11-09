@@ -102,10 +102,29 @@ public struct PermissionAnswer: Decodable, Sendable, Hashable {
 public struct ComputerTarget: Codable, Sendable, Hashable {
     public var key: String
     public var name: String
+    /// Where its window is, in points from the main screen's top left; nil until the chat
+    /// looked at it, and for devices.
+    public var frame: WindowFrame?
 
-    public init(key: String, name: String) {
+    public init(key: String, name: String, frame: WindowFrame? = nil) {
         self.key = key
         self.name = name
+        self.frame = frame
+    }
+
+    /// A window's place as macOS accessibility gives it: y grows downward.
+    public struct WindowFrame: Codable, Sendable, Hashable {
+        public var x: Double
+        public var y: Double
+        public var width: Double
+        public var height: Double
+
+        public init(x: Double, y: Double, width: Double, height: Double) {
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+        }
     }
 
     /// A name for a key alone, as the daemon makes one: what follows the kind.
@@ -137,18 +156,9 @@ public struct ComputerFrame: Decodable, Sendable, Hashable {
     }
 }
 
-/// What a computer use card asks: to use a target at all, one action on it, or to bring
-/// it to the front.
-public enum ComputerAskKind: String, UnknownSafeEnum {
-    case use, act, front
-    case unknown
-}
-
-/// The `computer` object of a computer use approval.
+/// The `computer` object of a computer use approval: a chat asks to use a target; Allow
+/// covers its chat (D178).
 public struct ComputerAsk: Decodable, Sendable, Hashable {
     public var target: String
     public var name: String
-    public var kind: ComputerAskKind
-    /// The frame seq the card was raised on, for an action.
-    public var frame: Int?
 }

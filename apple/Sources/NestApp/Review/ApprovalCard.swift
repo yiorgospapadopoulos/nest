@@ -87,15 +87,7 @@ private struct PermissionBody: View {
             }
             if let permission = approval.permission {
                 if let computer = permission.computer {
-                    // Computer use (B150): the question alone, and for an action the
-                    // latest screenshot of what it acts on.
-                    if computer.kind == .act,
-                        let png = shell.model.computer.image(of: approval.sessionID)
-                    {
-                        ComputerThumbnail(png: png, width: 240, height: 150)
-                            .padding(.top, 7)
-                            .accessibilityLabel("Screenshot of \(computer.name)")
-                    }
+                    // Computer use (B150): the question alone.
                     Text(permission.title ?? computer.name)
                         .font(.ui(TypeSize.ui, .medium))
                         .foregroundStyle(Palette.t1)

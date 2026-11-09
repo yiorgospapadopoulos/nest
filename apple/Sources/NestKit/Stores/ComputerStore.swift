@@ -34,6 +34,11 @@ public final class ComputerStore {
         held[session] ?? []
     }
 
+    /// Every app a chat is using now, for the glow on each one's screen.
+    public var inUse: [ComputerTarget] {
+        held.values.flatMap { $0 }
+    }
+
     /// The latest screenshot read for the chat.
     public func image(of session: String) -> Data? {
         images[session]?.png
