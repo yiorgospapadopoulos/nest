@@ -17,6 +17,7 @@ from tests.async_support import until
 from tests.fake_provider import FakeProvider, Turn, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
+from tests.tool_support import tool_text
 
 
 @pytest.fixture
@@ -48,7 +49,7 @@ class Boss:
     tools: dict[str, AgentTool]
 
     async def call(self, tool: str, /, **args: JsonValue) -> str:
-        return await self.tools[tool].handler(args)
+        return await tool_text(self.tools[tool], args)
 
     async def refused(self, tool: str, /, **args: JsonValue) -> str:
         with pytest.raises(ToolRefusedError) as refusal:

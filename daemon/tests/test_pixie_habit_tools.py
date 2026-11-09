@@ -21,12 +21,13 @@ from tests.habit_support import (
     run_now,
     tools,
 )
+from tests.tool_support import tool_text
 
 __all__ = ["ctx", "provider"]
 
 
 async def call(tool: AgentTool, **args: JsonValue) -> str:
-    return await tool.handler(args)
+    return await tool_text(tool, args)
 
 
 async def refused(tool: AgentTool, **args: JsonValue) -> str:

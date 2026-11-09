@@ -33,6 +33,7 @@ from tests.fake_provider import RESULT, FakeRun, Turn, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create, reach
+from tests.tool_support import tool_text
 
 CALL = f"mcp__nest__{CALL_PIXIE_TOOL}"
 
@@ -56,7 +57,7 @@ def calls(slug: str, task: str, outcome: list[str]) -> Turn:
         args: dict[str, JsonValue] = {"pixie": slug, "task": task}
         await run.sink.message([ToolUseBlock(id="tu1", name=CALL, input=args)], None)
         try:
-            text = await _call_tool(run).handler(args)
+            text = await tool_text(_call_tool(run), args)
             failed = False
         except ToolRefusedError as error:
             text, failed = str(error), True

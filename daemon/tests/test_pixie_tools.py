@@ -12,6 +12,7 @@ from nestd.providers.base import AgentTool, ToolRefusedError
 from nestd.repos.service import RepoService
 from tests.fakes import FakeClock
 from tests.git_support import init_repo
+from tests.tool_support import tool_text
 
 P1 = "0" * 31 + "1"
 
@@ -44,7 +45,7 @@ def by_name(tools: tuple[AgentTool, ...]) -> dict[str, AgentTool]:
 
 
 async def call(tools: dict[str, AgentTool], tool: str, /, **args: JsonValue) -> str:
-    return await tools[tool].handler(args)
+    return await tool_text(tools[tool], args)
 
 
 async def test_memory_round_trip(setup: tuple[PixieFiles, RepoService]) -> None:
