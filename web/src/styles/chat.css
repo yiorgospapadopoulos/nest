@@ -417,14 +417,15 @@
 }
 /* A known pixie or team mention (B40): its colour pulled halfway toward the bubble's text
    colour, so it reads on an accent bubble and on a neutral one, light or dark. */
-/* Selected text in your own message: the system's highlight is near the accent bubble's own
-   colour, so it takes the bubble's text colour instead and shows on any bubble (B144). */
-.m-u::selection,
-.m-u *::selection,
-.dc-ubub::selection,
-.dc-ubub *::selection {
-  background: color-mix(in srgb, var(--on-bubble) 32%, transparent);
-  color: var(--on-bubble);
+/* Selected text in your own message: the Mac's classic blue highlight with its own text
+   colour, solid so it shows on any bubble colour. `:root` puts it above the desktop's
+   general `html.desk ::selection`. */
+:root .m-u::selection,
+:root .m-u *::selection,
+:root .dc-ubub::selection,
+:root .dc-ubub *::selection {
+  background: var(--mac-text-highlight);
+  color: var(--mac-text-on-highlight);
 }
 .m-u .mention {
   font-weight: 600;
