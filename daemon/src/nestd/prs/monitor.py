@@ -92,15 +92,18 @@ class PrMonitor:
         # Sessions to read at the next check whatever their interval, such as after a push.
         self._soon: set[str] = set()
         self._on_ready: PrCallback | None = None
+        self._on_moved: PrCallback | None = None
         self._on_merged: PrCallback | None = None
         # Callbacks run as tasks of their own, as they read the pull request again.
         self._tasks: set[asyncio.Task[None]] = set()
 
-    def listen(self, *, on_ready: PrCallback, on_merged: PrCallback) -> None:
+    def listen(self, *, on_ready: PrCallback, on_moved: PrCallback, on_merged: PrCallback) -> None:
         """`on_ready` merges a pull request the user asked to merge once its checks pass;
-        `on_merged` moves the chats stacked on a merged one (B149).
+        `on_moved` cancels that when new commits arrive; `on_merged` moves the chats
+        stacked on a merged one (B149).
         """
         self._on_ready = on_ready
+        self._on_moved = on_moved
         self._on_merged = on_merged
 
     async def start(self) -> None:
@@ -390,6 +393,10 @@ class PrMonitor:
         are open; add it when it became ready to merge, or the comments cleared.
         """
         held = _held(session)
+        choice = session.merge_when_ready
+        if choice is not None and choice.head != new.head_sha:
+            self._spawn(self._on_moved, session.id)
+            choice = None
         if new.blocked():
             await self._approvals.expire(session.id, (ApprovalKind.MERGE,), _block_reason(new))
         if restacking(session):
@@ -409,7 +416,7 @@ class PrMonitor:
         if not new.ready_to_merge() or was_ready or new.auto_merge is not None:
             # GitHub's auto-merge merges it by itself.
             return
-        if session.merge_when_ready is not None and self._on_ready is not None:
+        if choice is not None and self._on_ready is not None:
             self._spawn(self._on_ready, session.id)
             return
         await self.offer_merge(session.model_copy(update={"pr": new}))

@@ -10,7 +10,7 @@ from nestd.autopilot.models import Autopilot, SetAutopilot
 from nestd.config.models import CompactAt, Effort, ModelChoice, PermissionMode, SessionMode
 from nestd.issues.models import IssueRef
 from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
-from nestd.prs.models import MergeRequest, PrGuide, PrReview, PrStatus, Stack
+from nestd.prs.models import MergeWhenReady, PrGuide, PrReview, PrStatus, Stack
 from nestd.stuck.models import StuckFlag
 from nestd.triggers.models import TriggerRef
 
@@ -185,7 +185,7 @@ class Session(NewSession):
     # The pull request's review comments and which of them went to the agent (B101).
     review: PrReview | None = None
     # Merge the pull request once its checks pass, as the user asked (B149).
-    merge_when_ready: MergeRequest | None = None
+    merge_when_ready: MergeWhenReady | None = None
     # The chat whose branch this one's starts from, and a rebase waiting (B149).
     stack: Stack | None = None
     # The review guide written for the pull request (B149).
