@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from nestd.config.loader import load_settings
 from nestd.gitops.runner import CommandError
-from nestd.local_apps.apps import LIVE_WARNING
+from nestd.local_apps.apps import LIVE_WARNING, LocalApps
+from nestd.platform import MACOS
 from nestd.providers.base import McpServer, TokenUsage, UsageInfo, UsageWindow
 from tests.api_client import Api, running_api
 from tests.async_support import until
@@ -39,6 +41,8 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
         ("GET", "/api/usage/limits"),
         ("POST", "/api/sessions/x/open-in-claude-code"),
         ("POST", "/api/repos/repo/open"),
+        ("GET", "/api/editors"),
+        ("PUT", "/api/editors/default"),
     ],
 )
 async def test_routes_require_a_device_token(api: Api, method: str, path: str) -> None:
@@ -254,12 +258,37 @@ async def test_open_a_repo_in_local_apps(api: Api) -> None:
         ["open"], 1, "Unable to find application named 'Visual Studio Code'\n"
     )
     missing = await api.http.post("/api/repos/repo/open", json={"app": "vscode"})
-    other_app = await api.http.post("/api/repos/repo/open", json={"app": "xcode"})
+    other_app = await api.http.post("/api/repos/repo/open", json={"app": "notepad"})
     unknown_repo = await api.http.post("/api/repos/nope/open", json={"app": "finder"})
 
     assert opened.status_code == 204
     assert api.opener.calls[0][0] == ("open", "-a", "Visual Studio Code", path)
     assert missing.status_code == 424
-    assert missing.json() == {"detail": "Visual Studio Code is not installed on this Mac"}
+    assert missing.json() == {"detail": "VS Code is not installed on this Mac"}
     assert other_app.status_code == 422
     assert unknown_repo.status_code == 404
+
+
+async def test_the_default_editor_is_saved_and_opened(api: Api, tmp_path: Path) -> None:
+    """B152: the list holds only installed editors; the shortcut's "editor" opens the chosen
+    one, which is kept in settings.toml."""
+    apps = tmp_path / "apps"
+    for bundle in ("Visual Studio Code.app", "Zed.app"):
+        (apps / bundle).mkdir(parents=True)
+    api.ctx.local_apps = LocalApps(api.opener, tmp_path / "launchers", MACOS, editor_folders=[apps])
+    path = str(api.ctx.repos.get("repo").path)
+
+    listed = await api.http.get("/api/editors")
+    saved = await api.http.put("/api/editors/default", json={"default": "zed"})
+    unknown = await api.http.put("/api/editors/default", json={"default": "notepad"})
+    opened = await api.http.post("/api/repos/repo/open", json={"app": "editor"})
+
+    assert listed.json() == {
+        "installed": [{"id": "vscode", "name": "VS Code"}, {"id": "zed", "name": "Zed"}],
+        "default": "vscode",
+    }
+    assert saved.json()["default"] == "zed"
+    assert unknown.status_code == 422
+    assert load_settings(api.ctx.paths).editors.default == "zed"
+    assert opened.status_code == 204
+    assert api.opener.calls == [(("open", "-a", "Zed", path), tmp_path / "launchers")]
