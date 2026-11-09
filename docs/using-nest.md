@@ -199,13 +199,7 @@ A chat can see and use your Mac apps, the iOS Simulator, an Android emulator and
 
 On the Mac, a small helper app inside Nest.app, Nest Computer, does the work. Allow **Nest Computer** under **Accessibility** and **Nest** under **Screen & System Audio Recording** (macOS gives a helper inside an app that app's Screen Recording). Settings > Computer use shows whether each is on and opens the right System Settings page. The programs agents run get neither.
 
-What it asks you first, on a card in the chat (from the Mac or the iPhone):
-
-- The first time a chat uses an app: Allow, which covers that chat until it ends or you press Stop, or Deny.
-- Before pressing or choosing anything that sends, submits, buys, pays, orders, deletes, removes, publishes or confirms, before Return in a single-line field, before anything in System Settings, and whenever the agent marks a step as one to check. These cards show the latest screenshot and are asked every time.
-- Before bringing an app to the front, which only clicks by position need.
-
-A card nobody answers within a minute counts as no: it goes away and the chat carries on without that app, so it never holds up the rest of its work. It never types into password or payment fields: the agent asks you to type those yourself. Only you answer these cards; pixies never do, and a chat on Autopilot never uses the computer. Pixies, habits and chats pixies start get computer use only when **Pixies may use it** is on.
+It asks you once per app, on a card in the chat (from the Mac or the iPhone): "Let this chat use TextEdit?" with Allow or Deny. Allow covers everything the chat does in that app until the chat ends or you press Stop; it asks nothing more. A card nobody answers within a minute counts as no: it goes away and the chat carries on without that app, so it never holds up the rest of its work. It never types into password or payment fields: the agent asks you to type those yourself. Only you answer these cards; pixies never do, and a chat on Autopilot never uses the computer. Pixies, habits and chats pixies start get computer use only when **Pixies may use it** is on.
 
 While a chat uses something, the strip above the composer shows its latest screenshot. Tap it to enlarge it; **Stop** lets go of the app and stops the turn, and the chat asks again before it uses an app next time. One chat uses an app at a time; another chat waits until the first lets go or its turn ends.
 
