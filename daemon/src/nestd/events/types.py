@@ -221,6 +221,6 @@ PERF_RUN: Final = "perf.run"
 # Computer use (B150). A new screenshot of what the chat uses, after each look and action
 # (ephemeral): `{target, label, seq}`; the PNG is at `GET /api/sessions/{id}/computer/frame`.
 COMPUTER_FRAME: Final = "computer.frame"
-# What the chat holds now (stored): `{targets}`, the keys and names it uses; empty when it
-# let them go, its turn ended or the user pressed Stop.
+# What the chat holds now (stored): `{targets}`, each `{key, name}`; empty when it let them
+# go, its turn ended or Stop.
 COMPUTER_STATE: Final = "computer.state"

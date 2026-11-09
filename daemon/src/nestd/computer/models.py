@@ -81,6 +81,13 @@ class Element(_Frozen):
     actions: tuple[str, ...] = ()
 
 
+class WindowFrame(_Frozen):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
 class View(_Frozen):
     title: str
     window: str | None = None
@@ -91,6 +98,9 @@ class View(_Frozen):
     note: str | None = None
     # Every window of the target Nest can see, by id and title, to look at another one.
     windows: tuple[tuple[str, str], ...] = ()
+    # Where the window is on the Mac's screens, in points from the main screen's top left,
+    # so the glow is on its screen; None where it has none, as for devices.
+    frame: WindowFrame | None = None
 
 
 class Action(_Frozen):

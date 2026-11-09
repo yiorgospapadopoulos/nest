@@ -5,7 +5,7 @@ import asyncio
 import itertools
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 from pydantic import BaseModel, JsonValue
 
@@ -23,7 +23,7 @@ from nestd.computer.models import (
     View,
     kind_of,
 )
-from nestd.computer.safety import is_secret, risk
+from nestd.computer.safety import is_secret
 from nestd.config.models import ComputerUseSettings
 from nestd.errors import ConflictError
 from nestd.events import types
@@ -200,9 +200,9 @@ class ComputerService:
         await self._keep(session.id, key, seen)
         return seen
 
-    async def act(
-        self, session_id: str, key: str, action: Action, consequential: bool
-    ) -> tuple[ActResult, View | None]:
+    async def act(self, session_id: str, key: str, action: Action) -> tuple[ActResult, View | None]:
+        """One action; the chat's Allow for the target covers it, so nothing more is asked
+        (D178, 2026-11-09), but secret fields are never typed into."""
         session = await self._ready(session_id, key)
         self._require_seen(session.id, key, action)
         element = self._element(session.id, key, action)
@@ -211,18 +211,10 @@ class ComputerService:
                 "That is a password or payment field. Nest never types into those: ask the"
                 " user to type it themselves."
             )
-        why = risk(key, action, element, consequential)
-        if why is not None and not await self._confirmed(session, key, action, why):
-            raise RefusedError("The user said no to this action. Ask them what to do instead.")
         backend = self._backend(key)
         try:
             done = await backend.act(key, action)
         except NeedsFrontError:
-            if not await self._front_allowed(session, key):
-                raise RefusedError(
-                    f"{self._name(key)} must be in front for that, and the user said no."
-                    " Use an element action (press, set_value) instead."
-                ) from None
             await backend.front(key)
             done = await backend.act(key, action)
         if element is not None and element.label and action.element:
@@ -287,6 +279,7 @@ class ComputerService:
         """The chat may use `key` now: on, not held by another chat, and allowed."""
         session = await self.check(session_id)
         self._backend(key)
+        newly = self._locks.holder(key) is None
         if not self._locks.take(key, session.id):
             title = await self._title(self._locks.holder(key) or "")
             raise RefusedError(f"{self._name(key)} is in use by the chat {title}. Try later.")
@@ -295,6 +288,9 @@ class ComputerService:
         except RefusedError:
             await self.release(session.id, key)
             raise
+        if newly:
+            # Clients show it is in use (the glow, the row's pointer) from the first step.
+            await self._announce(session.id)
         return session
 
     async def _approve(self, session: Session, key: str) -> None:
@@ -322,41 +318,6 @@ class ComputerService:
                 raise RefusedError(f"The user did not let this chat use {name}.")
             targets = [*current.computer_targets, key]
             await save_changes(self._store, self._bus, session.id, {"computer_targets": targets})
-
-    async def _confirmed(self, session: Session, key: str, action: Action, why: str) -> bool:
-        name = self._name(key)
-        question = f"{_described(action, self._element(session.id, key, action))} in {name}?"
-        frame = self._frames.get(session.id)
-        payload: dict[str, JsonValue] = {
-            "tool": "computer_act",
-            "input": action.model_dump(mode="json", exclude_defaults=True),
-            "title": question,
-            "reason": why,
-            "always_rule": None,
-            # Asked each time: no Always allow (D178).
-            "always": False,
-            "computer": {
-                "target": key,
-                "name": name,
-                "kind": "act",
-                "frame": None if frame is None else frame.seq,
-            },
-        }
-        return await self._answer(session.id, payload, question) != "deny"
-
-    async def _front_allowed(self, session: Session, key: str) -> bool:
-        name = self._name(key)
-        question = f"Bring {name} to the front?"
-        payload: dict[str, JsonValue] = {
-            "tool": "computer_act",
-            "input": {"target": key, "front": True},
-            "title": question,
-            "reason": "This action only works with the app in front; it takes over the screen.",
-            "always_rule": None,
-            "always": False,
-            "computer": {"target": key, "name": name, "kind": "front"},
-        }
-        return await self._answer(session.id, payload, question) != "deny"
 
     async def _answer(
         self, session_id: str, payload: dict[str, JsonValue], question: str
@@ -397,7 +358,11 @@ class ComputerService:
         return next((e for e in view.elements if e.focused), None)
 
     async def _keep(self, session_id: str, key: str, view: View) -> None:
+        before = self._views.get((session_id, key))
         self._views[(session_id, key)] = view
+        if view.frame is not None and (before is None or before.frame != view.frame):
+            # The window moved, or this is the first look: the glow follows its screen.
+            await self._announce(session_id)
         if view.image is None:
             return
         frame = Frame(view.image, key, f"{self._name(key)}: {view.title}", next(self._seq))
@@ -412,9 +377,14 @@ class ComputerService:
         held = self._locks.held_by(session_id)
         await self._bus.publish(
             types.COMPUTER_STATE,
-            {"targets": [{"key": key, "name": self._name(key)} for key in held]},
+            {"targets": [self._held_target(session_id, key) for key in held]},
             session_id,
         )
+
+    def _held_target(self, session_id: str, key: str) -> dict[str, JsonValue]:
+        view = self._views.get((session_id, key))
+        frame = None if view is None or view.frame is None else view.frame.model_dump()
+        return {"key": key, "name": self._name(key), "frame": cast(JsonValue, frame)}
 
     def _name(self, key: str) -> str:
         return self._names.get(key) or key.partition(":")[2] or key
@@ -429,22 +399,3 @@ class ComputerService:
 def _short(label: str, limit: int = 60) -> str:
     flat = " ".join(label.split())
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
-
-
-def _described(action: Action, element: Element | None) -> str:
-    """The action as the card asks it, such as `Press "Send"`."""
-    label = f' "{element.label}"' if element is not None and element.label else ""
-    match action.kind:
-        case "press" | "click":
-            return f"Press{label}" if label else "Click"
-        case "menu":
-            return f"Choose {' > '.join(action.menu)}"
-        case "key":
-            keys = "-".join(
-                [*(m.capitalize() for m in action.modifiers), (action.key or "").capitalize()]
-            )
-            return f"Press {keys}{' in' + label if label else ''}"
-        case "type":
-            return f"Type into{label}" if label else "Type"
-        case _:
-            return f"{action.kind.replace('_', ' ').capitalize()}{label}"

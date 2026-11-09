@@ -19,6 +19,7 @@ from nestd.computer.models import (
     TargetInfo,
     TargetKind,
     View,
+    WindowFrame,
 )
 
 PREFIX = "mac:"
@@ -122,6 +123,7 @@ class MacBackend:
             image=image,
             note=note,
             windows=windows,
+            frame=_frame(app, chosen),
         )
 
     async def screenshot(self, window: str, points_width: float) -> bytes:
@@ -254,13 +256,20 @@ def _first_window(app: JsonObject) -> str:
     return windows[0][0]
 
 
-def _frame_width(app: JsonObject, window: str) -> float:
+def _frame(app: JsonObject, window: str) -> WindowFrame | None:
     for raw in _objects(app.get("windows")):
         frame = raw.get("frame")
         if raw.get("id") == window and isinstance(frame, dict):
-            width = frame.get("w")
-            return float(width) if isinstance(width, int | float) else 0.0
-    return 0.0
+            values = [frame.get(k) for k in ("x", "y", "width", "height")]
+            if all(isinstance(v, int | float) for v in values):
+                x, y, width, height = (float(cast(float, v)) for v in values)
+                return WindowFrame(x=x, y=y, width=width, height=height)
+    return None
+
+
+def _frame_width(app: JsonObject, window: str) -> float:
+    frame = _frame(app, window)
+    return frame.width if frame is not None else 0.0
 
 
 def _keys(action: Action) -> str:

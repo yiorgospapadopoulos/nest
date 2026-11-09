@@ -15,10 +15,10 @@ TARGETS, OPEN, VIEW, ACT, RELEASE = TOOL_NAMES
 
 GUIDE = (
     "Work in the background: read the window's elements with computer_view and act on them"
-    " by id (press, set_value, menu, type, key); coordinate clicks need the app in front and"
-    " ask the user first. Never type passwords or payment details: ask the user to. Before"
-    " anything that sends, submits, buys, deletes or changes settings, set consequential"
-    " true. When done with a target, call computer_release."
+    " by id (press, set_value, menu, type, key); a click by position brings the app to the"
+    " front, so use it last. The user allows each app once per chat; do only what the task"
+    " needs there. Never type passwords or payment details: ask the user to. When done with"
+    " a target, call computer_release."
 )
 
 
@@ -53,7 +53,6 @@ class _Act(_Args):
     y: int | None = None
     url: str | None = None
     window: str | None = None
-    consequential: bool = False
 
 
 class _Release(_Args):
@@ -91,9 +90,7 @@ def computer_tools(service: ComputerService, session: Session) -> tuple[AgentToo
     async def act(args: dict[str, JsonValue]) -> ToolResult:
         request = _parsed(_Act, args)
         action = _parsed_action(request)
-        done, after = await _refusing(
-            service.act(session.id, request.target, action, request.consequential)
-        )
+        done, after = await _refusing(service.act(session.id, request.target, action))
         return _result(done.text if after is None else f"{done.text}\n{outline(after)}", after)
 
     async def release(args: dict[str, JsonValue]) -> str:
@@ -163,11 +160,6 @@ def computer_tools(service: ComputerService, session: Session) -> tuple[AgentToo
                     "y": {"type": "integer"},
                     "url": {"type": "string"},
                     "window": {"type": "string"},
-                    "consequential": {
-                        "type": "boolean",
-                        "description": "True when it sends, submits, buys, deletes or changes"
-                        " settings: the user is asked first.",
-                    },
                 },
                 "required": ["target", "action"],
             },

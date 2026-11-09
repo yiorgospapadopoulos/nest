@@ -1,5 +1,5 @@
 """Computer use's rules (B150, D178): off unless both switches are on, pixies kept out,
-the user's approvals, the stops before risky actions, secret fields and one chat per app."""
+the user's Allow for each app, secret fields and one chat per app."""
 
 import asyncio
 from dataclasses import dataclass, field
@@ -18,10 +18,12 @@ from nestd.computer.models import (
     TargetInfo,
     TargetKind,
     View,
+    WindowFrame,
 )
 from nestd.computer.service import ComputerService, RefusedError
 from nestd.computer.tools import computer_tools
 from nestd.config.models import ComputerUseSettings
+from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.providers.base import ToolRefusedError, ToolResult
 from nestd.sessions.models import Session, SessionState
@@ -37,6 +39,7 @@ SEND = Element(id="e2", role="AXButton", label="Send", actions=("press",))
 PASSWORD = Element(id="e3", role="AXSecureTextField", secure=True)
 TEXT = Element(id="e1", role="AXTextArea", label="Body", focused=True)
 FIELD = Element(id="e4", role="AXTextField", label="To", field=True)
+WINDOW = WindowFrame(x=100.0, y=80.0, width=586.0, height=488.0)
 
 
 @dataclass
@@ -64,6 +67,7 @@ class FakeMac:
             window="w1",
             elements=(TEXT, SEND, PASSWORD, FIELD),
             image=PNG if screenshot else None,
+            frame=WINDOW,
         )
 
     async def act(self, key: str, action: Action) -> ActResult:
@@ -221,35 +225,28 @@ async def test_allow_is_kept_for_the_chat_only(scene: Scene) -> None:
     assert len(scene.cards.asked) == 2
 
 
-async def test_a_risky_press_asks_each_time_and_a_no_does_nothing(scene: Scene) -> None:
+async def test_once_an_app_is_allowed_nothing_more_is_asked(scene: Scene) -> None:
+    scene.mac.needs_front = True
     chat = await scene.chat()
-    scene.cards.answers = ["allow", "deny"]
+    scene.cards.answers = ["allow"]
     await scene.service.view(chat.id, KEY, None, True)
 
-    with pytest.raises(RefusedError, match="said no"):
-        await scene.service.act(chat.id, KEY, Action(kind="press", element="e2"), False)
+    await scene.service.act(chat.id, KEY, Action(kind="press", element="e2"))
+    await scene.service.act(chat.id, KEY, Action(kind="key", key="return", element="e4"))
+    await scene.service.act(chat.id, KEY, Action(kind="click", x=5, y=5))
 
-    card = scene.cards.asked[1]
-    assert card["title"] == 'Press "Send" in com.apple.TextEdit?'
-    assert card["always"] is False
-    assert scene.mac.acts == []
-
-
-async def test_return_in_a_single_line_field_and_marked_actions_ask(scene: Scene) -> None:
-    chat = await scene.chat()
-    scene.cards.answers = ["allow", "allow", "allow"]
-    await scene.service.view(chat.id, KEY, None, True)
-
-    await scene.service.act(chat.id, KEY, Action(kind="key", key="return", element="e4"), False)
-    await scene.service.act(chat.id, KEY, Action(kind="press", element="e1"), True)
-    # Return in the document is ordinary typing.
-    await scene.service.act(chat.id, KEY, Action(kind="key", key="return", element="e1"), False)
-
-    assert [c["reason"] for c in scene.cards.asked[1:]] == [
-        "Return in this field may send or submit it.",
-        "The agent marked this action as one to check first.",
-    ]
-    assert len(scene.mac.acts) == 3
+    # Send, Return in a field and a click that brings the app forward all go ahead.
+    assert len(scene.cards.asked) == 1
+    # Clients knew it was in use from the first step, then where its window is, for the
+    # glow on that screen.
+    events = await scene.bus.session_events(chat.id)
+    states = [e.payload for e in events if e.type == types.COMPUTER_STATE]
+    assert states[0] == {"targets": [{"key": KEY, "name": "com.apple.TextEdit", "frame": None}]}
+    assert states[1] == {
+        "targets": [{"key": KEY, "name": "com.apple.TextEdit", "frame": WINDOW.model_dump()}]
+    }
+    assert [a.kind for a in scene.mac.acts] == ["press", "key", "click"]
+    assert scene.mac.fronted == 1
 
 
 async def test_secret_fields_are_never_typed_into(scene: Scene) -> None:
@@ -259,7 +256,7 @@ async def test_secret_fields_are_never_typed_into(scene: Scene) -> None:
 
     with pytest.raises(RefusedError, match="password"):
         await scene.service.act(
-            chat.id, KEY, Action(kind="set_value", element="e3", text="hunter2"), False
+            chat.id, KEY, Action(kind="set_value", element="e3", text="hunter2")
         )
     assert scene.mac.acts == []
 
@@ -278,37 +275,18 @@ async def test_one_chat_holds_an_app_until_its_turn_ends(scene: Scene) -> None:
     assert scene.service.holder(KEY) == second.id
 
 
-async def test_bringing_an_app_forward_asks_first(scene: Scene) -> None:
-    scene.mac.needs_front = True
-    chat = await scene.chat()
-    # Using the app; then each click by position, and bringing it forward, are asked.
-    scene.cards.answers = ["allow", "allow", "deny", "allow", "allow"]
-    await scene.service.view(chat.id, KEY, None, True)
-
-    with pytest.raises(RefusedError, match="must be in front"):
-        await scene.service.act(chat.id, KEY, Action(kind="click", x=5, y=5), False)
-    assert scene.mac.fronted == 0
-
-    await scene.service.act(chat.id, KEY, Action(kind="click", x=5, y=5), False)
-    assert scene.mac.fronted == 1
-    assert scene.cards.asked[1]["reason"] == "A click by position can press anything there."
-    assert scene.cards.asked[-1]["title"] == "Bring com.apple.TextEdit to the front?"
-
-
 async def test_only_what_the_chat_saw_of_this_app_can_be_acted_on(scene: Scene) -> None:
     chat = await scene.chat()
     scene.cards.answers = ["allow"]
 
     with pytest.raises(RefusedError, match="computer_view first"):
-        await scene.service.act(chat.id, KEY, Action(kind="type", text="hi"), False)
+        await scene.service.act(chat.id, KEY, Action(kind="type", text="hi"))
     await scene.service.view(chat.id, KEY, None, False)
     # An id from another app's window, or one not in the last look, does nothing.
     with pytest.raises(RefusedError, match="not in the last look"):
-        await scene.service.act(chat.id, KEY, Action(kind="press", element="e99"), False)
+        await scene.service.act(chat.id, KEY, Action(kind="press", element="e99"))
     with pytest.raises(RefusedError, match="not a window"):
-        await scene.service.act(
-            chat.id, KEY, Action(kind="press", element="e1", window="w7"), False
-        )
+        await scene.service.act(chat.id, KEY, Action(kind="press", element="e1", window="w7"))
     assert scene.mac.acts == []
 
 
