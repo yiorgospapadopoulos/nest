@@ -38,6 +38,8 @@ gtk = "=0.18.2"
 gdkx11 = "=0.18.2"
 # The Xlib gdkx11 already builds on, linked for platform::activate's window manager request.
 x11 = { version = "=2.21.0", features = ["xlib"] }
+# Already in Tauri's tree (wry's web view): the microphone for voice input (B154).
+webkit2gtk = "=2.0.2"
 zbus = "=5.19.0"
 
 # Linux sends notifications itself (platform/linux.rs); the Windows layer can use the plugin.
