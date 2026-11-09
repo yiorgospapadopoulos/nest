@@ -26,6 +26,7 @@ from nestd.providers.acp_engines import (
     OPENCODE,
     AcpEngine,
 )
+from nestd.providers.acp_meta import instructions
 from nestd.providers.base import (
     HISTORY_CUT,
     AgentTool,
@@ -799,3 +800,24 @@ async def test_a_reopened_session_saved_in_yolo_goes_back_to_default(tmp_path: P
     methods = agent.methods()
     assert methods.index("session/set_mode") < methods.index("session/prompt")
     await run.close()
+
+
+def test_a_project_instruction_file_that_links_elsewhere_is_not_passed_on(tmp_path: Path) -> None:
+    """Regression (commit security review, B153): a repository's AGENTS.md linked to a file
+    outside it, such as a key, sent that file to the model. The user's own may be a link."""
+    project, home = tmp_path / "project", tmp_path / "home"
+    (home / ".gemini").mkdir(parents=True)
+    project.mkdir()
+    secret = tmp_path / "id_ed25519"
+    secret.write_text("PRIVATE KEY")
+    (project / "AGENTS.md").symlink_to(secret)
+    (project / "GEMINI.md").write_text("Use tabs.")
+    dotfiles = tmp_path / "dotfiles.md"
+    dotfiles.write_text("Be brief.")
+    (home / ".gemini" / "GEMINI.md").symlink_to(dotfiles)
+
+    text = instructions(project, home)
+
+    assert "PRIVATE KEY" not in text
+    assert "Use tabs." in text
+    assert "Be brief." in text

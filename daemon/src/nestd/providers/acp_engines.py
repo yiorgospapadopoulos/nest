@@ -431,8 +431,6 @@ GROK = AcpEngine(
         "DISABLE_ERROR_REPORTING": "1",
         # The user's Claude Code hooks are Claude's own.
         "GROK_CLAUDE_HOOKS_ENABLED": "false",
-        # Else a folder it was never told to trust gets none of the project's instructions.
-        "GROK_FOLDER_TRUST": "0",
     },
     login_command="grok login",
     auth_file="auth.json",

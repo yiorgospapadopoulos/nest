@@ -159,3 +159,9 @@ def test_the_plugins_script_runs_the_check() -> None:
 
     assert found.returncode == 2
     assert DENY_REASON in found.stderr
+
+
+def test_grok_never_trusts_a_folder_on_its_own() -> None:
+    """Regression (commit security review, B153): trusting every folder ran a cloned
+    repository's own hooks, MCP servers and allow rules without asking."""
+    assert "GROK_FOLDER_TRUST" not in GROK.env
