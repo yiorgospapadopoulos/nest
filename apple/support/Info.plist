@@ -14,6 +14,17 @@
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.nest.app</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Nest chat link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>nest</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
