@@ -23,6 +23,7 @@ from nestd.config.models import (
     StuckSettings,
     TaskTemplate,
     UsageSettings,
+    VoiceSettings,
     WorktreeDefaults,
 )
 from nestd.paths import AppPaths
@@ -94,6 +95,11 @@ def save_limits(paths: AppPaths, limits: LimitSettings) -> LimitSettings:
 def save_computer_use(paths: AppPaths, computer_use: ComputerUseSettings) -> ComputerUseSettings:
     """Replace the `[computer_use]` section of settings.toml, keeping every other section."""
     return _save_section(paths, "computer_use", _dump(computer_use)).computer_use
+
+
+def save_voice(paths: AppPaths, voice: VoiceSettings) -> VoiceSettings:
+    """Replace the `[voice]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "voice", _dump(voice)).voice
 
 
 def save_worktrees(paths: AppPaths, worktrees: WorktreeDefaults) -> WorktreeDefaults:

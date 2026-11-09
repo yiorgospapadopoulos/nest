@@ -19,6 +19,7 @@ from nestd.platform import MACOS
 from nestd.providers.acp_process import AcpTransportFactory
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
+from nestd.voice.service import VoiceSetup
 from tests.acp_engine_support import FakeNpm, acp_setup
 from tests.codex_support import FakeAppServer
 from tests.db_support import migrated_copy
@@ -30,6 +31,7 @@ from tests.fake_provider import FakeProvider
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.local_support import LocalMac
 from tests.push_support import no_network
+from tests.voice_support import FakeInstallRunner, FakeWorkers
 
 
 class RecordingModule:
@@ -93,6 +95,7 @@ async def build_context(
     npm: FakeNpm | None = None,
     acp: AcpTransportFactory | None = None,
     computer_backends: Sequence[Backend] = (),
+    voice_setup: VoiceSetup | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     paths = make_paths(
@@ -139,6 +142,8 @@ async def build_context(
         platform=MACOS,
         # Never the real apps, simulators or browsers (B150).
         computer_backends=computer_backends,
+        # Never real pip, model downloads or Whisper (B154).
+        voice_setup=voice_setup or VoiceSetup(FakeInstallRunner(), FakeWorkers()),
     )
 
 
