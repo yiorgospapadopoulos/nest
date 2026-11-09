@@ -4,7 +4,7 @@ from claude_agent_sdk import SystemMessage
 
 from nestd.providers.base import AgentInfo, CommandCatalog, ContextUsage, SlashCommand
 from nestd.providers.claude_commands import context_usage, described_catalog, init_catalog
-from nestd.providers.claude_messages import TurnOutput, translate
+from nestd.providers.claude_messages import BackgroundTasks, TurnOutput, translate
 from nestd.providers.claude_thinking import ThinkingTimer
 from tests.recording_sink import RecordingSink
 
@@ -83,12 +83,21 @@ async def test_the_init_message_and_command_changes_report_catalogs() -> None:
         sink,
         timer,
         output,
+        BackgroundTasks(),
     )
     await translate(
-        SystemMessage(subtype="commands_changed", data=SERVER_INFO), sink, timer, output
+        SystemMessage(subtype="commands_changed", data=SERVER_INFO),
+        sink,
+        timer,
+        output,
+        BackgroundTasks(),
     )
     await translate(
-        SystemMessage(subtype="commands_changed", data={"commands": []}), sink, timer, output
+        SystemMessage(subtype="commands_changed", data={"commands": []}),
+        sink,
+        timer,
+        output,
+        BackgroundTasks(),
     )
 
     reported = [value for name, value in sink.calls if name == "commands"]

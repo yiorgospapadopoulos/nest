@@ -63,9 +63,63 @@ class TurnOutput:
         self.folder_calls: set[str] = set()
 
 
+class BackgroundTasks:
+    """Tracks the agent's running tasks; a finish can arrive as a notification or an update."""
+
+    def __init__(self) -> None:
+        self._running: set[str] = set()
+        # The tool call that started each task, by its id.
+        self._calls: dict[str, str] = {}
+        # The subagent task that started each task, by its id.
+        self._owners: dict[str, str] = {}
+
+    def running(self, task_or_call_id: str) -> str | None:
+        """The id of the running task named by its own id or its tool call's; else None."""
+        task_id = self._calls.get(task_or_call_id, task_or_call_id)
+        return task_id if task_id in self._running else None
+
+    def waiting(self, task_id: str) -> bool:
+        """Whether tasks the subagent `task_id` started still run. Its end is then only a
+        pause: the engine resumes it when they end, and it reports its end again.
+        """
+        return any(self._owners.get(running) == task_id for running in self._running)
+
+    def abandon(self) -> list[base.AgentTask]:
+        """The run ended: every task still running is stopped with it."""
+        stopped = [
+            base.AgentTask(task_id=task_id, phase="finished", status="stopped")
+            for task_id in sorted(self._running)
+        ]
+        self._running.clear()
+        self._owners.clear()
+        return stopped
+
+    def update(self, message: Message) -> int | None:
+        """The new number of running tasks, or None if `message` did not change it."""
+        before = len(self._running)
+        if isinstance(message, TaskStartedMessage):
+            self._running.add(message.task_id)
+            if message.tool_use_id is not None:
+                self._calls[message.tool_use_id] = message.task_id
+            owner = message.data.get("parent_task_id")
+            if isinstance(owner, str):
+                self._owners[message.task_id] = owner
+        elif isinstance(message, TaskNotificationMessage) or (
+            isinstance(message, TaskUpdatedMessage) and message.status in TERMINAL_TASK_STATUSES
+        ):
+            self._running.discard(message.task_id)
+            self._owners.pop(message.task_id, None)
+        return len(self._running) if len(self._running) != before else None
+
+
 async def translate(
-    message: Message, sink: base.ProviderEventSink, thinking: ThinkingTimer, output: TurnOutput
+    message: Message,
+    sink: base.ProviderEventSink,
+    thinking: ThinkingTimer,
+    output: TurnOutput,
+    tasks: BackgroundTasks,
 ) -> None:
+    """`tasks` has already counted `message`."""
     match message:
         case HookEventMessage(subtype="hook_response"):
             shown = hook_output(message)
@@ -145,7 +199,7 @@ async def translate(
             if hit is not None:
                 await sink.limit_hit(hit)
         case TaskStartedMessage() | TaskUpdatedMessage() | TaskNotificationMessage():
-            for update in task_updates(message):
+            for update in task_updates(message, tasks):
                 await sink.task(update)
         case ResultMessage():
             thinking.reset()
@@ -238,6 +292,7 @@ _FINISHED: dict[str, Literal["completed", "failed", "stopped"]] = {
 
 def task_updates(
     message: TaskStartedMessage | TaskUpdatedMessage | TaskNotificationMessage,
+    tasks: BackgroundTasks,
 ) -> list[base.AgentTask]:
     """What a task lifecycle message says; a task_updated patch can say two things at once."""
     if isinstance(message, TaskStartedMessage):
@@ -260,6 +315,7 @@ def task_updates(
                 # A status the SDK adds later still ends the task.
                 status=_FINISHED.get(message.status, "stopped"),
                 summary=message.summary or None,
+                waiting=message.status == "completed" and tasks.waiting(message.task_id),
             )
         ]
     updates: list[base.AgentTask] = []
@@ -267,44 +323,13 @@ def task_updates(
         updates.append(base.AgentTask(task_id=message.task_id, phase="backgrounded"))
     status = _FINISHED.get(message.status or "")
     if status is not None:
-        updates.append(base.AgentTask(task_id=message.task_id, phase="finished", status=status))
+        waiting = status == "completed" and tasks.waiting(message.task_id)
+        updates.append(
+            base.AgentTask(
+                task_id=message.task_id, phase="finished", status=status, waiting=waiting
+            )
+        )
     return updates
-
-
-class BackgroundTasks:
-    """Tracks the agent's running tasks; a finish can arrive as a notification or an update."""
-
-    def __init__(self) -> None:
-        self._running: set[str] = set()
-        # The tool call that started each task, by its id.
-        self._calls: dict[str, str] = {}
-
-    def running(self, task_or_call_id: str) -> str | None:
-        """The id of the running task named by its own id or its tool call's; else None."""
-        task_id = self._calls.get(task_or_call_id, task_or_call_id)
-        return task_id if task_id in self._running else None
-
-    def abandon(self) -> list[base.AgentTask]:
-        """The run ended: every task still running is stopped with it."""
-        stopped = [
-            base.AgentTask(task_id=task_id, phase="finished", status="stopped")
-            for task_id in sorted(self._running)
-        ]
-        self._running.clear()
-        return stopped
-
-    def update(self, message: Message) -> int | None:
-        """The new number of running tasks, or None if `message` did not change it."""
-        before = len(self._running)
-        if isinstance(message, TaskStartedMessage):
-            self._running.add(message.task_id)
-            if message.tool_use_id is not None:
-                self._calls[message.tool_use_id] = message.task_id
-        elif isinstance(message, TaskNotificationMessage) or (
-            isinstance(message, TaskUpdatedMessage) and message.status in TERMINAL_TASK_STATUSES
-        ):
-            self._running.discard(message.task_id)
-        return len(self._running) if len(self._running) != before else None
 
 
 async def _follow_folder(

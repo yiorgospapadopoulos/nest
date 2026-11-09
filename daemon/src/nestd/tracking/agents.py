@@ -307,6 +307,9 @@ class AgentBoard:
         return Change.LIFECYCLE
 
     def _task_finished(self, update: AgentTask, at: datetime) -> Change:
+        if update.waiting:
+            # Only waiting for its own background work: it goes on when that ends.
+            return Change.NONE
         task = self._tasks.pop(update.task_id, None)
         key = (task.tool_use_id if task else None) or update.tool_use_id or update.task_id
         agent = self._agents.get(key)

@@ -9,7 +9,7 @@ import pytest
 from claude_agent_sdk import SystemMessage, TextBlock, UserMessage
 
 from nestd.providers.base import SessionSpec
-from nestd.providers.claude_messages import TurnOutput, translate
+from nestd.providers.claude_messages import BackgroundTasks, TurnOutput, translate
 from nestd.providers.claude_thinking import ThinkingTimer
 from tests.async_support import until
 from tests.recording_sink import RecordingSink
@@ -73,7 +73,7 @@ async def test_the_reader_reports_thinking_ended_by_a_new_response() -> None:
 
     new_response: dict[str, Any] = {"type": "message_start", "message": {}}
     for event in (start(0), new_response):
-        await translate(stream(event), sink, timer, output)
+        await translate(stream(event), sink, timer, output, BackgroundTasks())
 
     assert sink.calls == [("thinking", True), ("thinking", False)]
 
@@ -96,8 +96,8 @@ async def test_an_injected_message_is_not_the_echo_of_the_users(origin: dict[str
     injected.origin = origin  # type: ignore[assignment]
     echo = UserMessage(content=[TextBlock("Fix the bug")], uuid="msg-1")
 
-    await translate(injected, sink, ThinkingTimer(), output)
-    await translate(echo, sink, ThinkingTimer(), output)
+    await translate(injected, sink, ThinkingTimer(), output, BackgroundTasks())
+    await translate(echo, sink, ThinkingTimer(), output, BackgroundTasks())
 
     assert [call for call in sink.calls if call[0] == "checkpoint"] == [("checkpoint", "msg-1")]
 
@@ -106,6 +106,6 @@ async def test_the_echo_may_say_it_came_from_the_user() -> None:
     sink, output = RecordingSink(), awaiting()
     echo = UserMessage(content=[TextBlock("Fix the bug")], uuid="msg-1", origin={"kind": "human"})
 
-    await translate(echo, sink, ThinkingTimer(), output)
+    await translate(echo, sink, ThinkingTimer(), output, BackgroundTasks())
 
     assert sink.calls == [("checkpoint", "msg-1")]

@@ -398,8 +398,11 @@ class PixieCallLog:
 
     async def _task_finished(self, session_id: str, update: AgentTask) -> bool:
         """A background call or a SendMessage ends with its task; a foreground call with
-        its result. Messages to a working agent all share its one task (B133).
+        its result. Messages to a working agent all share its one task (B133). A task that
+        is only waiting for its own background work has not ended.
         """
+        if update.waiting:
+            return False
         state = _ENDED.get(update.status, "interrupted")
         return await self._store.finish_agent(session_id, update.task_id, state) > 0
 

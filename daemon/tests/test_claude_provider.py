@@ -823,6 +823,35 @@ async def test_task_lifecycles_are_reported(tmp_path: Path) -> None:
     assert "summary" not in AgentTask(task_id="t2", phase="backgrounded").model_dump(mode="json")
 
 
+async def test_a_subagent_that_ends_while_its_own_tasks_run_is_waiting(tmp_path: Path) -> None:
+    """Claude Code reports a background subagent completed each time it stops; while
+    tasks it started still run, it resumes when they end and reports again.
+    """
+    opened = Opened(tmp_path)
+    run, client = await opened.open(SessionSpec(tmp_path, "default"))
+    gate = task_started("b1", "toolu_2", "local_bash", background=True)
+    gate.data["parent_task_id"] = "a1"
+
+    client.push(
+        task_started("a1", "toolu_1", "local_agent", background=True),
+        gate,
+        task_updated("a1", status="completed"),
+        task_done("a1", "completed", "toolu_1"),
+        task_done("b1", "completed", "toolu_2"),
+        task_started("a1", "toolu_1", "local_agent", background=True),
+        task_done("a1", "completed", "toolu_1"),
+    )
+    await until(lambda: len(tasks_reported(opened.sink)) == 7)
+    await run.close()
+
+    ends = [
+        (task.task_id, task.waiting)
+        for task in tasks_reported(opened.sink)
+        if isinstance(task, AgentTask) and task.phase == "finished"
+    ]
+    assert ends == [("a1", True), ("a1", True), ("b1", False), ("a1", False)]
+
+
 async def test_one_running_task_can_be_stopped(tmp_path: Path) -> None:
     """B59: a background task or subagent stops without stopping the turn."""
     opened = Opened(tmp_path)

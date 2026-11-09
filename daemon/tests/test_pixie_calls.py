@@ -242,6 +242,38 @@ async def test_a_background_call_runs_until_its_task_ends(chat: Chat) -> None:
     assert work.report == "R"
 
 
+async def test_a_background_call_waiting_on_its_own_work_runs_until_it_finishes(
+    chat: Chat,
+) -> None:
+    # Regression: Closer paused for the gate it ran in the background and showed done
+    # while it went on to merge.
+    await chat.say(agent("a1", "scribe", background=True))
+    await chat.say(ToolResultBlock(tool_use_id="a1", content="agentId: bg1 (...)"))
+    await chat.task(AgentTask(task_id="bg1", phase="started", tool_use_id="a1", background=True))
+    await chat.task(AgentTask(task_id="bg1", phase="finished", status="completed", waiting=True))
+    await chat.task(
+        AgentTask(
+            task_id="bg1",
+            phase="finished",
+            tool_use_id="a1",
+            status="completed",
+            summary="The gate is still running.",
+            waiting=True,
+        )
+    )
+    paused = await chat.group()
+    await chat.task(AgentTask(task_id="bg1", phase="started", tool_use_id="a1", background=True))
+    await chat.task(
+        AgentTask(
+            task_id="bg1", phase="finished", tool_use_id="a1", status="completed", summary="Merged"
+        )
+    )
+
+    (entry,) = await chat.group()
+    assert paused[0].state == "running"
+    assert entry.state == "done"
+
+
 async def test_a_call_moved_to_the_background_ends_with_its_task(chat: Chat) -> None:
     await chat.say(agent("a1", "scribe"))
     # A launch result without the flag still says it runs on.
