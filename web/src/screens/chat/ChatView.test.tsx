@@ -661,8 +661,9 @@ describe("inline approvals", () => {
     });
 
     const answer = await screen.findByText("Both");
-    expect(answer.closest(".m-u")).not.toBeNull();
+    // One card with its question, not a message bubble of its own.
     expect(answer.closest(".m-ans")).toHaveTextContent("DAG or tree?");
+    expect(answer.closest(".m-u")).toBeNull();
     expect(screen.queryByText(/Answered:/)).not.toBeInTheDocument();
   });
 });

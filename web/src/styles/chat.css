@@ -379,21 +379,29 @@
   padding-bottom: 0;
 }
 /* An answer to a question Claude asked: the question, quiet, over the user's bubble (B60). */
+/* A question the agent asked and your answer, together in one card on your side: not a
+   message of its own. */
 .m-ans {
   align-self: flex-end;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  gap: 3px;
   max-width: 82%;
+  padding: 8px 12px;
+  border-radius: var(--radius-mac-card);
+  border: 1px solid var(--line-hairline);
+  background: var(--soft);
 }
 .m-ans > small {
   color: var(--t3);
   font-size: 0.7059rem;
-  text-align: right;
 }
-.m-ans .m-u {
-  max-width: 100%;
+.m-aa {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--t1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .m-u {
   align-self: flex-end;

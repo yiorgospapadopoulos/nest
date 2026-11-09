@@ -604,13 +604,30 @@ html:not(.pane) .dc-tx::-webkit-scrollbar-thumb {
   display: flex;
   flex-direction: column;
 }
+/* A question the agent asked and your answer, together in one card on your side: not a
+   message of its own. */
 .dc-answer {
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: var(--radius-mac-card);
+  border: 1px solid var(--line-hairline);
+  background: var(--soft);
+  -webkit-user-select: text;
+  user-select: text;
 }
 .dc-aq {
   font-size: var(--dc-meta);
   color: var(--t3);
-  text-align: right;
+}
+.dc-aa {
+  font-size: var(--dc-read);
+  line-height: 1.45;
+  color: var(--t1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .dc-chip {
   display: inline-flex;
