@@ -7,6 +7,9 @@ set -eu
 RELEASE_URL="${NEST_RELEASE_URL:-https://github.com/yiorgospapadopoulos/nest/releases/latest/download}"
 MAC_APP="${NEST_MAC_APP:-/Applications/Nest.app}"
 MACOS_MINIMUM=26
+# Nest's release keys, the daemon's RELEASE_KEYS: ECDSA P-256 public keys, base64 DER. The
+# release list must be signed by one of them before anything in it is trusted.
+RELEASE_KEYS="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEX8L6xEBnbhVD+ecB8PGYh6R8R3AwUAiH0NieeALPmlMt6oqrzgx0nR7ga/1DV974RmbmikaPw1Rj3/VbT5T9Rw=="
 
 say() { printf '%s\n' "$*"; }
 stop() {
@@ -92,9 +95,28 @@ fetch() { # kind platform destination
         stop "$name didn't match its checksum, so nothing was installed. Try again."
 }
 
+# macOS's own openssl (LibreSSL) can check P-256 signatures, not Ed25519 ones.
+check_signature() {
+    command -v openssl >/dev/null 2>&1 ||
+        stop "Nest needs openssl to check the release, and this computer doesn't have it. Install it, then run this line again."
+    curl -fsSL --retry 2 -o "$work/latest.json.sig" "$RELEASE_URL/latest.json.sig" ||
+        stop "This release has no signature, or it could not be downloaded, so nothing was installed."
+    for key in $RELEASE_KEYS; do
+        {
+            echo "-----BEGIN PUBLIC KEY-----"
+            printf '%s\n' "$key" | fold -w 64
+            echo "-----END PUBLIC KEY-----"
+        } >"$work/release-key.pem"
+        openssl dgst -sha256 -verify "$work/release-key.pem" -signature "$work/latest.json.sig" \
+            "$work/latest.json" >/dev/null 2>&1 && return 0
+    done
+    stop "This release isn't signed by Nest's release key, so nothing was installed. It may have been changed after it was published."
+}
+
 fetch_release() {
     curl -fsSL --retry 2 -o "$work/latest.json" "$RELEASE_URL/latest.json" ||
         stop "Could not reach $RELEASE_URL. Check your connection and try again."
+    check_signature
     version="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$work/latest.json")"
     [ -n "$version" ] || stop "The release list could not be read."
     say "Installing Nest $version"

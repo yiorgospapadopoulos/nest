@@ -1,7 +1,9 @@
-"""What would hurt in updating Nest itself: a bad download reaching the install, a failed
-update leaving the user on nothing, and a checkout (the user's own Nest) being updated.
+"""What would hurt in updating Nest itself: a bad download reaching the install, a release
+not signed by Nest's key being trusted, a failed update leaving the user on nothing, and a
+checkout (the user's own Nest) being updated.
 """
 
+import base64
 import hashlib
 import json
 import sqlite3
@@ -9,9 +11,12 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 import httpx
 import pytest
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from nestd.errors import ConflictError
 from nestd.paths import AppPaths
@@ -49,6 +54,16 @@ def _database(path: Path, version: int, text: str) -> None:
     connection.execute(f"PRAGMA user_version = {version}")
     connection.commit()
     connection.close()
+
+
+def _public(key: ec.EllipticCurvePrivateKey) -> str:
+    der = key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return base64.b64encode(der).decode()
+
+
+type Signing = Literal["good", "missing", "other key", "changed after signing"]
 
 
 def _value(path: Path) -> str:
@@ -93,6 +108,8 @@ class Rig:
         self.report_ok = True
         self.uv_calls: list[list[str]] = []
         self.watchers: list[tuple[str, str]] = []
+        self.key = ec.generate_private_key(ec.SECP256R1())
+        self.signing: Signing = "good"
 
     def _latest(self) -> dict[str, object]:
         kinds = (("wheel", "any"), ("requirements", "any"), ("app", platform_key("macos")))
@@ -110,10 +127,29 @@ class Rig:
             ],
         }
 
+    def _manifest(self) -> bytes:
+        return json.dumps(self._latest()).encode()
+
+    def _signature(self) -> httpx.Response:
+        if self.signing == "missing":
+            return httpx.Response(404)
+        key = ec.generate_private_key(ec.SECP256R1()) if self.signing == "other key" else self.key
+        return httpx.Response(200, content=key.sign(self._manifest(), ec.ECDSA(hashes.SHA256())))
+
     def _answer(self, request: httpx.Request) -> httpx.Response:
         name = request.url.path.rsplit("/", 1)[-1]
+        if name == "latest.json.sig":
+            return self._signature()
         if name == "latest.json":
-            return httpx.Response(200, content=json.dumps(self._latest()))
+            if self.signing != "changed after signing":
+                return httpx.Response(200, content=self._manifest())
+            # A swapped app with its sha256 changed to match: only the signature catches it.
+            good = hashlib.sha256(self.files["Nest.zip"]).hexdigest()
+            swapped = hashlib.sha256(b"tampered").hexdigest()
+            self.bad = "Nest.zip"
+            return httpx.Response(
+                200, content=self._manifest().replace(good.encode(), swapped.encode())
+            )
         return httpx.Response(200, content=b"tampered" if name == self.bad else self.files[name])
 
     def updater(self, *, packaged: bool = True) -> AppUpdater:
@@ -144,6 +180,7 @@ class Rig:
             transport=httpx.MockTransport(self._answer),
             running="1.0.0",
             watcher=watcher,
+            release_keys=(_public(self.key),),
         )
 
 
@@ -184,6 +221,27 @@ async def test_a_bad_sha256_leaves_nothing_behind(rig: Rig) -> None:
     with pytest.raises(PrepareError, match="sha256"):
         await rig.updater().check_and_prepare(_nothing)
 
+    assert sorted(entry.name for entry in rig.daemon.iterdir()) == ["1.0.0", CURRENT]
+    assert read_state(rig.daemon).ready is None
+
+
+@pytest.mark.parametrize(
+    ("signing", "message"),
+    [
+        ("missing", "has no signature"),
+        ("other key", "not signed by Nest's release key"),
+        ("changed after signing", "not signed by Nest's release key"),
+    ],
+)
+async def test_a_release_not_signed_by_nests_key_is_refused_before_anything_runs(
+    rig: Rig, signing: Signing, message: str
+) -> None:
+    rig.signing = signing
+
+    with pytest.raises(PrepareError, match=message):
+        await rig.updater().check_and_prepare(_nothing)
+
+    assert rig.uv_calls == []
     assert sorted(entry.name for entry in rig.daemon.iterdir()) == ["1.0.0", CURRENT]
     assert read_state(rig.daemon).ready is None
 

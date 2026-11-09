@@ -1,4 +1,5 @@
-"""Write latest.json for a release folder: the version, its notes and each file's sha256.
+"""Write latest.json for a release folder: the version, its notes and each file's sha256, and
+latest.json.sig, its signature by the release key in the Keychain (`release_key.py`).
 
 Every file sits on one line, because `install.sh` reads this with `sed` on machines that
 have neither `jq` nor Python. Names are relative to the release address, which the script
@@ -13,6 +14,10 @@ import re
 import sys
 import urllib.request
 from pathlib import Path
+
+from release_key import sign
+
+from nestd.updates.signature import SIGNATURE_SUFFIX
 
 UV_ADDRESS = "https://github.com/astral-sh/uv/releases/download"
 UV_TARGETS = {
@@ -66,8 +71,11 @@ def main() -> int:
     head = {"version": version, "notes": Path(notes).read_text(encoding="utf-8").strip()}
     lines = ",\n".join("    " + json.dumps(entry) for entry in entries)
     body = json.dumps(head, indent=2)[:-2]
-    (folder / "latest.json").write_text(f'{body},\n  "files": [\n{lines}\n  ]\n}}\n', "utf-8")
-    json.loads((folder / "latest.json").read_text(encoding="utf-8"))
+    manifest = f'{body},\n  "files": [\n{lines}\n  ]\n}}\n'.encode()
+    json.loads(manifest)
+    # The exact bytes the clients read are signed, so nothing may rewrite the file after this.
+    (folder / "latest.json").write_bytes(manifest)
+    (folder / f"latest.json{SIGNATURE_SUFFIX}").write_bytes(sign(manifest))
     return 0
 
 

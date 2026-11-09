@@ -54,7 +54,46 @@ Tests stay fast and deterministic: they wait for an event or a signal from a fak
 
 ## Releases
 
-`VERSION` holds the one version; `make version` writes it to every part, and a test fails if any differs. `make release` builds everything of a release into the gitignored `release/out/<version>/` on a Mac: the daemon wheel with the web app inside, its pinned requirements with hashes, the signed Mac app, the Linux AppImage and `.deb` for x86_64 and arm64 in Docker, `install.sh` and `latest.json`. It stops if `release/notes/<version>.md` or the `Nest Local Signing` certificate is missing, because macOS keeps permissions across updates only for one certificate. `NEST_RELEASE_PARTS` builds some of it. It publishes nothing. `install.sh` and the daemon read `NEST_RELEASE_URL`, so a test release can be served from a local address.
+`VERSION` holds the one version; `make version` writes it to every part, and a test fails if any differs. `make release` builds everything of a release into the gitignored `release/out/<version>/` on a Mac: the daemon wheel with the web app inside, its pinned requirements with hashes, the signed Mac app, the Linux AppImage and `.deb` for x86_64 and arm64 in Docker, `install.sh`, and `latest.json` with its signature. It stops if `release/notes/<version>.md`, the `Nest Local Signing` certificate or the release key is missing, because macOS keeps permissions across updates only for one certificate. `NEST_RELEASE_PARTS` builds some of it. It publishes nothing. `install.sh` and the daemon read `NEST_RELEASE_URL`, so a test release can be served from a local address.
+
+### How releases are signed
+
+`latest.json` lists each file of a release with its sha256, and `latest.json.sig` beside it is its signature by Nest's release key. `install.sh` and the daemon's updater check that signature before they read anything in `latest.json`, then check every download against its sha256, so a release whose list or files were changed after it was signed installs nothing. The install line's own first download of `install.sh` is trusted through HTTPS from the release address, as with any install line; nothing it downloads after that is trusted without the signature. `install.sh` stops with "This release isn't signed by Nest's release key" or "This release has no signature"; the updater logs the same and offers no update.
+
+The key is ECDSA P-256 with SHA-256, because macOS's own `openssl` (LibreSSL) cannot check Ed25519 and `install.sh` must run on a clean Mac with no Python. The private key lives only in the release Mac's login Keychain, as the password item "Nest release key" whose account is the key's fingerprint. It is never written to a file. The public keys are `RELEASE_KEYS` in `daemon/src/nestd/updates/signature.py` and in `release/install.sh`, and a test checks that the two match. `make_manifest.py` signs `latest.json` at the end of `make release` with the private key of the first of them, and `make release` stops at the start if this Keychain cannot sign.
+
+`release/release_key.py` (run from `daemon/` with `uv run python ../release/release_key.py`):
+
+| Command | Does |
+|---|---|
+| `new` | Makes a key in the Keychain and prints its public key. Run once per key. |
+| `public` | Prints `RELEASE_KEYS` and which of them this Keychain holds. |
+| `check` | Stops unless this Keychain can sign a release. |
+| `export` | Copies the signing key to the clipboard as one line, for a backup. |
+| `import` | Puts a trusted key from the clipboard into this Keychain, then clears the clipboard. |
+| `check-backup` | Says whether the clipboard holds a key Nest trusts, then clears it. Stores nothing. |
+
+### Backing up the release key
+
+Without a copy, losing this Mac means changing the key, and every installed Nest then refuses updates until its user runs the install line again. So keep a backup in a password manager, such as Apple's Passwords app:
+
+1. Run `release_key.py export`. The key goes to the clipboard as one line of about 180 characters, never to the screen.
+2. Paste it into the password field of a new entry, "Nest release key".
+3. Copy it back from that entry and run `release_key.py check-backup`, which checks it is the key Nest trusts and clears the clipboard.
+
+On a new Mac, copy the password from that entry and run `release_key.py import`; `make release` then works there as before. If you use a clipboard history app, clear it afterwards.
+
+### Changing the release key
+
+A release is accepted if any one of `RELEASE_KEYS` signed it, and it is signed with the first. To change the key while users keep updating:
+
+1. Run `release_key.py new` and add its public key to `RELEASE_KEYS` in both files, after the current one.
+2. Publish at least one release that way. It is still signed with the old key, so every installed Nest accepts it, and it teaches them the new key.
+3. Move the new key first and remove the old one from both files. Releases from then on are signed with the new key. Delete the old Keychain item once no release needs it.
+
+A Nest that skipped every release of step 2 refuses the later ones as unsigned; running the install line again fixes it, as `install.sh` comes with the release and carries the new key.
+
+If the key may have leaked, skip step 2: put only the new key in `RELEASE_KEYS` and publish at once. Every installed Nest then refuses the update, which is right, as it cannot tell the real one from a forged one. Say so in the release notes and on the project page: users update by running the install line again.
 
 ## The Mac app
 
