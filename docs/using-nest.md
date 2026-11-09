@@ -266,6 +266,38 @@ Archive a Claude Code chat you are done with from its actions (the dots button, 
 
 Nest also lists the Codex chats of each registered repo that were started outside Nest (the Codex command line, the Codex app or an editor), read through Codex's own app-server (`thread/list`, `thread/turns/list`) on your Codex home (`~/.codex` or `$CODEX_HOME`). A chat belongs to a repo when it ran in the repo folder or in one of the repo's git worktrees (Codex app and Claude Code worktrees included), not in a subfolder. They show beside the Claude Code chats with "Codex" on the row's second line, open read-only, and "Continue in Nest" turns one into a Nest Codex chat in its own folder that resumes the same Codex thread (a chat archived in Codex is unarchived there first, since Codex cannot resume an archived one). Search finds them by title. Chats a program started (`codex exec`, other app-server clients, and Codex chats Nest started but no longer has) are automated and hidden unless "Show automated chats" is on; Codex's sub-agent threads never get a row. Archive and Unarchive use Codex's own archive (`thread/archive`, `thread/unarchive`), so the Codex app and `codex resume` see the change, and a chat archived in Codex shows archived in Nest. Codex is asked again only when its rollout files change, after an archive from Nest, or every 5 minutes. Nest cannot tell whether a Codex chat is open in Codex right now, so nothing stops sending to one that is open there. Nest's own Codex chats are archived in Nest only.
 
+## Terminal agents and the `nest` command
+
+**Settings > Terminal agents** lets apps outside Nest work with your chats: Claude Code, Codex, any other app that speaks MCP, and the `nest` command in your own shell. Each one is off until you switch it on, and each has its own level:
+
+| Level | What it may do |
+|---|---|
+| Read only | See whether Nest runs, list projects, chats, pixies and teams, show a chat and its last answer, read its conversation |
+| Read and message | Also send a message to a chat |
+| Full | Also start a chat and call a pixie or team |
+
+Switching on **Claude Code** adds Nest to Claude Code's own config as the MCP server `nest-app` (`claude mcp add --scope user`), and **Codex** to Codex's (`codex mcp add`); switching off takes it out again. For **Other MCP apps**, the page shows the line to give the app, `<nest> mcp --client other`. Changing a level applies at once, also to an app that is already running.
+
+What they can never do: touch a pixie's own chats, habit runs or called pixies; answer a chat's permission prompts, questions or plans (those wait for you in Needs you); or push and open pull requests while **Pixies and subagents can push** is off. A chat they start shows "from Claude Code" (or the app's name) on its first message, starts in Ask unless they choose Plan or Accept edits, stays in its worktree if it got one, and is reviewed and merged by you like any chat. Each app starts at most 2 chats running at once and 5 a day.
+
+The `nest` command (on your PATH after the one-line install; in a checkout it is `daemon/.venv/bin/nest`):
+
+```sh
+nest status                          # is Nest running, what waits on you
+nest projects
+nest list [--project NAME] [--state running]
+nest show CHAT [--wait]              # CHAT: its id, or the start of it as `nest list` shows it
+nest new "Fix the flaky test" --project NAME [--worktree | --in-place] [--engine codex] [--model NAME] [--mode plan|ask|accept-edits] [--wait]
+nest send CHAT "Also update the docs" [--wait]
+nest pixies
+nest call reviewer "Review the last commit" --project NAME [--wait]
+nest open CHAT                       # opens the chat in the Mac app, or in the browser
+```
+
+Every command takes `--json` and prints what Nest answered, for scripts. `--wait` waits until the chat stops working (30 minutes at most, or `--timeout` minutes) and prints its last answer; the command then exits 0, 2 when the chat waits on you in Nest, or 1 when it failed. In MCP apps the same actions are tools (`nest_status`, `list_projects`, `list_chats`, `get_chat`, `read_chat`, `start_chat`, `send_message`, `list_pixies`, `call_pixie`); the ones that start or message a chat take `wait_seconds`.
+
+How it connects: the command and `nest mcp` get a token from Nest over a private socket in its data folder, then use Nest's API on `127.0.0.1`. Tokens are made on request and kept only in memory, so a restart or switching an app off ends them. Nest's own chats get no token, so an agent running inside Nest keeps to its own Nest tools; in them `nest-app` offers no tools. This keeps Nest's chats from using it by accident. It is no wall against a program that tries hard, since anything running as you can act as you.
+
 ## Codex
 
 A new chat runs on Codex instead of Claude when you pick a Codex model in the model menu. Codex runs as `codex app-server`, from the copy Nest bundles, with your own Codex home (`~/.codex`, or `CODEX_HOME`): your Codex config, MCP servers, skills, AGENTS.md and login apply, as in the terminal. Nest only removes the trust entry Codex writes into its `config.toml` for a worktree when Nest removes that worktree. Codex's models and thinking levels come from Codex (`GET /api/models?provider=codex`); the agent defaults' model and thinking apply only to chats on the defaults' engine, and a chat on the other engine starts on that engine's default model. Permission modes map to Codex's approval policy and sandbox (Ask: `untrusted` and workspace write; Accept edits: the same, with file changes accepted by Nest; Plan: read only; Auto: Codex's own reviewer; Bypass: no sandbox). Codex stays offered when it is not signed in: `GET /api/providers` says so, and starting or messaging a Codex chat answers 409 `codex_not_signed_in` ("Codex isn't signed in. Sign in under Settings > Accounts on the Mac, or run `codex login`."). Codex chats rewind and fork (Codex's own `thread/fork`), and Plan uses Codex's own plan mode: when Codex proposes a plan, the plan card asks, as Codex's "Implement this plan?" does; approving it switches the chat to the mode you pick and sends Codex's own "Implement the plan.", and Keep planning with words goes on planning with them. A `#` memory goes into the project's `AGENTS.md` or your `$CODEX_HOME/AGENTS.md`. What Codex cannot do (slash commands, taking back a message written into the turn) is listed per engine in `unsupported` and refused with 409 `unsupported_feature`. Codex asks its questions with its own `request_user_input` (Nest turns on Codex's experimental API for runs; the short-lived model, login and usage connections stay on the stable one), its plan updates feed the task list and Goals, and Stop on a subagent row interrupts that subagent's thread.
