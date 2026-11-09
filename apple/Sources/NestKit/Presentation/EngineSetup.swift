@@ -15,9 +15,6 @@ public struct EngineSetup: Sendable, Equatable {
         case removeKey
     }
 
-    /// Engines the user installs themselves, which Nest does not fetch.
-    static let installedByUser: Set<String> = ["cursor"]
-
     /// An engine the user installs themselves that Nest did not find.
     public static let notOnPath = "Not on PATH: install it yourself"
 
@@ -48,7 +45,7 @@ public struct EngineSetup: Sendable, Equatable {
         gitWarning = provider.gitGuard ? nil : Self.gitWarningText
         installing = provider.state == .installing
         failure = provider.state == .installFailed ? provider.stateDetail : nil
-        let canInstall = !Self.installedByUser.contains(provider.name)
+        let canInstall = provider.installable
         switch provider.state {
         case .ready:
             (state, action) = Self.signIn(of: provider)

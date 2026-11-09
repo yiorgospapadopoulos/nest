@@ -14,9 +14,11 @@ import Testing
            "login_command": null},
           {"name": "opencode", "display_name": "OpenCode", "signed_in": true,
            "unsupported": ["rewind"], "version": "1.19.4", "tested": true, "git_guard": true,
-           "state": "ready", "sign_in": "terminal", "login_command": "opencode auth login"},
+           "state": "ready", "installable": true, "sign_in": "terminal",
+           "login_command": "opencode auth login"},
           {"name": "gemini", "display_name": "Gemini CLI", "signed_in": false,
-           "unsupported": [], "version": "0.65.0", "state": "ready", "sign_in": "api_key"},
+           "unsupported": [], "version": "0.65.0", "state": "ready", "installable": true,
+           "sign_in": "api_key"},
           {"name": "cursor", "display_name": "Cursor agent", "signed_in": null,
            "unsupported": [], "tested": false, "git_guard": false, "state": "not_installed",
            "state_detail": "Install Cursor's CLI first.", "sign_in": "terminal",
@@ -54,6 +56,8 @@ import Testing
         #expect(cursor.signIn == .terminal)
         #expect(cursor.loginCommand == "agent login")
         #expect(cursor.stateDetail == "Install Cursor's CLI first.")
+        #expect(!cursor.installable)
+        #expect(list.providers[2].installable)
         #expect(list.providers[1].version == "1.19.4")
         let later = list.providers[4]
         #expect(later.state == .unknown)
