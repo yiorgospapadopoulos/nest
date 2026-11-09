@@ -13,6 +13,7 @@ from nestd.config.models import (
     AgentDefaults,
     ComputerUseSettings,
     ConfigurationSettings,
+    EditorSettings,
     LimitSettings,
     NotificationSettings,
     PixieDefaults,
@@ -100,6 +101,11 @@ def save_computer_use(paths: AppPaths, computer_use: ComputerUseSettings) -> Com
 def save_voice(paths: AppPaths, voice: VoiceSettings) -> VoiceSettings:
     """Replace the `[voice]` section of settings.toml, keeping every other section."""
     return _save_section(paths, "voice", _dump(voice)).voice
+
+
+def save_editors(paths: AppPaths, editors: EditorSettings) -> EditorSettings:
+    """Replace the `[editors]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "editors", _dump(editors)).editors
 
 
 def save_worktrees(paths: AppPaths, worktrees: WorktreeDefaults) -> WorktreeDefaults:

@@ -77,6 +77,8 @@ const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = 
   general: [
     "Sidebar",
     "Show automated chats",
+    "Open in",
+    "Default editor",
     "Linux",
     "Nest",
     "Version",

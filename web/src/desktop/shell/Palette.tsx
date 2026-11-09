@@ -8,6 +8,7 @@ import { Dot } from "../../ui/bits.tsx";
 import { Icon, type IconName } from "../../ui/Icon.tsx";
 import {
   catalog,
+  defaultEditorName,
   move,
   palette,
   search,
@@ -122,7 +123,7 @@ function ItemGlyph({ item, tone, hit }: { item: PaletteItem; tone: Tone | null; 
   if ("toggleSidebar" in action) return <Glyph name="left" />;
   if ("toggleActivity" in action) return <Glyph name="right" />;
   if ("showUsage" in action) return <Glyph name="clock" />;
-  if ("openInVSCode" in action) return <Glyph name="code" />;
+  if ("openInEditor" in action) return <Glyph name="code" />;
   return <Glyph name="folder" />;
 }
 
@@ -149,6 +150,7 @@ export function Palette() {
           view: shell.state.view,
           leftCollapsed: shell.state.leftCollapsed,
           rightCollapsed: shell.state.rightCollapsed,
+          editor: defaultEditorName(shell.editors),
           attention: (project) => needsCount(state, project),
         }),
       ),
@@ -215,7 +217,7 @@ export function Palette() {
     else if ("toggleSidebar" in action) shell.toggleSidebar();
     else if ("toggleActivity" in action) shell.toggleActivity();
     else if ("showUsage" in action) shell.openSettings({ page: "usage" });
-    else if ("openInVSCode" in action) shell.openIn("vscode");
+    else if ("openInEditor" in action) shell.openIn("editor");
     else shell.selectTab(action.goToProject);
   };
 

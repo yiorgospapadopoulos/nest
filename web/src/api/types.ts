@@ -1378,6 +1378,30 @@ export interface StorageSettings {
   archive_after_days: number | null;
 }
 
+// The code editors a project opens in (daemon/src/nestd/local_apps/editors.py), B152.
+export type EditorId =
+  | "vscode"
+  | "cursor"
+  | "zed"
+  | "xcode"
+  | "idea"
+  | "pycharm"
+  | "webstorm"
+  | "goland"
+  | "rustrover"
+  | "clion"
+  | "phpstorm"
+  | "rubymine"
+  | "rider"
+  | "android-studio";
+
+/** The editors installed on the daemon's computer, in Open in's order (`GET /api/editors`). */
+export interface Editors {
+  installed: { id: EditorId; name: string }[];
+  // What Open in's shortcut opens: the one chosen in Settings while installed, else the first.
+  default: EditorId | null;
+}
+
 /** A stored attachment, largest first (`GET /api/storage/attachments`). */
 export interface StoredAttachment {
   id: string;

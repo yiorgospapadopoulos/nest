@@ -12,7 +12,8 @@ public enum PaletteAction: Sendable, Hashable {
     case toggleSidebar
     case toggleActivityPanel
     case showUsage
-    case openInVSCode
+    /// The project in the default editor (B152).
+    case openInEditor
     case goToProject(String)
     /// A search hit: the chat's pane, scrolled to the event when there is one.
     case openMessage(project: String, pane: String, event: Int?)
@@ -182,10 +183,13 @@ extension CommandPalette {
                 PaletteItem(
                     group: .commands, title: "Show usage", subtitle: "Usage", glyph: .usage,
                     action: .showUsage),
-                PaletteItem(
-                    group: .commands, title: "Open \(project) in VS Code", subtitle: "Project",
-                    glyph: .code, action: .openInVSCode),
             ]
+            if let editor = app.editors.defaultEditor {
+                items.append(
+                    PaletteItem(
+                        group: .commands, title: "Open \(project) in \(editor.name)",
+                        subtitle: "Project", glyph: .code, action: .openInEditor))
+            }
         }
         for project in app.openProjects where project != app.currentProject {
             let attention = sessions.attention(of: project)

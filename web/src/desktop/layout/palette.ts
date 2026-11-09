@@ -1,6 +1,7 @@
 // The Ctrl K palette, ported from NestKit's CommandPalette.swift: chats of every open
 // project, the current project's commands and the other projects, filtered by every word
 // of the query, then the messages the daemon's search found, with a keyboard selection.
+import type { Editors } from "../../api/types.ts";
 import { GENERAL } from "../../store/general.ts";
 import type { ProjectView } from "./project.ts";
 
@@ -13,7 +14,7 @@ export type PaletteAction =
   | { toggleSidebar: true }
   | { toggleActivity: true }
   | { showUsage: true }
-  | { openInVSCode: true }
+  | { openInEditor: true }
   | { goToProject: string }
   | { openMessage: string; project: string; event: number | null };
 
@@ -113,8 +114,15 @@ export interface CatalogInput {
   view: ProjectView;
   leftCollapsed: boolean;
   rightCollapsed: boolean;
+  // The default editor's name, while one is installed (B152).
+  editor: string | null;
   // How many items need the user in a project.
   attention: (project: string) => number;
+}
+
+/** The default editor's name, or null while none is installed or listed. */
+export function defaultEditorName(editors: Editors | null): string | null {
+  return editors?.installed.find((editor) => editor.id === editors.default)?.name ?? null;
 }
 
 /** The entries for the window: open projects' chats, the project's commands, the others. */
@@ -158,8 +166,10 @@ export function catalog(input: CatalogInput): PaletteItem[] {
         toggleActivity: true,
       }),
       command("Show usage", "Usage", { showUsage: true }),
-      command(`Open ${project} in VS Code`, "Project", { openInVSCode: true }),
     );
+    if (input.editor !== null) {
+      items.push(command(`Open ${project} in ${input.editor}`, "Project", { openInEditor: true }));
+    }
   }
   for (const other of input.open) {
     if (other === project) continue;

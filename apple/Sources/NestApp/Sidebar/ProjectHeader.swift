@@ -1,3 +1,4 @@
+import AppKit
 import NestKit
 import SwiftUI
 
@@ -117,6 +118,36 @@ private struct InitGitButton: View {
     }
 }
 
+/// Open in (B152): every installed editor, the default one with the shortcut, then the
+/// Finder and Terminal.
+private struct OpenInMenu: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let editors = shell.app.editors
+        Menu {
+            ForEach(editors.installed) { editor in
+                if editor.id == editors.default {
+                    button(editor.name, .editor(editor.id)).shortcut(.openInEditor, shell)
+                } else {
+                    button(editor.name, .editor(editor.id))
+                }
+            }
+            if !editors.installed.isEmpty {
+                Divider()
+            }
+            button("Finder", .finder)
+            button("Terminal", .terminal)
+        } label: {
+            Label("Open in", systemImage: Icon.code)
+        }
+    }
+
+    private func button(_ title: String, _ app: RepoApp) -> some View {
+        Button(title) { shell.openProject(in: app) }
+    }
+}
+
 /// The project's icon and name, opening its local app actions.
 private struct ProjectMenu: View {
     @Environment(Shell.self) private var shell
@@ -140,25 +171,8 @@ private struct ProjectMenu: View {
                 Label("New browser", systemImage: Icon.globe)
             }
             Divider()
-            Button {
-                shell.openProject(in: .vscode)
-            } label: {
-                Label("Open in VS Code", systemImage: Icon.code)
-            }
-            .shortcut(.openInVSCode, shell)
-            .localOnly(shell, DaemonText.appsOff)
-            Button {
-                shell.openProject(in: .finder)
-            } label: {
-                Label("Reveal in Finder", systemImage: Icon.folder)
-            }
-            .localOnly(shell, DaemonText.appsOff)
-            Button {
-                shell.openProject(in: .terminal)
-            } label: {
-                Label("Open in Terminal", systemImage: Icon.terminal)
-            }
-            .localOnly(shell, DaemonText.appsOff)
+            OpenInMenu()
+                .localOnly(shell, DaemonText.appsOff)
             Divider()
             if shell.isRemote {
                 Text(DaemonText.appsOff(shell.machineName))
@@ -204,5 +218,9 @@ private struct ProjectMenu: View {
         .onHover { hovering = $0 }
         .padding(.leading, -6)
         .accessibilityLabel("Project \(shell.repo?.title ?? shell.project ?? "")")
+        // An editor installed meanwhile shows in Open in.
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+        ) { _ in Task { try? await shell.app.loadEditors() } }
     }
 }

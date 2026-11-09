@@ -15,7 +15,7 @@ export type ShortcutAction =
   | "closePane"
   | "newTerminal"
   | "newBrowser"
-  | "openInVSCode"
+  | "openInEditor"
   | "previousProject"
   | "nextProject"
   | "project"
@@ -51,7 +51,7 @@ export const SHORTCUT_GROUPS: { title: string; actions: ShortcutAction[] }[] = [
   },
   {
     title: "Chats",
-    actions: ["newChat", "sendMessage", "closePane", "newTerminal", "newBrowser", "openInVSCode"],
+    actions: ["newChat", "sendMessage", "closePane", "newTerminal", "newBrowser", "openInEditor"],
   },
   { title: "Projects", actions: ["previousProject", "nextProject", "project", "pixies"] },
 ];
@@ -70,7 +70,7 @@ export const SHORTCUTS: Record<ShortcutAction, { title: string; keys: Shortcut }
   closePane: { title: "Close pane", keys: keys("w") },
   newTerminal: { title: "New terminal", keys: keys("t", ["shift"]) },
   newBrowser: { title: "New browser", keys: keys("b", ["shift"]) },
-  openInVSCode: { title: "Open project in VS Code", keys: keys("o", ["shift"]) },
+  openInEditor: { title: "Open project in the default editor", keys: keys("o", ["shift"]) },
   previousProject: { title: "Previous project", keys: keys("[", ["shift"]) },
   nextProject: { title: "Next project", keys: keys("]", ["shift"]) },
   project: { title: "Project 1 to 9", keys: keys(DIGITS) },

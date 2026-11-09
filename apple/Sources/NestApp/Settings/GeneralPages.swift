@@ -15,6 +15,7 @@ struct GeneralPage: View {
                     .accessibilityLabel("Show automated chats")
             }
         }
+        EditorSection()
         SettingsSection(title: "Nest") {
             SettingsRow(label: "Version") { SettingsValue(text: Self.version) }
             RestartRow()
@@ -33,6 +34,31 @@ struct GeneralPage: View {
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
         else { return "Development build" }
         return version
+    }
+}
+
+/// The editor Open in's shortcut opens (B152), while this Mac has any.
+private struct EditorSection: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let editors = shell.app.editors
+        if !shell.isRemote, let current = editors.defaultEditor {
+            SettingsSection(title: "Open in") {
+                SettingsRow(label: "Default editor") {
+                    DropdownMenu(title: current.name, width: 150) {
+                        ForEach(editors.installed) { editor in
+                            Button(editor.name) {
+                                shell.settingsChange("Could not change the default editor") {
+                                    try await shell.app.setDefaultEditor(editor.id)
+                                }
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Default editor")
+                }
+            }
+        }
     }
 }
 

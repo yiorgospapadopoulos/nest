@@ -72,6 +72,10 @@ export function fakeApi(): FakeApi {
     updateRepo: vi.fn<Api["updateRepo"]>().mockResolvedValue(repo("todo-ui")),
     reorderRepos: vi.fn<Api["reorderRepos"]>().mockResolvedValue([repo("todo-ui")]),
     openRepo: vi.fn<Api["openRepo"]>().mockResolvedValue(null),
+    editors: vi.fn<Api["editors"]>().mockResolvedValue({ installed: [], default: null }),
+    setDefaultEditor: vi
+      .fn<Api["setDefaultEditor"]>()
+      .mockResolvedValue({ installed: [], default: null }),
     linkSuggestions: vi.fn<Api["linkSuggestions"]>().mockResolvedValue([]),
     createTrigger: vi.fn<Api["createTrigger"]>(),
     updateTrigger: vi.fn<Api["updateTrigger"]>(),
