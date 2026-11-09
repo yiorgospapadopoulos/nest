@@ -1481,6 +1481,23 @@ export interface ComputerUseSettings {
   pixies: boolean;
 }
 
+/** The Whisper models voice input offers (B154), English only. */
+export type VoiceModelId = "tiny.en" | "base.en" | "small.en" | "medium.en";
+
+/** `GET /api/voice` (B154): speech to text on the daemon's computer. */
+export interface VoiceStatus {
+  state: "not_installed" | "installing" | "ready" | "install_failed";
+  // The settings' choice, or the computer's default.
+  model: VoiceModelId;
+  default_model: VoiceModelId;
+  models: { id: VoiceModelId; label: string; size_mb: number }[];
+  // What installing would fetch now, about, in MB.
+  download_mb: number;
+  step: "packages" | "model" | null;
+  // Why the last install failed.
+  detail: string | null;
+}
+
 export type ComputerKind = "mac" | "ios" | "android" | "browser";
 
 /** Whether a kind of target can be used on this computer, and if not, how to get it. */

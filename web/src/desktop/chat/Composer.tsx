@@ -1,5 +1,5 @@
 // A pane's composer, as the Mac's Composer.swift: an oval field with send (or stop) inside
-// and under it a plain row with attach on the left (Linux has no dictation yet) and the
+// and under it a plain row with attach and the mic on the left and the
 // quiet Model, Thinking and Permission menus and the context meter on the right. Slash
 // commands, @ mentions and files list above the field; `/model` and `/permissions` open
 // their list there. A new chat's first message starts it where its place picker says.
@@ -88,6 +88,9 @@ import {
   useFit,
 } from "./fit.ts";
 import { Glyph } from "./glyphs.tsx";
+import { Confirm } from "../sheets/Alert.tsx";
+import { withSpoken } from "../../screens/chat/voice/spoken.ts";
+import { dictateTitle, spokenAt, useDictation } from "../../screens/chat/voice/useDictation.ts";
 import { PendingMessages } from "./Bars.tsx";
 import { PlaceButton } from "./WorkOn.tsx";
 import { placeBody, selectedChoice, type NewChatChoice } from "./placePicker.ts";
@@ -194,6 +197,14 @@ export function Composer({ target }: { target: ComposerTarget }) {
     setElsewhere(false);
     actions.setDraftText(key, next);
   };
+
+  // The mic (B154): what was said goes into the draft as it is now.
+  const dictation = useDictation((spoken) => {
+    const current = field.current?.value ?? text;
+    const next = withSpoken(current, spokenAt(field.current, current), spoken);
+    caretAfter.current = next.caret;
+    setText(next.text);
+  }, key);
 
   useEffect(() => onComposerFocus(key, () => field.current?.focus()), [key]);
 
@@ -825,6 +836,36 @@ export function Composer({ target }: { target: ComposerTarget }) {
               </button>
             )}
           </Menu>
+        )}
+        {dictation.available && (
+          <button
+            className={
+              dictation.phase === "idle"
+                ? "dk-btn k-plain icon dc-mic"
+                : `dk-btn k-plain icon dc-mic dict ${dictation.phase}`
+            }
+            title={dictateTitle(dictation)}
+            aria-label="Dictate"
+            aria-pressed={dictation.phase === "starting" || dictation.phase === "recording"}
+            aria-busy={dictation.phase === "working"}
+            disabled={closed || dictation.phase === "working"}
+            // Keeps the keyboard in the field, so the words go where the caret is.
+            onMouseDown={(event) => {
+              event.preventDefault();
+            }}
+            onClick={dictation.toggle}
+          >
+            <Glyph name={dictation.phase === "recording" ? "stop" : "mic"} size={13} />
+          </button>
+        )}
+        {dictation.setup !== null && (
+          <Confirm
+            title={dictation.setup.title}
+            message={dictation.setup.about}
+            action={dictation.setup.action}
+            onConfirm={dictation.confirmSetup}
+            onClose={dictation.closeSetup}
+          />
         )}
         {(pixie === null || session !== undefined) && (
           <AutopilotButton control={pilot} disabled={closed} />
