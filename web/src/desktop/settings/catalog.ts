@@ -81,6 +81,8 @@ const LABELS: Record<FixedPage | "addProject" | "project", readonly string[]> = 
     "Nest",
     "Version",
     "Restart Nest",
+    "Voice input",
+    "Model",
     "Setup",
     "Set up Nest",
     "Help",

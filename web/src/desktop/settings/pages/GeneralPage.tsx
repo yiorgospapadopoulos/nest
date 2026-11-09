@@ -12,11 +12,18 @@ import type { LinuxSettings } from "../../bridge.ts";
 import { useApi, useBridge } from "../../context.ts";
 import { useRelaunch } from "../../shell/useRelaunch.ts";
 import { Button, Toggle } from "../../ui/controls.tsx";
-import { Alert } from "../../sheets/Alert.tsx";
+import { Alert, Confirm } from "../../sheets/Alert.tsx";
+import {
+  modelChoices,
+  useVoiceSettings,
+  voiceStateLabel,
+} from "../../../screens/chat/voice/useVoiceSettings.ts";
+import { choiceItems } from "../parts1/choices.ts";
 import { appAnswers } from "./appAnswers.ts";
 import { BugReportSheet } from "./BugReportSheet.tsx";
 import { CheckNestSheet } from "./CheckNestSheet.tsx";
 import {
+  Dropdown,
   Failure,
   SettingsListRow,
   SettingsRow,
@@ -47,10 +54,71 @@ export function GeneralPage() {
         <UpdateRow />
         <UndoUpdateRow />
       </SettingsSection>
+      <VoiceSection />
       <SetupSection />
       <HelpSection />
       <UninstallSection />
     </>
+  );
+}
+
+/** The mic's model, downloaded on this computer (B154). */
+function VoiceSection() {
+  const { status, choose, download, remove } = useVoiceSettings();
+  const [confirm, setConfirm] = useState(false);
+  if (status === null) return null;
+  const choices = modelChoices(status);
+  const shown = voiceStateLabel(status);
+  return (
+    <SettingsSection title="Voice input">
+      <SettingsRow label="Model">
+        <Dropdown
+          label="Model"
+          title={choices.find((c) => c.value === status.model)?.label ?? status.model}
+          width={180}
+          disabled={status.state === "installing"}
+          items={() =>
+            choiceItems(
+              choices.map((c) => c.value),
+              status.model,
+              (id) => choices.find((c) => c.value === id)?.label ?? id,
+              choose,
+            )
+          }
+        />
+      </SettingsRow>
+      <SettingsRow label="State">
+        <Value text={shown.label} />
+      </SettingsRow>
+      {status.detail !== null && <Failure text={status.detail} />}
+      <SettingsRow label={status.state === "ready" ? "Remove the download" : "Download"}>
+        {status.state === "ready" ? (
+          <Button
+            onClick={() => {
+              setConfirm(true);
+            }}
+          >
+            Remove
+          </Button>
+        ) : (
+          <Button disabled={status.state === "installing"} onClick={download}>
+            {status.state === "install_failed" ? "Try again" : "Download"}
+          </Button>
+        )}
+      </SettingsRow>
+      {confirm && (
+        <Confirm
+          title="Remove voice input?"
+          message="The mic asks to download it again the next time."
+          action="Remove"
+          destructive
+          onConfirm={remove}
+          onClose={() => {
+            setConfirm(false);
+          }}
+        />
+      )}
+    </SettingsSection>
   );
 }
 
