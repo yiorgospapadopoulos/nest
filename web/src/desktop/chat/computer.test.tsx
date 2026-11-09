@@ -112,6 +112,7 @@ describe("computer use on a pane (B150)", () => {
 
   it("asks to use an app with Allow and Deny only", async () => {
     const api = fakeApi();
+    api.resolveApproval.mockResolvedValue(approval({ status: "resolved" }));
     const storage = memoryStorage();
     render(
       <StoreProvider
