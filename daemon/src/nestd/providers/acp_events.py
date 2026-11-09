@@ -17,6 +17,7 @@ used. A session reopened with `session/load` replays its history first; Nest has
 transcript, so the replay is dropped (`replaying`).
 """
 
+import json
 import re
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -105,6 +106,10 @@ class ToolCall:
     locations: list[str] = field(default_factory=list[str])
     raw_output: JsonValue = None
     shown: bool = False
+    # Every title the engine gave it: Copilot names an MCP tool's server only in the first.
+    titles: list[str] = field(default_factory=list[str])
+    # A subagent's call, where the engine marks those (Copilot, on its tool call).
+    subagent: bool = False
     # Why Nest rejected the call itself, which its result shows instead of the engine's
     # words (the engine only hears "rejected").
     refused: str | None = None
@@ -117,7 +122,12 @@ class ToolCall:
         kind = text(fields.get("kind"))
         if kind and (kind in _KNOWN_KINDS or self.kind not in _KNOWN_KINDS):
             self.kind = kind
-        self.title = text(fields.get("title")) or self.title
+        if title := text(fields.get("title")):
+            self.title = title
+            self.titles.append(title)
+        meta = obj(fields.get("_meta"))
+        if text(obj(meta.get("github.com/copilot")).get("agentId")):
+            self.subagent = True
         self.status = text(fields.get("status")) or self.status
         self.raw_input |= obj(fields.get("rawInput"))
         if content := items(fields.get("content")):
@@ -133,9 +143,63 @@ class ToolCall:
 
 
 def command_text(call: ToolCall) -> str:
-    """The command a shell call runs: from its input, else its title (Gemini's)."""
+    """The command a shell call runs: from its input, else its title (Gemini's), which
+    Cursor writes in backticks.
+    """
     raw = call.raw_input
-    return text(raw.get("command")) or text(raw.get("cmd")) or call.title
+    return text(raw.get("command")) or text(raw.get("cmd")) or _unquoted(call.title)
+
+
+# Cursor's title for a command: the command in backticks, its own backticks as \`.
+_QUOTED = re.compile(r"`(?P<command>(?:[^`\\]|\\.)*)`", re.S)
+
+
+def _unquoted(title: str) -> str:
+    found = _QUOTED.fullmatch(title)
+    return title if found is None else found.group("command").replace("\\`", "`")
+
+
+@dataclass(frozen=True)
+class McpCall:
+    """A call of an MCP tool whose engine names its server (Cursor)."""
+
+    server: str
+    tool: str
+    input: JsonObject
+
+
+# Cursor titles an MCP tool `<server>: <tool>`. Its tool call carries the input as
+# `{providerIdentifier, toolName, args}`; its permission request has no input, only the
+# arguments as a fenced JSON block in its content.
+_SERVER_TOOL = re.compile(r"(?P<server>[A-Za-z0-9_.-]+): (?P<tool>[A-Za-z0-9_.-]+)")
+_FENCED_JSON = re.compile(r"```json\n(?P<body>.*)\n```", re.S)
+
+
+def mcp_call(call: ToolCall) -> McpCall | None:
+    if call.kind in _KNOWN_KINDS:
+        return None
+    raw = call.raw_input
+    server, tool = text(raw.get("providerIdentifier")), text(raw.get("toolName"))
+    if server and tool:
+        return McpCall(server, tool, obj(raw.get("args")))
+    found = _SERVER_TOOL.fullmatch(call.title.strip())
+    if found is None:
+        return None
+    return McpCall(found.group("server"), found.group("tool"), _fenced_input(call.content))
+
+
+def _fenced_input(content: list[JsonValue]) -> JsonObject:
+    """The arguments a content block shows as JSON; none when there is no such block."""
+    for part in content:
+        block = obj(obj(part).get("content"))
+        found = _FENCED_JSON.fullmatch(text(block.get("text")).strip())
+        if block.get("type") == "text" and found is not None:
+            try:
+                parsed: JsonValue = json.loads(found.group("body"))
+            except ValueError:
+                return {}
+            return obj(parsed)
+    return {}
 
 
 def paths(call: ToolCall) -> list[str]:
@@ -178,12 +242,14 @@ def tool_use(call: ToolCall, nest: NestTools) -> tuple[str, dict[str, JsonValue]
         if query := text(raw.get("query")):
             return "WebSearch", {"query": query}
         return "WebFetch", {"url": call.title}
+    if (mcp := mcp_call(call)) is not None:
+        return f"mcp__{mcp.server}__{mcp.tool}", dict(mcp.input)
     return title_name(call.title) or call.kind or "Tool", dict(raw)
 
 
 def nest_tool(call: ToolCall, nest: NestTools) -> str | None:
     """`mcp__<server>__<tool>` when the call is one of Nest's own MCP tools, which OpenCode
-    titles `<server>_<tool>`.
+    titles `<server>_<tool>`, Copilot `<server>-<tool>` and Cursor `<server>: <tool>`.
 
     Nest's tools pass without asking, so the whole title must be one name with the server
     in it, at most followed by plain arguments: a call that carries a command never
@@ -192,13 +258,26 @@ def nest_tool(call: ToolCall, nest: NestTools) -> str | None:
     """
     if call.kind in _KNOWN_KINDS or command_in(call.raw_input):
         return None
+    mcp = mcp_call(call)
+    if mcp is not None:
+        if command_in(mcp.input) or mcp.tool not in nest.get(mcp.server, frozenset()):
+            return None
+        return f"mcp__{mcp.server}__{mcp.tool}"
     found = _TOOL_TITLE.fullmatch(call.title.strip())
     if found is None:
         return None
     name = found.group("name")
     for server, tools in nest.items():
         for tool in tools:
-            if name in (f"{server}_{tool}", f"mcp_{server}_{tool}", f"mcp__{server}__{tool}"):
+            if name in (
+                f"{server}_{tool}",
+                f"{server}-{tool}",
+                f"mcp_{server}_{tool}",
+                f"mcp__{server}__{tool}",
+            ):
+                return f"mcp__{server}__{tool}"
+            # Copilot asks by the bare name, after a tool call named `<server>-<tool>`.
+            if name == tool and f"{server}-{tool}" in call.titles:
                 return f"mcp__{server}__{tool}"
     return None
 
@@ -256,6 +335,12 @@ def _edit(call: ToolCall) -> tuple[str, dict[str, JsonValue]]:
     return "Edit", shown
 
 
+# Where engines put a call's output when its content has none: Antigravity's commands give
+# `combinedOutput`, Copilot's refusals `message` (B153).
+_OUTPUT_KEYS = ("output", "combinedOutput")
+_ERROR_KEYS = ("error", "message", "combinedOutput")
+
+
 def _result(call: ToolCall) -> ToolResultBlock:
     texts = [
         text(obj(obj(part).get("content")).get("text"))
@@ -268,7 +353,8 @@ def _result(call: ToolCall) -> ToolResultBlock:
     if call.refused is not None:
         return ToolResultBlock(tool_use_id=call.id, content=call.refused, is_error=True)
     if not body:
-        body = text(output.get("error")) if failed else text(output.get("output"))
+        keys = _ERROR_KEYS if failed else _OUTPUT_KEYS
+        body = next((found for key in keys if (found := text(output.get(key)))), "")
     if not body and call.diffs():
         body = "Done"
     images = [

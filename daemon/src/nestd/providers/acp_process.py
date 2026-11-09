@@ -7,8 +7,10 @@ to the daemon log, with credentials scrubbed, and its last lines name a crash.
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from pydantic import JsonValue
 
 from nestd.gitops.remotes import scrub_credentials
 from nestd.providers.codex_process import MAX_LINE_BYTES, ProcessTransport, stderr_logger
@@ -21,6 +23,8 @@ class AcpLaunch:
     args: tuple[str, ...]
     # The whole environment of the process.
     env: Mapping[str, str]
+    # What the engine is told when a session opens, naming Nest's folders (`acp_meta`).
+    meta: Mapping[str, JsonValue] = field(default_factory=dict[str, JsonValue])
 
 
 # Starts the engine in a folder; tests substitute an in-memory agent.

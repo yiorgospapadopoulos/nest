@@ -119,6 +119,9 @@ public enum AccountText {
         case "opencode": "OpenCode"
         case "gemini": "Gemini CLI"
         case "cursor": "Cursor agent"
+        case "copilot": "Copilot CLI"
+        case "antigravity": "Antigravity"
+        case "grok": "Grok Build"
         default: provider.capitalized
         }
     }

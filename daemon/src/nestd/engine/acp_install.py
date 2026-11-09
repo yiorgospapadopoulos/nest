@@ -23,6 +23,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from nestd.engine.acp_download import (
+    Downloader,
+    DownloadError,
+    download_file,
+    fetch_archive,
+    fresh_folder,
+    move_into_place,
+)
+from nestd.engine.acp_registry import platform_name
 from nestd.errors import ConflictError
 from nestd.providers.acp_engines import AcpEngine
 from nestd.updates.environments import kept_versions
@@ -37,18 +46,37 @@ type EnvSource = Callable[[], Awaitable[Mapping[str, str]]]
 
 # The scratch folder model lists are read in, beside the versions (never removed with them).
 PROBE_FOLDER = "probe"
+# An engine's settings for Nest's runs, beside the versions (never removed with them).
+CONFIG_FOLDER = "config"
 # A download of a large engine on a slow network.
 NPM_TIME_LIMIT = 900.0
 # What a failed npm says is cut to this, for Settings.
 _DETAIL_LIMIT = 300
-# Packages whose `.bin` entry is a placeholder their install script replaces: their real
-# program is in the platform package npm installs beside them, by these names in order.
+# Packages whose `.bin` entry is a placeholder their install script replaces, or a loader
+# that only starts it: their real program is in the platform package npm installs beside
+# them, at these paths inside `node_modules`, in order.
 _NATIVE: Mapping[str, Callable[[str, str], tuple[str, ...]]] = {
     "opencode-ai": lambda os_name, arch: (
-        f"opencode-{os_name}-{arch}",
-        f"opencode-{os_name}-{arch}-baseline",
+        f"opencode-{os_name}-{arch}/bin/opencode",
+        f"opencode-{os_name}-{arch}-baseline/bin/opencode",
     ),
+    "@github/copilot": lambda os_name, arch: (
+        f"@github/copilot-{os_name}-{arch}/copilot",
+        f"@github/copilot-{os_name}musl-{arch}/copilot",
+    ),
+    "@xai-official/grok": lambda os_name, arch: (f"@xai-official/grok-{os_name}-{arch}/bin/grok",),
 }
+# Packages whose platform package holds the program compressed with brotli, which their
+# install script unpacks (Grok Build's would also copy it into the user's home and update
+# it there): Nest unpacks it beside itself with Node, which comes with npm.
+_COMPRESSED: Mapping[str, Callable[[str, str], str]] = {
+    "@xai-official/grok": lambda os_name, arch: f"@xai-official/grok-{os_name}-{arch}/bin/grok.br",
+}
+_UNPACK_SCRIPT = (
+    "const zlib = require('zlib'), fs = require('fs');"
+    "fs.writeFileSync(process.argv[2],"
+    " zlib.brotliDecompressSync(fs.readFileSync(process.argv[1])), {mode: 0o755});"
+)
 _OS = {"darwin": "darwin", "linux": "linux"}
 _ARCH = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x64", "amd64": "x64"}
 
@@ -112,14 +140,17 @@ def platform_names() -> tuple[str, str]:
 def installed_program(
     engine: AcpEngine, folder: Path, names: tuple[str, str] | None = None
 ) -> Path | None:
-    """The engine's program inside an npm prefix, if it is there."""
+    """The engine's program inside its version folder (an npm prefix, or an unpacked
+    archive), if it is there.
+    """
+    if engine.delivery == "download":
+        pinned = engine.downloads.get(platform_name())
+        program = None if pinned is None else folder / pinned.program
+        return program if program is not None and program.is_file() else None
     modules = folder / "node_modules"
     native = _NATIVE.get(engine.package or "")
     if native is not None:
-        candidates = [
-            modules / name / "bin" / engine.executable
-            for name in native(*(names or platform_names()))
-        ]
+        candidates = [modules / path for path in native(*(names or platform_names()))]
     else:
         candidates = [modules / ".bin" / engine.executable]
     return next((path for path in candidates if path.is_file()), None)
@@ -135,15 +166,18 @@ class EngineInstall:
         home: Path,
         on_change: Callable[[InstallState], Awaitable[None]] | None = None,
         environments: Path | None = None,
+        download: Downloader = download_file,
     ) -> None:
         """`root` is `<data_dir>/engines`; `home` is the user's home, which expands their own
         install paths;
         `on_change` hears each state an install goes through; the versions the environments
-        in `environments` hold stay when older ones are cleared.
+        in `environments` hold stay when older ones are cleared; `download` fetches an
+        engine published as an archive.
         """
         self.engine = engine
         self.folder = root / engine.id
         self._npm = npm
+        self._download = download
         self._env = env
         self.home = home
         self._on_change = on_change
@@ -153,8 +187,8 @@ class EngineInstall:
 
     @property
     def fetched(self) -> bool:
-        """Nest fetches it from npm, so it can be installed from Settings."""
-        return self.engine.delivery == "bundled"
+        """Nest fetches it from npm or its archive, so it can be installed from Settings."""
+        return self.engine.delivery != "user_install"
 
     async def current(self) -> InstallState:
         engine = self.engine
@@ -228,8 +262,11 @@ class EngineInstall:
         self._failure = None
         await self._announce(InstallState("installing"))
         try:
-            await fetch_version(engine, self.folder, self._npm, await self._env())
-        except (NpmError, OSError) as error:
+            if engine.delivery == "download":
+                await fetch_archive(engine, self.folder, self._download, platform_name())
+            else:
+                await fetch_version(engine, self.folder, self._npm, await self._env())
+        except (NpmError, DownloadError, OSError) as error:
             self._failure = str(error) or type(error).__name__
             logger.warning("could not install %s %s: %s", engine.id, version, self._failure)
             state = InstallState("install_failed", detail=self._failure)
@@ -265,7 +302,7 @@ async def fetch_version(
     target = folder / version
     partial = folder / f".{version}.partial"
     try:
-        await asyncio.to_thread(_fresh_folder, partial)
+        await asyncio.to_thread(fresh_folder, partial)
         await npm(
             (
                 "install",
@@ -279,35 +316,57 @@ async def fetch_version(
             partial,
             env,
         )
+        await _unpack(engine, partial, env)
         if installed_program(engine, partial) is None:
             msg = f"{engine.name}'s program was not found after installing it"
             raise NpmError(msg)
-        await asyncio.to_thread(_move_into_place, partial, target)
+        await asyncio.to_thread(move_into_place, partial, target)
     except (NpmError, OSError):
         await asyncio.to_thread(shutil.rmtree, partial, True)
         raise
 
 
-def _fresh_folder(folder: Path) -> None:
-    shutil.rmtree(folder, ignore_errors=True)
-    folder.mkdir(parents=True)
-
-
-def _move_into_place(partial: Path, target: Path) -> None:
-    shutil.rmtree(target, ignore_errors=True)
-    partial.rename(target)
+async def _unpack(engine: AcpEngine, prefix: Path, env: Mapping[str, str]) -> None:
+    """The engine's compressed program unpacked where `installed_program` looks for it,
+    unless it is there already.
+    """
+    compressed = _COMPRESSED.get(engine.package or "")
+    if compressed is None or installed_program(engine, prefix) is not None:
+        return
+    native = _NATIVE[engine.package or ""](*platform_names())[0]
+    source = prefix / "node_modules" / compressed(*platform_names())
+    node = shutil.which("node", path=env.get("PATH"))
+    if node is None:
+        msg = "node was not found. Install Node.js, then try again."
+        raise NpmError(msg)
+    process = await asyncio.create_subprocess_exec(
+        node,
+        "-e",
+        _UNPACK_SCRIPT,
+        str(source),
+        str(prefix / "node_modules" / native),
+        env=dict(env),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode != 0:
+        detail = " ".join(stderr.decode(errors="replace").split())[-_DETAIL_LIMIT:]
+        msg = f"{engine.name}'s program could not be unpacked: {detail}"
+        raise NpmError(msg)
 
 
 def remove_old(folder: Path, keep: Collection[str]) -> None:
-    """Every version folder not in `keep`; the probe folder, Nest's files beside them and
-    an install in progress stay.
+    """Every version folder not in `keep`; the probe and settings folders, Nest's files
+    beside them and an install in progress stay.
     """
     for entry in folder.iterdir():
         if (
             entry.is_dir()
             and not entry.is_symlink()
             and not entry.name.startswith(".")
-            and entry.name != PROBE_FOLDER
+            and entry.name not in (PROBE_FOLDER, CONFIG_FOLDER)
             and entry.name not in keep
         ):
             shutil.rmtree(entry, ignore_errors=True)

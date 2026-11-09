@@ -13,9 +13,10 @@ from nestd.updates.manifest import Manifest, write_manifest
 from nestd.updates.selfcheck_report import EngineCheck, SelfcheckReport
 
 FINGERPRINT = "base-one"
+_FETCHED = {"opencode": "1.0.0", "gemini": "0.5.0", "copilot": "1.0.0", "grok": "1.0.0"}
 NOW = Versions(
-    packages={"claude": "0.2.0", "codex": "0.10.0", "opencode": "1.0.0", "gemini": "0.5.0"},
-    shown={"claude": "2.1.0", "codex": "0.10.0", "opencode": "1.0.0", "gemini": "0.5.0"},
+    packages={"claude": "0.2.0", "codex": "0.10.0", **_FETCHED},
+    shown={"claude": "2.1.0", "codex": "0.10.0", **_FETCHED},
 )
 # The registries' answers when nothing is new.
 SAME = {
@@ -23,6 +24,8 @@ SAME = {
     "openai-codex-cli-bin": "0.10.0",
     "opencode-ai": "1.0.0",
     "@google/gemini-cli": "0.5.0",
+    "@github/copilot": "1.0.0",
+    "@xai-official/grok": "1.0.0",
 }
 EDITABLE = "aiohttp==3.14.4\n-e file:///Users/me/My%20Projects/nest/daemon\n"
 

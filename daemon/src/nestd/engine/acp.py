@@ -17,8 +17,9 @@ import json
 import logging
 import os
 import shlex
+import sys
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -28,6 +29,7 @@ from pydantic import BaseModel
 from nestd.auth.secrets import SecretStore
 from nestd.clock import Clock
 from nestd.engine.acp_install import (
+    CONFIG_FOLDER,
     PROBE_FOLDER,
     EngineInstall,
     EngineState,
@@ -35,6 +37,8 @@ from nestd.engine.acp_install import (
     NpmRunner,
     run_npm,
 )
+from nestd.engine.acp_registry import platform_name
+from nestd.engine.cursor_config import CONFIG_DIR_ENV, user_config_dir, write_config
 from nestd.engine.models import ENGINE_DEFAULT, ModelList, engine_default, listed_models
 from nestd.engine.opencode_local import is_local_model, local_providers
 from nestd.engine.store import EngineInfoStore
@@ -277,7 +281,9 @@ class AcpEngineService:
             if key is None:
                 raise AcpNotReadyError(self._no_key())
             env[_KEY_ENV[self.engine.id]] = key
-        return AcpLaunch(args=(str(program), *self.engine.args), env=env)
+        pinned = self.engine.downloads.get(platform_name())
+        extra = pinned.args if pinned is not None else ()
+        return AcpLaunch(args=(str(program), *self.engine.args, *extra), env=env)
 
     async def account_status(self, account: RunAccount) -> AcpAccountStatus:
         """Whether that account can run chats: asked of the engine only for a terminal
@@ -307,13 +313,18 @@ class AcpEngineService:
         """The command that signs the account in, in Terminal: the engine Nest runs, on
         the account's folder.
         """
-        command = self.engine.login_command
-        if command is None:
-            return None
-        words = shlex.split(command)
         installed = await self.install.current()
-        if installed.program is not None:
-            words[0] = str(installed.program)
+        if self.engine.login_method is not None:
+            if installed.program is None:
+                return None
+            nestd = (sys.executable, "-m", "nestd", "engines", "sign-in", self.engine.id)
+            words = [*nestd, str(installed.program)]
+        elif self.engine.login_command is None:
+            return None
+        else:
+            words = shlex.split(self.engine.login_command)
+            if installed.program is not None:
+                words[0] = str(installed.program)
         assignments = [f"{name}={shlex.quote(value)}" for name, value in account.env.items()]
         return " ".join([*assignments, *(shlex.quote(word) for word in words)])
 
@@ -360,6 +371,7 @@ class AcpEngineService:
         folder = self.install.folder / PROBE_FOLDER
         try:
             launch = await self.launch(account)
+            launch = replace(launch, env={**launch.env, **self.engine.probe_env})
             await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
             return await probe(launch, folder, self._transport)
         except AcpNotReadyError:
@@ -373,11 +385,13 @@ class AcpEngineService:
 
     async def _logged_in(self, account: RunAccount, auth_file: str) -> bool:
         """Whether the engine's login file for the account holds an entry, under the
-        account's XDG_DATA_HOME, else the user's, else `~/.local/share`.
+        account's folder for it (`auth_root`), else the user's, else the default one in
+        the home.
         """
         env = {**await self._env(), **account.env}
-        data = env.get("XDG_DATA_HOME") or str(self.install.home / ".local" / "share")
-        return await asyncio.to_thread(_holds_entries, Path(data) / auth_file)
+        variable, default = self.engine.auth_root
+        root = env.get(variable) or str(self.install.home / default)
+        return await asyncio.to_thread(_holds_entries, Path(root) / auth_file)
 
     def _require_installed(self, installed: InstallState) -> Path:
         if installed.state == "ready" and installed.program is not None:
@@ -400,6 +414,10 @@ class AcpEngineService:
         env.update(self.engine.env)
         if self.engine.id == "gemini":
             env[GEMINI_SYSTEM_SETTINGS_ENV] = str(await asyncio.to_thread(self._settings_file))
+        if self.engine.id == "cursor":
+            user = user_config_dir(env, self.install.home)
+            folder = self.install.folder / CONFIG_FOLDER
+            env[CONFIG_DIR_ENV] = str(await asyncio.to_thread(write_config, folder, user))
         return env
 
     def _settings_file(self) -> Path:
@@ -433,7 +451,9 @@ class AcpEngineService:
         return f"Add your {self.engine.name} API key in Settings > Accounts."
 
     def _signed_out(self) -> str:
-        command = self.engine.login_command or "its own login"
+        if self.engine.login_command is None:
+            return f"{self.engine.name} is not signed in. Sign in in Settings > Accounts."
+        command = self.engine.login_command
         return f"{self.engine.name} is not signed in. Sign in with `{command}` in Terminal."
 
 

@@ -3,7 +3,10 @@ when it is refused.
 """
 
 import asyncio
+import json
 import logging
+import shlex
+import sys
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
@@ -15,6 +18,7 @@ from nestd.engine.acp_install import EngineInstall
 from nestd.engine.store import EngineInfoStore
 from nestd.providers.acp import AcpNotReadyError, AcpProbe
 from nestd.providers.acp_engines import (
+    ANTIGRAVITY,
     CURSOR,
     GEMINI,
     GEMINI_KEY_ENV,
@@ -284,3 +288,55 @@ async def test_a_failed_probe_logs_no_key(
 
     assert status.signed_in is True
     assert "secret-key-123" not in caplog.text
+
+
+async def test_antigravity_signs_in_through_nest_and_counts_only_its_login_file(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B153: its probe could open the browser on a login it cannot refresh, so Nest reads
+    its login file instead, and the probe can never open one."""
+    program = preinstall(rig.tmp_path / "engines", ANTIGRAVITY)
+    rig.active = RunAccount("antigravity-main")
+    seen: list[AcpLaunch] = []
+    fake_probe(monkeypatch, AcpProbe(FREE_MODELS, True, "1.4.5", True), seen)
+    service = rig.service(ANTIGRAVITY)
+
+    with pytest.raises(AcpNotReadyError, match="Settings > Accounts"):
+        await service.require_ready()
+    signed_out = await service.status()
+    token = rig.tmp_path / "home" / ".gemini" / "antigravity-acp" / "acp_token.json"
+    token.parent.mkdir(parents=True)
+    token.write_text('{"refresh_token": "x"}', encoding="utf-8")
+    service.forget()
+    signed_in = await service.status()
+    launch = await service.launch(rig.active)
+
+    assert signed_out.signed_in is False
+    assert signed_out.login_command == shlex.join(
+        [sys.executable, "-m", "nestd", "engines", "sign-in", "antigravity", str(program)]
+    )
+    assert signed_in.signed_in is True
+    [probed] = seen
+    assert probed.env["BROWSER"] == "true"
+    assert "BROWSER" not in launch.env
+    assert launch.env["AGY_ACP_FORCE_FILE_STORAGE"] == "1"
+
+
+async def test_cursor_runs_on_a_copy_of_the_users_settings_that_asks(rig: Rig) -> None:
+    program = rig.tmp_path / "home" / ".local" / "bin" / "agent"
+    program.parent.mkdir(parents=True)
+    program.write_text("#!/bin/sh\n", encoding="utf-8")
+    user = rig.tmp_path / "home" / ".cursor" / "cli-config.json"
+    user.parent.mkdir(parents=True)
+    user.write_text('{"approvalMode": "unrestricted", "editor": {"vimMode": true}}')
+    service = rig.service(CURSOR)
+
+    launch = await service.launch(RunAccount("cursor-main"))
+
+    folder = Path(launch.env["CURSOR_CONFIG_DIR"])
+    assert folder == rig.tmp_path / "engines" / "cursor" / "config"
+    written = json.loads((folder / "cli-config.json").read_text())
+    assert written["approvalMode"] == "allowlist"
+    assert written["editor"] == {"vimMode": True}
+    assert launch.args == (str(program), "--disable-project-configs", "acp")
+    assert json.loads(user.read_text())["approvalMode"] == "unrestricted"

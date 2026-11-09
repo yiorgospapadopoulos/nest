@@ -4,6 +4,7 @@ pixies refused on an engine whose git commands Nest cannot block.
 """
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,7 @@ from nestd.engine import acp as acp_module
 from nestd.engine.acp import key_item
 from nestd.events import types
 from nestd.providers.acp import AcpProbe
-from nestd.providers.acp_engines import GEMINI, OPENCODE
+from nestd.providers.acp_engines import CURSOR, GEMINI, OPENCODE
 from nestd.providers.acp_process import AcpLaunch, AcpTransportFactory
 from tests.acp_engine_support import FREE_MODELS, preinstall
 from tests.api_client import Api, running_api
@@ -26,6 +27,20 @@ KEY = "AIza-test-key-0123456789"
 
 @pytest.fixture
 async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
+    async with running_api(tmp_path, clock, secrets) as running:
+        yield running
+
+
+@pytest.fixture
+async def unguarded(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[Api]:
+    """Cursor as an engine whose git commands Nest cannot block, as one may be."""
+    engines = tuple(
+        replace(engine, git_guard=False) if engine.id == CURSOR.id else engine
+        for engine in acp_module.ACP_ENGINES
+    )
+    monkeypatch.setattr(acp_module, "ACP_ENGINES", engines)
     async with running_api(tmp_path, clock, secrets) as running:
         yield running
 
@@ -45,6 +60,9 @@ async def test_the_engines_are_listed_in_order_with_their_install_and_sign_in(ap
         "opencode",
         "gemini",
         "cursor",
+        "copilot",
+        "antigravity",
+        "grok",
     ]
     listed = by_name(providers)
     assert listed["fake"]["state"] == "ready"
@@ -61,10 +79,10 @@ async def test_the_engines_are_listed_in_order_with_their_install_and_sign_in(ap
     cursor = listed["cursor"]
     assert (cursor["tested"], cursor["git_guard"], cursor["sign_in"]) == (
         False,
-        False,
+        True,
         "terminal",
     )
-    assert "pixies" in cursor["unsupported"]
+    assert "pixies" not in cursor["unsupported"]
     assert listed["gemini"]["signed_in"] is False
 
 
@@ -161,7 +179,8 @@ async def test_geminis_key_is_kept_in_the_keychain_and_never_answered(
     assert all(KEY not in row["payload"] for row in rows)
 
 
-async def test_pixies_refuse_an_engine_without_a_git_guard(api: Api) -> None:
+async def test_pixies_refuse_an_engine_without_a_git_guard(unguarded: Api) -> None:
+    api = unguarded
     created = await api.http.post("/api/pixies", json={"name": "C", "provider": "cursor"})
     plain = (await api.http.post("/api/pixies", json={"name": "P"})).json()
     moved = await api.http.patch(f"/api/pixies/{plain['id']}", json={"provider": "cursor"})
@@ -174,8 +193,9 @@ async def test_pixies_refuse_an_engine_without_a_git_guard(api: Api) -> None:
     assert guarded.status_code == 201, guarded.text
 
 
-async def test_pixies_run_on_it_once_agents_may_push(api: Api) -> None:
+async def test_pixies_run_on_it_once_agents_may_push(unguarded: Api) -> None:
     """D160: with nothing to block, an engine that cannot block anything is no risk."""
+    api = unguarded
     saved = await api.http.put("/api/limits/settings", json={"can_push": True})
     assert saved.status_code == 200, saved.text
 

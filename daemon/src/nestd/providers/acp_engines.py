@@ -1,10 +1,14 @@
-"""The engines Nest runs over the Agent Client Protocol (B107).
+"""The engines Nest runs over the Agent Client Protocol (B107, B153).
 
 ACP is JSON-RPC 2.0 over the agent's stdin and stdout. Each engine here is one Nest engine
-on the generic ACP provider. An open one is fetched from npm into Nest's own folder with
-Nest's install (`bundled`); one that is not on npm runs from the user's own install of it
-(`user_install`). A fetched engine's version here is the one the base environment runs; a
-prepared environment (`nestd/updates`) names newer ones in its manifest, applied below.
+on the generic ACP provider, and each is its vendor's own, as the ACP Registry lists it
+(`engine/acp_registry.py`); no community adapter (D136, D182). One on npm is fetched into
+Nest's own folder with Nest's install (`bundled`); one published as an archive is
+downloaded there, checked against its pinned checksum (`download`); one Nest does not
+fetch runs from the user's own install of it (`user_install`). A fetched npm engine's
+version here is the one the base environment runs; a prepared environment
+(`nestd/updates`) names newer ones in its manifest, applied below. A downloaded engine
+moves with Nest's releases.
 
 Nest makes each engine ask before shell commands, edits, access outside its folder and
 the user's own MCP tools, and answers every request itself (`git_guard`). Where the spike
@@ -39,9 +43,11 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
+from pydantic import JsonValue
+
 from nestd.updates.manifest import read_manifest
 
-type Delivery = Literal["bundled", "user_install"]
+type Delivery = Literal["bundled", "download", "user_install"]
 type SignIn = Literal["api_key", "terminal"]
 
 # The MCP client's own default for one request, where an engine sets none.
@@ -51,10 +57,23 @@ OPENCODE_MCP_TIMEOUT = timedelta(days=7, hours=1)
 
 
 @dataclass(frozen=True)
+class Download:
+    """One platform's archive of an engine Nest downloads, as the ACP Registry lists it."""
+
+    url: str
+    sha256: str
+    # The program inside the archive.
+    program: str
+    # What the registry adds to the engine's arguments on this platform.
+    args: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class AcpEngine:
     id: str
     name: str
-    # npm package and the pinned version; None for an engine Nest does not fetch.
+    # npm package and the pinned version; the package is None for one not on npm, and the
+    # version for one Nest does not fetch.
     package: str | None
     version: str | None
     # The executable inside the installed package's `node_modules/.bin`, or on PATH.
@@ -73,11 +92,23 @@ class AcpEngine:
     # Added while the user has not let agents push (`SessionSpec.guard_subagents`): the
     # engine's own rules that stop its subagents' pushes (B127), before `guarded_env`.
     subagent_env: Mapping[str, str] = field(default_factory=dict[str, str])
-    # The command that signs in, in Terminal: required for `sign_in == "terminal"`.
+    # Arguments added while agents may not push (`SessionSpec.guard_git`), and while
+    # worktrees may not be removed (`guard_worktrees`, Autopilot): the engine's own denials.
+    push_deny_args: tuple[str, ...] = ()
+    worktree_deny_args: tuple[str, ...] = ()
+    # The command that signs in, in Terminal: for `sign_in == "terminal"`, unless Nest signs
+    # in itself with `login_method`.
     login_command: str | None = None
-    # The engine's own login file, relative to XDG_DATA_HOME: signed in while it holds an
-    # entry. For an engine that answers ACP signed out, so the probe cannot tell.
+    # The ACP sign-in method `nestd engines sign-in` asks the engine for, for an engine
+    # with no login command of its own.
+    login_method: str | None = None
+    # The engine's own login file, relative to the folder `auth_root` names (a variable,
+    # else a folder in the home): signed in while it holds an entry. For an engine that
+    # answers ACP signed out, so the probe cannot tell, or whose probe could sign it in.
     auth_file: str | None = None
+    auth_root: tuple[str, str] = ("XDG_DATA_HOME", ".local/share")
+    # Added to the probe's environment only.
+    probe_env: Mapping[str, str] = field(default_factory=dict[str, str])
     # The variables that point the engine at an added account's own folder, by the
     # subfolder of the account folder they name ("" for the folder itself).
     home_env: Mapping[str, str] = field(default_factory=dict[str, str])
@@ -85,6 +116,18 @@ class AcpEngine:
     user_paths: tuple[str, ...] = ()
     # How long the engine waits for one call of an MCP tool, Nest's included.
     mcp_tool_timeout: timedelta = MCP_DEFAULT_TIMEOUT
+    # What the engine is told in `_meta` when a session opens (`acp_meta`).
+    session_meta: Mapping[str, JsonValue] = field(default_factory=dict[str, JsonValue])
+    # The mode a session runs in outside plan mode, set again on every reopened session;
+    # None keeps the session's own.
+    normal_mode: str | None = None
+    # Its entry in the ACP Registry (`engine/acp_registry.py`), where its pins come from.
+    registry_id: str | None = None
+    # A downloaded engine's archive by the registry's platform name (`download`).
+    downloads: Mapping[str, Download] = field(default_factory=dict[str, Download])
+    # Whether it asks before editing files inside its folder; one that does not cannot keep
+    # a run to its write root (`SessionSpec.write_root`).
+    asks_edits: bool = True
 
     @property
     def several_accounts(self) -> bool:
@@ -223,6 +266,7 @@ OPENCODE = AcpEngine(
     guarded_env={"OPENCODE_CONFIG_CONTENT": json.dumps(_OPENCODE_GUARDED_CONFIG)},
     subagent_env={"OPENCODE_CONFIG_CONTENT": json.dumps(_OPENCODE_SUBAGENT_CONFIG)},
     login_command="opencode auth login",
+    registry_id="opencode",
     # It runs its free models signed out, so only its login file says it is signed in.
     auth_file="opencode/auth.json",
     # An added account keeps its login and sessions apart (data, state) but shares the
@@ -241,25 +285,163 @@ GEMINI = AcpEngine(
     sign_in="api_key",
     tested=True,
     git_guard=True,
+    registry_id="gemini",
     home_env={"GEMINI_CLI_HOME": ""},
     mcp_tool_timeout=timedelta(minutes=10),
 )
+# Cursor asks before every command, MCP tool and fetch, its subagents' included, once its
+# settings are Nest's (`engine/cursor_config.py`); a project's `.cursor/cli.json` could
+# replace them, so Nest's runs read none. Its edits inside its folder are never asked
+# (checked in its 2026.11.05 code, B153).
 CURSOR = AcpEngine(
     id="cursor",
     name="Cursor agent",
     package=None,
     version=None,
     executable="agent",
-    args=("acp",),
+    args=("--disable-project-configs", "acp"),
     delivery="user_install",
     sign_in="terminal",
     tested=False,
-    git_guard=False,
+    git_guard=True,
     login_command="agent login",
+    registry_id="cursor",
     user_paths=("~/.local/bin/agent",),
+    asks_edits=False,
+)
+# Copilot asks before every command that is not read-only, every edit, fetch and MCP tool,
+# its subagents' on the parent session (checked in 1.0.107, B153). The user's own saved
+# approvals and its allow-all switches skip asking, but its `--deny-tool` rules win over
+# all of them, so a guarded run gets them for pushes and pull requests. It reuses the
+# user's `gh` login.
+_COPILOT_PUSHES = tuple(
+    f"--deny-tool=shell({command})"
+    for command in (
+        *("git push", "git send-pack", "git http-push"),
+        *("gh pr", "gh api", "gh repo sync", "gh auth", "gh alias"),
+    )
+)
+COPILOT = AcpEngine(
+    id="copilot",
+    name="Copilot CLI",
+    package="@github/copilot",
+    version="1.0.107",
+    executable="copilot",
+    args=("--acp", "--stdio", "--no-auto-update", "--disable-client-telemetry"),
+    delivery="bundled",
+    sign_in="terminal",
+    tested=False,
+    git_guard=True,
+    env={
+        # Over the user's own, which would run everything unasked.
+        "COPILOT_ALLOW_ALL": "false",
+        "COPILOT_AUTO_UPDATE": "false",
+        "COPILOT_TELEMETRY_DISABLED": "true",
+    },
+    push_deny_args=_COPILOT_PUSHES,
+    # Its rules match a git command's first subcommand unless they end in `:*`.
+    worktree_deny_args=("--deny-tool=shell(git worktree remove:*)",),
+    login_command="copilot login",
+    # Never its autopilot, which runs everything unasked.
+    normal_mode="agent",
+    registry_id="github-copilot-cli",
+    # An added account needs its own `gh` login as well, else it falls back to the user's.
+    home_env={"COPILOT_HOME": "", "GH_CONFIG_DIR": "gh"},
+    # For an MCP server given over ACP, whatever the server says (checked in 1.0.107).
+    mcp_tool_timeout=timedelta(minutes=3),
+)
+# Antigravity's ACP server, as the registry publishes it (Google's own, not the `agy` CLI,
+# whose users' permission rules still apply over ACP). It asks before every command,
+# edit, fetch and MCP tool whatever the user's settings say, and refuses reads and edits
+# outside its folder (checked in 1.4.5, B153). A subagent it defines runs commands
+# unasked, so its subagent and workflow tools are switched off; a reopened session keeps
+# the mode it was saved in, so it is put back in `default`, never `auto_edit` or `yolo`.
+_AGY = "https://dl.google.com/agy-extensions/releases/{os}/agy-acp-server-1.4.5-{platform}.zip"
+_AGY_PROGRAM = "agy_acp_server.par"
+ANTIGRAVITY = AcpEngine(
+    id="antigravity",
+    name="Antigravity",
+    package=None,
+    version="1.4.5",
+    executable=_AGY_PROGRAM,
+    args=(),
+    delivery="download",
+    sign_in="terminal",
+    tested=False,
+    git_guard=True,
+    # Its login in a file, never the Keychain, which could ask again when a version moves.
+    env={"AGY_ACP_FORCE_FILE_STORAGE": "1"},
+    session_meta={"antigravity": {"disabledTools": ["invoke_subagent", "run_workflow"]}},
+    normal_mode="default",
+    # Google's own login: the server opens the browser and waits for it.
+    login_method="oauth-personal",
+    auth_file="antigravity-acp/acp_token.json",
+    auth_root=("GEMINI_HOME", ".gemini"),
+    # A session opened with a login it cannot refresh opens the browser itself: never from
+    # a probe.
+    probe_env={"BROWSER": "true"},
+    mcp_tool_timeout=timedelta(minutes=3),
+    registry_id="antigravity-acp",
+    downloads={
+        "darwin-aarch64": Download(
+            _AGY.format(os="macos", platform="darwin-arm64"),
+            "886fff7767d08994ca39eb02c3d01a7532c7325a94aa33aaf52d52068733284f",
+            _AGY_PROGRAM,
+        ),
+        "darwin-x86_64": Download(
+            _AGY.format(os="macos", platform="darwin-x86_64"),
+            "b39f3573c03b9acb9df028853f647527f1f3133f32bd77e78b796e48a205114a",
+            _AGY_PROGRAM,
+        ),
+        "linux-x86_64": Download(
+            _AGY.format(os="linux", platform="linux-x86_64"),
+            "923923a0d7dc8073f66cc6f78647a3107e3a7ee2b7e1a24df8b3927b5188013b",
+            _AGY_PROGRAM,
+            ("--uid=",),
+        ),
+        "linux-aarch64": Download(
+            _AGY.format(os="linux", platform="linux-arm64"),
+            "7d64246633ae094f67e3bbcd2d679e89048f91346d5339313336e7483f40f056",
+            _AGY_PROGRAM,
+            ("--uid=",),
+        ),
+    },
+)
+# Grok Build runs a call unasked where the user's own rules or grants allow it, so Nest's
+# git guard is its own answer to Grok's hook before every call (`acp_grok`); its other
+# requests are judged as any engine's (checked in 1.0.79 against a local model, B153).
+# It runs from its native program, never the npm launcher, which copies itself into the
+# user's home and updates itself there.
+GROK = AcpEngine(
+    id="grok",
+    name="Grok Build",
+    package="@xai-official/grok",
+    version="1.0.79",
+    executable="grok",
+    args=("agent", "--no-leader", "stdio"),
+    delivery="bundled",
+    sign_in="terminal",
+    tested=False,
+    git_guard=True,
+    env={
+        "GROK_DISABLE_AUTOUPDATER": "1",
+        "DISABLE_TELEMETRY": "1",
+        "GROK_TELEMETRY_ENABLED": "false",
+        "GROK_TELEMETRY_TRACE_UPLOAD": "false",
+        "DISABLE_ERROR_REPORTING": "1",
+        # The user's Claude Code hooks are Claude's own.
+        "GROK_CLAUDE_HOOKS_ENABLED": "false",
+        # Else a folder it was never told to trust gets none of the project's instructions.
+        "GROK_FOLDER_TRUST": "0",
+    },
+    login_command="grok login",
+    auth_file="auth.json",
+    auth_root=("GROK_HOME", ".grok"),
+    registry_id="grok-build",
+    home_env={"GROK_HOME": ""},
 )
 # As the base environment runs them.
-BASE_ENGINES: tuple[AcpEngine, ...] = (OPENCODE, GEMINI, CURSOR)
+BASE_ENGINES: tuple[AcpEngine, ...] = (OPENCODE, GEMINI, CURSOR, COPILOT, ANTIGRAVITY, GROK)
 
 
 def in_environment(engines: tuple[AcpEngine, ...], prefix: Path) -> tuple[AcpEngine, ...]:

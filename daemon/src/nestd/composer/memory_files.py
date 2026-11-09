@@ -1,7 +1,9 @@
 """Where each engine reads its instructions, so a `#` memory goes where that engine itself
 reads it (B145, match Claude everywhere): Claude Code's CLAUDE.md, Codex's AGENTS.md,
 Gemini CLI's GEMINI.md. OpenCode reads AGENTS.md and, without one, CLAUDE.md, so a project
-that has only CLAUDE.md keeps getting its memories there.
+that has only CLAUDE.md keeps getting its memories there. Cursor, Copilot and Grok Build
+read both, so the same goes for them. Antigravity gets AGENTS.md or GEMINI.md, which Nest
+gives it itself (`providers/acp_meta.py`, B153).
 """
 
 from dataclasses import dataclass
@@ -15,7 +17,10 @@ _NAMES: dict[str, tuple[str, ...]] = {
     "codex": (AGENTS_MD,),
     "opencode": (AGENTS_MD, CLAUDE_MD),
     "gemini": (GEMINI_MD,),
-    "cursor": (AGENTS_MD,),
+    "cursor": (AGENTS_MD, CLAUDE_MD),
+    "copilot": (AGENTS_MD, CLAUDE_MD),
+    "antigravity": (AGENTS_MD, GEMINI_MD),
+    "grok": (AGENTS_MD, CLAUDE_MD),
 }
 
 
@@ -56,6 +61,9 @@ def memory_files(
         "gemini": () if home is None else (home / ".gemini" / GEMINI_MD,),
         # Cursor keeps the user's own rules in its settings.
         "cursor": (),
+        "copilot": () if home is None else (home / ".copilot" / "copilot-instructions.md",),
+        "antigravity": () if home is None else (home / ".gemini" / GEMINI_MD,),
+        "grok": () if home is None else (home / ".grok" / AGENTS_MD,),
     }
     return {engine: MemoryFile(_NAMES[engine], user) for engine, user in users.items()}
 

@@ -18,7 +18,7 @@ For working on Nest itself. To use it, see the [README](../README.md) and [Using
 - Node.js with npm
 - Claude Code, logged in with your subscription
 - Optional, for Codex chats: a Codex login with a ChatGPT plan (Settings > Accounts > Codex > Sign in on the Mac, or `codex login`). The Codex binary comes with the daemon's dependencies (`openai-codex-cli-bin`), so nothing else is installed.
-- Optional, for the other engines (OpenCode, Gemini CLI): nothing to install; `make install` fetches the versions Nest lists with npm (see More engines)
+- Optional, for the other engines (OpenCode, Gemini CLI, Copilot CLI, Grok Build): nothing to install; `make install` fetches the versions Nest lists with npm (see More engines). Antigravity is downloaded on first use. `nestd engines registry` shows where the ACP Registry lists newer versions than Nest pins
 - Xcode 27 or later (Mac app), Tailscale (iPhone access), the `gh` CLI logged in (pull requests)
 
 ## Development

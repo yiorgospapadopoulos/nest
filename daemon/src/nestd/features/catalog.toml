@@ -583,10 +583,11 @@ block = "B91"
 id = "more-engines"
 group = "engines"
 name = "More engines"
-text = "Chat with other coding agents, some with free models, which Nest installs and keeps to a tested version. Each one asks Nest before it runs a command or edits a file."
+text = "Chat with more coding agents, each its maker's own, some with free models. Nest installs them at a checked version, and each asks Nest before it runs a command, so none can push while agents may not."
 where = "Settings › Accounts"
 added = 2026-10-27
 block = "B107"
+changed = 2026-11-09
 
 [[features]]
 id = "several-accounts"

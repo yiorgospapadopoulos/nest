@@ -1,8 +1,9 @@
 """The checks behind Nest's helper scripts (`push_block`), run as
 `python -I -m nestd.providers.push_check gh <args>` by its `gh` (exit 1 refuses, with the
-reason on stderr) and `... hook` by Codex's PreToolUse hook for a chat's subagents (the
-hook event on stdin, a deny on stdout). Only the command checks are imported, so it starts
-fast.
+reason on stderr), `... hook` by Codex's PreToolUse hook for a chat's subagents (the
+hook event on stdin, a deny on stdout) and `... grok-hook` by Grok Build's command hook in
+a guarded run (the event on stdin, exit 2 refuses with the reason on stderr; B153). Only
+the command checks are imported, so it starts fast.
 """
 
 import json
@@ -83,6 +84,21 @@ def hook_answer(event: object) -> dict[str, object] | None:
     return DENY
 
 
+def grok_refusal(event: object) -> str | None:
+    """Why a guarded run's Grok shell command may not run, behind Nest's own answer to
+    Grok's hook; one that cannot be read is refused.
+    """
+    if not isinstance(event, dict):
+        return DENY_REASON
+    tool_input = cast(dict[str, object], event).get("tool_input")
+    if not isinstance(tool_input, dict):
+        return DENY_REASON
+    command = cast(dict[str, object], tool_input).get("command")
+    if not isinstance(command, str) or is_git_write(command):
+        return DENY_REASON
+    return None
+
+
 def main(argv: Sequence[str], stdin: TextIO, stdout: TextIO, stderr: TextIO) -> int:
     match argv:
         case ["gh", *args]:
@@ -100,8 +116,18 @@ def main(argv: Sequence[str], stdin: TextIO, stdout: TextIO, stderr: TextIO) -> 
             if answer is not None:
                 json.dump(answer, stdout)
             return 0
+        case ["grok-hook"]:
+            try:
+                event = json.load(stdin)
+            except ValueError:
+                event = None
+            reason = grok_refusal(event)
+            if reason is not None:
+                print(reason, file=stderr)
+                return 2
+            return 0
         case _:
-            print("usage: push_check gh <args> | hook", file=stderr)
+            print("usage: push_check gh <args> | hook | grok-hook", file=stderr)
             return 2
 
 

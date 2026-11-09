@@ -95,6 +95,8 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
     /// False: Nest cannot block the engine's git commands.
     public var gitGuard: Bool
     public var state: EngineState
+    /// Nest fetches it itself; false for an engine the user installs (Cursor).
+    public var installable: Bool
     /// Why it is not installed, or why installing failed, in plain words.
     public var stateDetail: String?
     public var signIn: EngineSignIn
@@ -108,8 +110,8 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
         name: String, displayName: String, signedIn: Bool? = nil, signInHint: String? = nil,
         account: ClaudeAccount? = nil, unsupported: Set<ProviderFeature> = [],
         version: String? = nil, tested: Bool = true, gitGuard: Bool = true,
-        state: EngineState = .ready, stateDetail: String? = nil, signIn: EngineSignIn = .browser,
-        loginCommand: String? = nil
+        state: EngineState = .ready, installable: Bool = false, stateDetail: String? = nil,
+        signIn: EngineSignIn = .browser, loginCommand: String? = nil
     ) {
         self.name = name
         self.displayName = displayName
@@ -121,6 +123,7 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
         self.tested = tested
         self.gitGuard = gitGuard
         self.state = state
+        self.installable = installable
         self.stateDetail = stateDetail
         self.signIn = signIn
         self.loginCommand = loginCommand
@@ -141,6 +144,7 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
         tested = try container.decodeIfPresent(Bool.self, forKey: .tested) ?? true
         gitGuard = try container.decodeIfPresent(Bool.self, forKey: .gitGuard) ?? true
         state = try container.decodeIfPresent(EngineState.self, forKey: .state) ?? .ready
+        installable = try container.decodeIfPresent(Bool.self, forKey: .installable) ?? false
         stateDetail = try container.decodeIfPresent(String.self, forKey: .stateDetail)
         signIn = try container.decodeIfPresent(EngineSignIn.self, forKey: .signIn) ?? .browser
         loginCommand = try container.decodeIfPresent(String.self, forKey: .loginCommand)
@@ -160,7 +164,7 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, account, unsupported, version, tested, state
+        case name, account, unsupported, version, tested, state, installable
         case displayName = "display_name"
         case signedIn = "signed_in"
         case signInHint = "sign_in_hint"

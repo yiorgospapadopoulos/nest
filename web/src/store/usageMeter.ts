@@ -42,6 +42,9 @@ const ENGINES: Record<string, string> = {
   opencode: "OpenCode",
   gemini: "Gemini CLI",
   cursor: "Cursor agent",
+  copilot: "Copilot CLI",
+  antigravity: "Antigravity",
+  grok: "Grok Build",
 };
 
 /** "Claude", "Codex", the other known engines' names, else the name capitalized. */

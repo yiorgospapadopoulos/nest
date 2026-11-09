@@ -3,9 +3,11 @@
 Nest makes each engine ask before every shell command, edit and outside-folder access
 (`acp_engines`), and judges each request in this order:
 
-1. A guarded run's git write, and on Autopilot a worktree removal, is rejected without
-   asking, in every mode (D013): the command (its input, else the title Gemini puts it in),
-   and for an MCP tool its name and input, with the matchers the Claude side uses. OpenCode
+1. A guarded run's git write, a subagent's while agents may not push where the engine
+   marks a subagent's calls (Copilot, B153), and on Autopilot a worktree removal, is
+   rejected without asking, in every mode (D013): the command (its input, else the title
+   Gemini puts it in), and for an MCP tool its name and input, with the matchers the Claude
+   side uses. OpenCode
    asks about an MCP tool before it says the tool's input, so a guarded run also rejects an
    MCP tool that comes without its input and whose name says it runs commands (`shell`,
    `exec`, `command`...), since its command cannot be read. The transcript shows Nest's
@@ -45,6 +47,7 @@ from nestd.providers.acp_events import (
     NestTools,
     ToolCall,
     command_text,
+    mcp_call,
     paths,
     shell_call,
     title_name,
@@ -86,6 +89,8 @@ class AcpRules:
     nest: NestTools = field(default_factory=dict[str, frozenset[str]])
     # Worktree removals are rejected, guarded or not (Autopilot).
     worktrees: bool = False
+    # A subagent's git writes are rejected where the engine marks its calls (Copilot).
+    subagents: bool = False
 
 
 class AcpPermissions:
@@ -112,9 +117,10 @@ class AcpPermissions:
         rules = self._rules()
         name, tool_input = tool_use(call, rules.nest)
         own = name.startswith("mcp__") and name.split("__")[1] in rules.nest
-        writes = git_write(call, name, pushes=rules.guarded, worktrees=rules.worktrees)
-        if writes or (rules.guarded and not own and _blind_runner(call)):
-            call.refused = DENY_REASON if rules.guarded else WORKTREE_DENY_REASON
+        pushes = rules.guarded or (rules.subagents and call.subagent)
+        writes = git_write(call, name, pushes=pushes, worktrees=rules.worktrees)
+        if writes or (pushes and not own and _blind_runner(call)):
+            call.refused = DENY_REASON if pushes else WORKTREE_DENY_REASON
             return "reject"
         changed = paths(call)
         root = rules.write_root
@@ -180,12 +186,15 @@ def git_write(call: ToolCall, name: str, *, pushes: bool, worktrees: bool) -> bo
     ):
         return True
     tool = name if name.startswith("mcp__") or not unknown_kind(call) else _mcp_name(call)
-    return tool_writes(tool, call.raw_input, pushes=pushes, worktrees=worktrees)
+    mcp = mcp_call(call)
+    tool_input = call.raw_input if mcp is None else mcp.input
+    return tool_writes(tool, tool_input, pushes=pushes, worktrees=worktrees)
 
 
 def _blind_runner(call: ToolCall) -> bool:
     """An MCP tool asked about without its input whose name says it runs commands."""
-    if not unknown_kind(call) or call.raw_input:
+    mcp = mcp_call(call)
+    if not unknown_kind(call) or (call.raw_input if mcp is None else mcp.input):
         return False
     letters = "".join(c for c in title_name(call.title).lower() if c.isalpha())
     return bool(_RUNS_COMMANDS.search(letters))

@@ -18,7 +18,9 @@ from nestd.sessions.engines import Engine
 
 router = APIRouter(prefix="/api", dependencies=[RequireDevice])
 
-type ProviderName = Literal["claude", "codex", "opencode", "gemini", "cursor"]
+type ProviderName = Literal[
+    "claude", "codex", "opencode", "gemini", "cursor", "copilot", "antigravity", "grok"
+]
 type SignInKind = Literal["browser", "api_key", "terminal"]
 CODEX = "codex"
 _DISPLAY_NAMES = {
@@ -160,4 +162,6 @@ async def _info(ctx: Context, engine: Engine, refresh: bool) -> ProviderInfo:
 def _hint(engine: AcpEngine) -> str:
     if engine.sign_in == "api_key":
         return f"Add your {engine.name} API key in Settings > Accounts."
+    if engine.login_command is None:
+        return f"Sign in to {engine.name} in Settings > Accounts."
     return f"Sign in to {engine.name} with `{engine.login_command}` in Terminal."
