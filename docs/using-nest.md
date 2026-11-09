@@ -26,7 +26,7 @@ A Mac chat's transcript is the web chat in a web view, loaded from the daemon: t
 
 Agent messages show as formatted text on every client: tables, block quotes, task lists, rules, strikethrough, nested lists and coloured code for common languages. Code colours are a small built-in tokenizer, the same on both sides; other languages stay plain. Pictures you send show above your message in a fixed box, open larger on a click, and files show as rows you can save; both also appear in queued messages and old chats, with a quiet note for anything deleted in Settings > Storage. On the Mac and Linux, a repo link or a reference such as `web/src/App.tsx:42` in a message opens in the default text app, only when the file is inside the chat's own folder, never run and without jumping to the line; it stays plain text on the iPhone and with a daemon on another machine. On the Mac and Linux, Settings is a panel over the dimmed window: the X, Esc or a click on the dim closes it, and the chats behind it stay as they were.
 
-Dictation uses Apple's on-device `SpeechAnalyzer` (macOS 26 and later), downloading the language model on first use, with project names and coding terms as hints; it falls back to the older speech recognizer when needed.
+Dictation uses Apple's on-device `SpeechAnalyzer` on macOS 26 and later, downloading the language model on first use, with project names and coding terms as hints. On macOS 15, and when that is not available, it uses the older speech recognizer.
 
 ## Voice input on the iPhone and Linux
 

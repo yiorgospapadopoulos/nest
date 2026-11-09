@@ -10,7 +10,7 @@ The agents are the real ones (Claude Code, Codex, a few others, or a model on yo
 
 ## Install
 
-On a Mac with Apple silicon and macOS 26 or later, or on x86_64 or arm64 Linux with Ubuntu 22.04 or later, paste this in a terminal:
+On a Mac with Apple silicon and macOS 15 or later, or on x86_64 or arm64 Linux with Ubuntu 22.04 or later, paste this in a terminal:
 
 ```sh
 curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/download/install.sh | sh
