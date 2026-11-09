@@ -466,7 +466,7 @@ class ClaudeRun:
             running = self._tasks.update(message)
             if running is not None:
                 await self._sink.background_tasks(running)
-            await translate(message, self._sink, self._thinking, self._output)
+            await translate(message, self._sink, self._thinking, self._output, self._tasks)
         except Exception as exc:
             logger.warning(
                 "could not handle a message from the agent (%s: %s)", type(exc).__name__, exc

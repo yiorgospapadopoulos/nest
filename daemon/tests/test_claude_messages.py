@@ -25,7 +25,7 @@ from claude_agent_sdk import (
 )
 
 from nestd.providers import base
-from nestd.providers.claude_messages import TurnOutput, translate
+from nestd.providers.claude_messages import BackgroundTasks, TurnOutput, translate
 from nestd.providers.claude_thinking import ThinkingTimer
 from tests.recording_sink import RecordingSink
 from tests.test_claude_thinking import Ticker, start, stop
@@ -35,7 +35,9 @@ async def translated(
     message: Message, thinking: ThinkingTimer | None = None, output: TurnOutput | None = None
 ) -> list[tuple[str, object]]:
     sink = RecordingSink()
-    await translate(message, sink, thinking or ThinkingTimer(), output or TurnOutput())
+    await translate(
+        message, sink, thinking or ThinkingTimer(), output or TurnOutput(), BackgroundTasks()
+    )
     return sink.calls
 
 

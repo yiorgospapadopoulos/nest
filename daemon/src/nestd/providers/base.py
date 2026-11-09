@@ -54,6 +54,10 @@ def _none(value: object) -> bool:
     return value is None
 
 
+def _false(value: object) -> bool:
+    return value is False
+
+
 class ToolResultBlock(BaseModel):
     type: Literal["tool_result"] = "tool_result"
     tool_use_id: str
@@ -238,6 +242,9 @@ class AgentTask(BaseModel):
     # A finished subagent's report, when the engine's notification has one (B46); left out
     # of the event otherwise.
     summary: str | None = Field(default=None, exclude_if=_none)
+    # A subagent that finished while tasks it started still run is only waiting for them:
+    # the engine resumes it when they end, and it finishes again later.
+    waiting: bool = Field(default=False, exclude_if=_false)
 
 
 class PlanStep(BaseModel):

@@ -147,6 +147,34 @@ async def test_work_left_running_by_a_previous_process_is_stopped_and_announced(
     assert (await after.snapshot("s1")).background.running == 0
 
 
+async def test_a_background_agent_waiting_on_its_own_work_stays_running(
+    db: Database, clock: FakeClock
+) -> None:
+    bus = EventBus(db, clock)
+    tracking = Tracking(bus)
+    started = AgentTask(task_id="t1", phase="started", tool_use_id="a1", background=True)
+    paused = AgentTask(task_id="t1", phase="finished", status="completed", waiting=True)
+    done = AgentTask(task_id="t1", phase="finished", status="completed")
+    await publish_all(
+        bus,
+        [
+            (types.SESSION_CREATED, {"session": {"cwd": None}}),
+            (types.SESSION_STATE, {"state": "running", "error": None}),
+            (types.SESSION_MESSAGE, start_agent_message("a1", run_in_background=True)),
+            (types.SESSION_AGENT_TASK, started.model_dump(mode="json")),
+            (types.SESSION_AGENT_TASK, paused.model_dump(mode="json")),
+        ],
+    )
+    await tracking.sync("s1")
+    waiting = (await tracking.snapshot("s1")).background
+    await publish_all(bus, [(types.SESSION_AGENT_TASK, done.model_dump(mode="json"))])
+    await tracking.sync("s1")
+    finished = (await tracking.snapshot("s1")).background
+
+    assert (waiting.running, waiting.completed) == (1, 0)
+    assert (finished.running, finished.completed) == (0, 1)
+
+
 async def test_a_forgotten_session_is_read_again_from_its_events(
     db: Database, clock: FakeClock
 ) -> None:
