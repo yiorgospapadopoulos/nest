@@ -138,10 +138,9 @@ enum PaneColors {
     }
 }
 
-/// On the left the grip, the chat's name, its status dot and who started it; on the
-/// right, at the trailing edge whatever the pane's width, the pull request chip, Stuck,
-/// the Run control (B108), maximize and close (B60). Where it works shows in the composer (B71). Drag it to swap
-/// panes.
+/// On the left the grip, the chat's name, its status dot, where it works and who started
+/// it; on the right, at the trailing edge whatever the pane's width, the pull request chip,
+/// Stuck, the Run control (B108), maximize and close (B60). Drag it to swap panes.
 private struct PaneHeader: View {
     let chat: String
     @Environment(Shell.self) private var shell
@@ -173,6 +172,11 @@ private struct PaneHeader: View {
                 let status = shell.statusLabel(of: session)
                 StatusLabel(tone: tone, label: status, showsLabel: false)
                     .help(status)
+            }
+            if let session, let place = ChatPlace.of(session, repo: shell.repo) {
+                HeaderPlace(place: place, project: session.repo)
+                    .frame(maxWidth: 200, alignment: .leading)
+                    .layoutPriority(0.5)
             }
             if let session, let local = shell.providers.localModel(in: session) {
                 // A local chat names its model and engine (B106).
@@ -236,6 +240,31 @@ private struct PaneHeader: View {
         .accessibilityLabel(
             shell.isClaudeChatPane(chat) && session == nil
                 ? "\(title), \(claudeChat?.engineName ?? "Claude Code") chat" : title)
+    }
+}
+
+/// Where the chat works, beside its name: the branch icon and the worktree's name or the
+/// project folder's branch, in its branch map lane colour once the map has it, shortened in
+/// the middle only when the header runs out of room. The tooltip names the folder.
+private struct HeaderPlace: View {
+    let place: ChatPlace
+    let project: String
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        HStack(spacing: 4) {
+            BranchIcon(size: 10)
+            Text(place.name)
+                .font(.mono(TypeSize.meta))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .foregroundStyle(
+            shell.branchMaps.color(of: place, in: project).map(Color.init) ?? Palette.t3
+        )
+        .help(place.help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(place.help)
     }
 }
 

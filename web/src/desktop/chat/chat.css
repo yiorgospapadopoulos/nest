@@ -182,6 +182,31 @@ html.desk.pane .dc-md .md pre code {
   color: var(--t3);
   white-space: nowrap;
 }
+.dc-hplace {
+  --lane: var(--t3);
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 200px;
+  font: var(--dc-meta) var(--mono);
+  /* Darkened in light mode to read at 4.5:1, as the sidebar's place (B147). */
+  color: color-mix(in srgb, var(--lane) 74%, var(--t1));
+}
+:root[data-theme="dark"] .dc-hplace {
+  color: var(--lane);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dc-hplace {
+    color: var(--lane);
+  }
+}
+.dc-hplace > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dc-hstarted {
   flex: 0 1 auto;
   max-width: 160px;
@@ -2207,21 +2232,6 @@ button.dc-line:disabled {
   white-space: nowrap;
   font-size: var(--dc-meta);
   color: var(--t2);
-}
-.dc-place {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 140px;
-  min-width: 0;
-  margin-left: 4px;
-  font: var(--dc-meta) var(--mono);
-  color: var(--t3);
-}
-.dc-place > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 /* Labels stay whole (wholeItems.ts): a selector without room leaves the row instead. */
 .dc-crow .dk-quiet {

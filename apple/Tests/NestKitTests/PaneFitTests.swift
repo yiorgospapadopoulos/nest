@@ -8,7 +8,6 @@ import Testing
         let fit = PaneFit(width: 828)
         #expect(fit.showsDetailsLabel)
         #expect(fit.showsHeaderDetails)
-        #expect(fit.showsPlaceName)
         #expect(fit.showsStatusLabel)
         #expect(fit.showsPullRequest)
         #expect(fit.context == .full)
@@ -31,14 +30,6 @@ import Testing
     @Test func thePixieDetailsButtonShortensToItsIcon() {
         #expect(PaneFit(width: 480).showsDetailsLabel)
         #expect(!PaneFit(width: 479).showsDetailsLabel)
-    }
-
-    /// The branch beside the mic names itself only where the model, thinking,
-    /// permission and the full context still fit beside it (B71); below that its icon.
-    @Test func theComposersPlaceNamesItselfInWidePanes() {
-        #expect(PaneFit(width: 560).showsPlaceName)
-        #expect(!PaneFit(width: 559).showsPlaceName)
-        #expect(!PaneFit(width: 460).showsPlaceName)
     }
 
     /// A pixie's header still shows its status word while it fits.
