@@ -1,16 +1,38 @@
-"""`release/install.sh`'s promises: it never touches a developer's install, and a failure
-leaves nothing half-installed. The machine and `uv` are stand-ins, the script is the real one.
+"""`release/install.sh`'s promises: it never touches a developer's install, it trusts nothing
+in a release that Nest's key did not sign, and a failure leaves nothing half-installed. The
+machine and `uv` are stand-ins; the script is the real one, with a test key for Nest's.
 """
 
+import base64
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+
+from nestd.updates.signature import RELEASE_KEYS
+
 SCRIPT = Path(__file__).resolve().parents[2] / "release" / "install.sh"
+_KEYS_LINE = re.compile(r'^RELEASE_KEYS="([^"]*)"$', re.MULTILINE)
+
+
+def _public(key: ec.EllipticCurvePrivateKey) -> str:
+    der = key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return base64.b64encode(der).decode()
+
+
+def _sign(key: ec.EllipticCurvePrivateKey, manifest: Path) -> bytes:
+    return key.sign(manifest.read_bytes(), ec.ECDSA(hashes.SHA256()))
 
 
 def _write_program(path: Path, body: str) -> None:
@@ -24,10 +46,12 @@ class Machine:
     data: Path
     release: Path
     env: dict[str, str]
+    script: Path
+    key: ec.EllipticCurvePrivateKey
 
     def run(self) -> subprocess.CompletedProcess[str]:
         return subprocess.run(  # noqa: S603 (the repository's own script)
-            ["/bin/sh", str(SCRIPT)],
+            ["/bin/sh", str(self.script)],
             capture_output=True,
             text=True,
             check=False,
@@ -65,6 +89,11 @@ def _machine(tmp_path: Path, *, uv: str = "exit 0", app: bytes = b"app") -> Mach
     joined = ",\n".join(lines)
     latest = f'{{\n  "version": "1.0.0",\n  "notes": "",\n  "files": [\n{joined}\n  ]\n}}\n'
     (release / "latest.json").write_text(latest, encoding="utf-8")
+    key = ec.generate_private_key(ec.SECP256R1())
+    (release / "latest.json.sig").write_bytes(_sign(key, release / "latest.json"))
+    script = tmp_path / "install.sh"
+    text = SCRIPT.read_text(encoding="utf-8")
+    script.write_text(_KEYS_LINE.sub(f'RELEASE_KEYS="{_public(key)}"', text), encoding="utf-8")
     data = home / "data"
     env = {
         "HOME": str(home),
@@ -73,7 +102,55 @@ def _machine(tmp_path: Path, *, uv: str = "exit 0", app: bytes = b"app") -> Mach
         "NEST_RELEASE_URL": f"file://{release}",
         "XDG_CONFIG_HOME": str(home / ".config"),
     }
-    return Machine(home, data, release, env)
+    return Machine(home, data, release, env, script, key)
+
+
+def test_the_script_trusts_the_same_keys_as_the_daemon() -> None:
+    found = _KEYS_LINE.search(SCRIPT.read_text(encoding="utf-8"))
+
+    assert found is not None
+    assert found[1].split() == list(RELEASE_KEYS)
+
+
+def _no_signature(machine: Machine) -> None:
+    (machine.release / "latest.json.sig").unlink()
+
+
+def _signed_by_another_key(machine: Machine) -> None:
+    other = ec.generate_private_key(ec.SECP256R1())
+    (machine.release / "latest.json.sig").write_bytes(_sign(other, machine.release / "latest.json"))
+
+
+def _changed_after_signing(machine: Machine) -> None:
+    # A swapped wheel with its sha256 changed to match: only the signature catches it.
+    wheel = machine.release / "nestd-1.0.0-py3-none-any.whl"
+    latest = machine.release / "latest.json"
+    old = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    wheel.write_bytes(b"not the wheel")
+    new = hashlib.sha256(b"not the wheel").hexdigest()
+    latest.write_text(latest.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("tamper", "message"),
+    [
+        (_no_signature, "This release has no signature"),
+        (_signed_by_another_key, "isn't signed by Nest's release key"),
+        (_changed_after_signing, "isn't signed by Nest's release key"),
+    ],
+)
+def test_a_release_not_signed_by_nests_key_installs_nothing(
+    tmp_path: Path, tamper: Callable[[Machine], None], message: str
+) -> None:
+    machine = _machine(tmp_path, uv=_BUILDING_UV, app=_UNPACKING_APP)
+    tamper(machine)
+
+    result = machine.run()
+
+    assert result.returncode == 1
+    assert message in result.stderr
+    assert "Installing Nest" not in result.stdout
+    assert not machine.data.exists()
 
 
 def test_a_developer_install_stops_it_before_anything_changes(tmp_path: Path) -> None:
