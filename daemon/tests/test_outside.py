@@ -232,7 +232,9 @@ def on_only(kind: str) -> IssueToken:
     return issue
 
 
-async def serve(folder: Path, parents: dict[int, int], daemon: int = 500) -> ClientSocket:
+async def serve(
+    folder: Path, parents: dict[int, int], daemon: int = 500, sessions: dict[int, int] | None = None
+) -> ClientSocket:
     async def read_parents() -> dict[int, int]:
         return parents
 
@@ -242,6 +244,7 @@ async def serve(folder: Path, parents: dict[int, int], daemon: int = 500) -> Cli
         daemon_pid=daemon,
         peer_pid=lambda _: 900,
         parents=read_parents,
+        session=lambda pid: (sessions or {}).get(pid, pid),
     )
     await server.start()
     return server
@@ -260,6 +263,24 @@ async def test_the_socket_gives_a_token_to_a_client_that_is_on(folder: Path) -> 
 async def test_nothing_running_under_the_daemon_gets_a_token(folder: Path) -> None:
     # The asker is a shell of an agent the daemon started: 900 -> 700 -> 500 (the daemon).
     server = await serve(folder, {900: 700, 700: 500, 500: 1})
+    try:
+        assert await ask(folder / "outside.sock", b"shell\n") == {"error": "inside_nest"}
+    finally:
+        await server.stop()
+
+
+async def test_a_detached_process_gets_no_token(folder: Path) -> None:
+    # Left to launchd, as a double fork leaves it.
+    server = await serve(folder, {900: 1})
+    try:
+        assert await ask(folder / "outside.sock", b"shell\n") == {"error": "inside_nest"}
+    finally:
+        await server.stop()
+
+
+async def test_a_process_in_an_agents_session_gets_no_token(folder: Path) -> None:
+    # Its parent shell is gone, but its session began with an agent's command (700).
+    server = await serve(folder, {900: 650, 650: 1, 700: 500, 500: 1}, sessions={900: 700})
     try:
         assert await ask(folder / "outside.sock", b"shell\n") == {"error": "inside_nest"}
     finally:

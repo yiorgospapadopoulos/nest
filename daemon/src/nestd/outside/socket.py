@@ -2,8 +2,12 @@
 
 A client writes one line, its kind, such as `claude_code`. The daemon checks that the
 peer runs as its own user and not under the daemon itself (Nest's own agents and the
-commands they run), and that the client is switched on, then answers one JSON line with a
-fresh token. The socket, `outside.sock`, sits beside the Mac app's in the data folder.
+commands they run, also once detached: a process left to launchd, or in a session an
+agent's command began), and that the client is switched on, then answers one JSON line
+with a fresh token. This keeps Nest's own chats from reaching past their Nest tools by
+accident; it is no wall against a program that tries hard, as anything running as the
+user can act as the user (D180). The socket, `outside.sock`, sits beside the Mac app's
+in the data folder.
 """
 
 import asyncio
@@ -31,6 +35,8 @@ REQUEST_SECONDS = 2.0
 type PeerPid = Callable[[PeerSocket], int]
 # Every running process's parent: pid to parent pid.
 type ProcessParents = Callable[[], Awaitable[Mapping[int, int]]]
+# A process's session id.
+type SessionOf = Callable[[int], int]
 # The token for a kind that is on, or None when it is off.
 type IssueToken = Callable[[ClientKind], Awaitable[str | None]]
 
@@ -52,6 +58,14 @@ async def process_parents() -> Mapping[int, int]:
         if len(fields) == 2 and fields[0].isdigit() and fields[1].isdigit():
             parents[int(fields[0])] = int(fields[1])
     return parents
+
+
+def session_of(pid: int) -> int:
+    """The process's session id; its own pid when it cannot be read."""
+    try:
+        return os.getsid(pid)
+    except OSError:
+        return pid
 
 
 def runs_under(pid: int, ancestor: int, parents: Mapping[int, int]) -> bool:
@@ -77,6 +91,7 @@ class ClientSocket(PrivateSocket):
         peer_uid: PeerUid = read_peer_uid,
         peer_pid: PeerPid = read_peer_pid,
         parents: ProcessParents = process_parents,
+        session: SessionOf = session_of,
     ) -> None:
         super().__init__(path, what="outside clients' tokens")
         self._issue = issue
@@ -85,6 +100,7 @@ class ClientSocket(PrivateSocket):
         self._peer_uid = peer_uid
         self._peer_pid = peer_pid
         self._parents = parents
+        self._session = session
 
     async def respond(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         sock = writer.get_extra_info("socket")
@@ -110,8 +126,16 @@ class ClientSocket(PrivateSocket):
         kind = client_kind(line.decode(errors="replace").strip())
         if len(line) > REQUEST_MAX or kind is None:
             return TokenAnswer(error="unknown_client")
-        if runs_under(pid, self._daemon_pid, await self._parents()):
+        if self._inside_nest(pid, await self._parents()):
             # Nest's own chats have their Nest tools and limits; this would reach past them.
             return TokenAnswer(error="inside_nest")
         token = await self._issue(kind)
         return TokenAnswer(error="off") if token is None else TokenAnswer(token=token)
+
+    def _inside_nest(self, pid: int, parents: Mapping[int, int]) -> bool:
+        """Runs under the daemon, was left to launchd (a client is always a shell's or an
+        app's child), or is in a session whose leader runs under the daemon."""
+        if runs_under(pid, self._daemon_pid, parents) or parents.get(pid, 1) <= 1:
+            return True
+        leader = self._session(pid)
+        return leader != pid and runs_under(leader, self._daemon_pid, parents)
