@@ -20,16 +20,22 @@ public final class TerminalAgentsStore {
     }
 
     /// Switches the client on at `access`, or off with nil, and shows it as the daemon
-    /// reports it after. A refused change, as when Claude Code is missing, leaves it.
+    /// reports it after. A refused change, as when Claude Code is missing, is read again:
+    /// switching off can be half done (off in Nest, still in Claude Code's config).
     public func set(_ kind: OutsideClientKind, _ access: OutsideAccess?) async throws {
         changing = kind
         defer { changing = nil }
-        let changed =
-            if let access {
-                try await api.turnOnOutsideClient(kind, access)
-            } else {
-                try await api.turnOffOutsideClient(kind)
-            }
-        clients = clients?.map { $0.kind == kind ? changed : $0 }
+        do {
+            let changed =
+                if let access {
+                    try await api.turnOnOutsideClient(kind, access)
+                } else {
+                    try await api.turnOffOutsideClient(kind)
+                }
+            clients = clients?.map { $0.kind == kind ? changed : $0 }
+        } catch {
+            try? await load()
+            throw error
+        }
     }
 }

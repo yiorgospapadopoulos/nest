@@ -178,7 +178,7 @@ final class AppController {
         glow?.start()
         if let link = pendingLink {
             pendingLink = nil
-            shell.reveal(chat: link.chat, in: link.project)
+            reveal(link, in: shell)
         }
     }
 
@@ -191,7 +191,18 @@ final class AppController {
             pendingLink = link
             return
         }
-        shell.reveal(chat: link.chat, in: link.project)
+        reveal(link, in: shell)
+    }
+
+    /// Reveals the link's chat once its project has loaded, as it has not yet when the
+    /// link launched the app; after 15 seconds it tries anyway.
+    private func reveal(_ link: NestLink, in shell: Shell) {
+        Task {
+            for _ in 0..<75 where shell.app.repo(link.project) == nil {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            shell.reveal(chat: link.chat, in: link.project)
+        }
     }
 
     /// Connect, Pair and connect, Use This Mac and Remove of the selected daemon: the
