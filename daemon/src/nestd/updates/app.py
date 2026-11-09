@@ -47,6 +47,7 @@ APP_FILE = "app-file"
 BACKUPS = "backups-update"
 PARTIAL_SUFFIX = ".partial"
 TIME_LIMIT = 900.0
+NOT_FOUND = 404
 _VERSION = re.compile(r"\d+(?:\.\d+)*")
 _MACHINES = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x86_64"}
 
@@ -380,12 +381,12 @@ class AppUpdater:
                 response = await client.get(address)
                 response.raise_for_status()
                 signed = await client.get(address + SIGNATURE_SUFFIX)
-                if signed.status_code != httpx.codes.NOT_FOUND:
+                if signed.status_code != NOT_FOUND:
                     signed.raise_for_status()
             except httpx.HTTPError as error:
                 msg = f"could not read {address}: {error}"
                 raise PrepareError(msg) from error
-        signature = None if signed.status_code == httpx.codes.NOT_FOUND else signed.content
+        signature = None if signed.status_code == NOT_FOUND else signed.content
         check_signature(address, response.content, signature, self._release_keys)
         try:
             return Release.model_validate_json(response.content)
