@@ -287,6 +287,14 @@ async def test_a_process_in_an_agents_session_gets_no_token(folder: Path) -> Non
         await server.stop()
 
 
+async def test_a_process_whose_session_leader_is_gone_gets_no_token(folder: Path) -> None:
+    server = await serve(folder, {900: 650, 650: 80, 80: 1}, sessions={900: 777})
+    try:
+        assert await ask(folder / "outside.sock", b"shell\n") == {"error": "inside_nest"}
+    finally:
+        await server.stop()
+
+
 def test_a_parent_loop_ends_the_walk() -> None:
     assert not runs_under(900, 500, {900: 800, 800: 900})
     assert runs_under(os.getpid(), os.getppid(), {os.getpid(): os.getppid()})

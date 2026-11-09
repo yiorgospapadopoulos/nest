@@ -134,8 +134,11 @@ class ClientSocket(PrivateSocket):
 
     def _inside_nest(self, pid: int, parents: Mapping[int, int]) -> bool:
         """Runs under the daemon, was left to launchd (a client is always a shell's or an
-        app's child), or is in a session whose leader runs under the daemon."""
+        app's child), or is in a session whose leader runs under the daemon or is gone (a
+        terminal's or an app's session keeps its leader)."""
         if runs_under(pid, self._daemon_pid, parents) or parents.get(pid, 1) <= 1:
             return True
         leader = self._session(pid)
-        return leader != pid and runs_under(leader, self._daemon_pid, parents)
+        if leader == pid:
+            return False
+        return leader not in parents or runs_under(leader, self._daemon_pid, parents)
