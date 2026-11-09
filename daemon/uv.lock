@@ -1346,6 +1346,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "claude-agent-sdk" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "keyring" },
@@ -1375,6 +1376,7 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "claude-agent-sdk", specifier = ">=0.2.163" },
+    { name = "cryptography", specifier = ">=50.0.2" },
     { name = "fastapi", specifier = ">=0.142.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "keyring", specifier = ">=25.7.0" },
