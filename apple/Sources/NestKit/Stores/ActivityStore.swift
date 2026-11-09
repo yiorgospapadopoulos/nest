@@ -257,7 +257,9 @@ public final class ActivityStore {
             }
         case .agentTask(let task):
             // The next snapshot confirms it; this keeps the counts right in between.
-            guard let id = event.sessionID, task.phase == .finished else { return }
+            guard let id = event.sessionID, task.phase == .finished, !task.waiting else {
+                return
+            }
             stopping[id]?.remove(task.taskID)
             guard let toolUseID = task.toolUseID else { return }
             stopping[id]?.remove(toolUseID)

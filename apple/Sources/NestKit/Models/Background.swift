@@ -91,9 +91,12 @@ public struct AgentTask: Decodable, Sendable, Hashable {
     public var status: AgentTaskEnd?
     /// A finished subagent's report, when the engine gives one (B46).
     public var summary: String?
+    /// A subagent that finished while tasks it started still run is only waiting for
+    /// them: it goes on when they end, and finishes again later.
+    public var waiting: Bool
 
     enum CodingKeys: String, CodingKey {
-        case phase, description, background, status, summary
+        case phase, description, background, status, summary, waiting
         case taskID = "task_id"
         case toolUseID = "tool_use_id"
         case taskType = "task_type"
@@ -109,6 +112,7 @@ public struct AgentTask: Decodable, Sendable, Hashable {
         background = try container.decodeIfPresent(Bool.self, forKey: .background) ?? false
         status = try container.decodeIfPresent(AgentTaskEnd.self, forKey: .status)
         summary = try container.decodeIfPresent(String.self, forKey: .summary)
+        waiting = try container.decodeIfPresent(Bool.self, forKey: .waiting) ?? false
     }
 
     /// The status a finished task leaves its agent or command in.
