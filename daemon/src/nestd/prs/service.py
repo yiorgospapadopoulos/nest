@@ -23,7 +23,7 @@ from nestd.gitops.runner import CommandError, CommandRunner, GitError
 from nestd.prs.ci_logs import feedback
 from nestd.prs.errors import NoFailingChecksError, NoPullRequestError, PrReadError
 from nestd.prs.github import repo_of
-from nestd.prs.models import AutoMergeRequest, MergeRequest, PrListItem, PrState
+from nestd.prs.models import AutoMergeRequest, MergeRequest, MergeWhenReady, PrListItem, PrState
 from nestd.prs.monitor import PrMonitor, restacking
 from nestd.review.errors import GitActionError
 from nestd.sessions.errors import SessionBusyError
@@ -58,7 +58,11 @@ class PullRequests:
         self._cwd = cwd
         # One operation per session at a time; a lock goes once nobody holds it (IMP-13).
         self._locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
-        monitor.listen(on_ready=self._merge_when_ready, on_merged=self._merged_elsewhere)
+        monitor.listen(
+            on_ready=self._merge_when_ready,
+            on_moved=self._head_moved,
+            on_merged=self._merged_elsewhere,
+        )
         self._stacked: Callable[[str], Awaitable[None]] | None = None
 
     def on_merged(self, callback: Callable[[str], Awaitable[None]]) -> None:
@@ -146,8 +150,9 @@ class PullRequests:
         if not request.enabled and pr is not None and pr.auto_merge is not None:
             argv = ["gh", "pr", "merge", url, "--repo", repo_of(url), "--disable-auto"]
             await self._gh(session, "auto_merge", argv)
+        pinned = MergeWhenReady(**choice.model_dump(), head=None if pr is None else pr.head_sha)
         session = await self._store.set_quietly(
-            session_id, merge_when_ready=choice if request.enabled else None
+            session_id, merge_when_ready=pinned if request.enabled else None
         )
         await announce_changes(self._bus, session, {"merge_when_ready"})
         try:
@@ -173,17 +178,41 @@ class PullRequests:
         choice = session.merge_when_ready
         if choice is None:
             return
+        if session.pr is None or choice.head != session.pr.head_sha:
+            await self._head_moved(session_id)
+            return
         try:
-            await self.merge(session_id, choice)
+            # Pinned, so GitHub refuses if a commit lands after this read.
+            await self.merge(session_id, choice, head=choice.head)
         except NestError as error:
             logger.warning("could not merge %s when ready (%s)", session_id, type(error).__name__)
             await self.monitor.offer_merge(await self._sessions.get(session_id))
+
+    async def _head_moved(self, session_id: str) -> None:
+        """Commits arrived after the user asked to merge when ready: the user never saw
+        them, so the wait ends, GitHub's auto-merge too, and the merge approval asks again.
+        """
+        session = await self._sessions.get(session_id)
+        if session.merge_when_ready is None:
+            return
+        session = await self._store.set_quietly(session_id, merge_when_ready=None)
+        await announce_changes(self._bus, session, {"merge_when_ready"})
+        url = session.pr_url
+        if url is not None and session.pr is not None and session.pr.auto_merge is not None:
+            argv = ["gh", "pr", "merge", url, "--repo", repo_of(url), "--disable-auto"]
+            try:
+                await self._gh(session, "auto_merge", argv)
+            except NestError as error:
+                logger.warning("could not stop auto-merge for %s (%s)", url, type(error).__name__)
+        await self.monitor.offer_merge(session)
 
     async def _merged_elsewhere(self, session_id: str) -> None:
         if self._stacked is not None:
             await self._stacked(session_id)
 
-    async def merge(self, session_id: str, request: MergeRequest) -> Session:
+    async def merge(
+        self, session_id: str, request: MergeRequest, head: str | None = None
+    ) -> Session:
         """Merge with gh. A movable chat stays open with its worktree, which goes only when
         the user asks (B119); any other session closes and its worktree is removed. The
         branch stays (on GitHub too, unless the request asks gh to delete it).
@@ -206,7 +235,7 @@ class PullRequests:
             if restacking(session):
                 msg = "This chat's branch waits to move onto its new base: push it first."
                 raise ConflictError(msg)
-            await self._gh_merge(session, url, request)
+            await self._gh_merge(session, url, request, head)
             await self._bus.publish(
                 types.PR_MERGED, {"url": url, "method": request.method}, session_id
             )
@@ -236,8 +265,12 @@ class PullRequests:
             merged = session.pr.model_copy(update={"state": "merged"})
             return await self.monitor.record(session, merged)
 
-    async def _gh_merge(self, session: Session, url: str, request: MergeRequest) -> None:
-        head = None if session.pr is None else session.pr.head_sha
+    async def _gh_merge(
+        self, session: Session, url: str, request: MergeRequest, head: str | None
+    ) -> None:
+        """`head`: the commit to merge; else the one Nest last read."""
+        if head is None and session.pr is not None:
+            head = session.pr.head_sha
         await self._gh(session, "merge", _merge_argv(url, request, head))
 
     async def _gh(self, session: Session, step: str, argv: list[str]) -> None:

@@ -143,6 +143,14 @@ class MergeRequest(BaseModel):
     delete_branch: bool = False
 
 
+class MergeWhenReady(MergeRequest):
+    """A merge the user asked for once the checks pass (B149)."""
+
+    # The head the user said yes to. Later commits were never approved, so they cancel it
+    # and wait for the merge approval; None, as stored before, is never merged by itself.
+    head: str | None = None
+
+
 class AutoMergeRequest(BaseModel):
     """Merge the pull request once its checks pass, or stop waiting (B149)."""
 
