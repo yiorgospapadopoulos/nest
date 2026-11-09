@@ -1,7 +1,8 @@
 """Updating Nest itself on a released install (B130): `<data>/daemon/<version>/` beside the
 running one, and the `current` link the service starts.
 
-A check fetches `latest.json`. A newer release is downloaded, checked against its sha256,
+A check fetches `latest.json` and its signature, refused unless Nest's release key signed it
+(`signature.py`). A newer release is downloaded, checked against its sha256 in it,
 built and run through `engines selfcheck` before anything shows, and the running daemon is
 never touched. Relaunch backs up the database, starts `watcher.py`, moves `current` and ends
 the daemon, so the service starts the new one. `watcher.py` undoes all of it if the new one
@@ -20,7 +21,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from nestd.paths import AppPaths
 from nestd.platform import PlatformName
 from nestd.release import release_url
 from nestd.updates.build import PrepareError, SelfcheckRunner, UvRunner
+from nestd.updates.signature import RELEASE_KEYS, SIGNATURE_SUFFIX, check_signature
 from nestd.updates.state import write_atomically
 from nestd.updates.versions import is_newer
 
@@ -245,6 +247,7 @@ class AppUpdater:
         transport: httpx.AsyncBaseTransport | None = None,
         running: str = __version__,
         watcher: StartWatcher = start_watcher,
+        release_keys: Sequence[str] = RELEASE_KEYS,
     ) -> None:
         self._paths = paths
         self._daemon_dir = paths.daemon_dir
@@ -256,6 +259,7 @@ class AppUpdater:
         self._transport = transport
         self._running = running
         self._watcher = watcher
+        self._release_keys = release_keys
 
     @property
     def packaged(self) -> bool:
@@ -375,9 +379,14 @@ class AppUpdater:
             try:
                 response = await client.get(address)
                 response.raise_for_status()
+                signed = await client.get(address + SIGNATURE_SUFFIX)
+                if signed.status_code != httpx.codes.NOT_FOUND:
+                    signed.raise_for_status()
             except httpx.HTTPError as error:
                 msg = f"could not read {address}: {error}"
                 raise PrepareError(msg) from error
+        signature = None if signed.status_code == httpx.codes.NOT_FOUND else signed.content
+        check_signature(address, response.content, signature, self._release_keys)
         try:
             return Release.model_validate_json(response.content)
         except ValidationError as error:
