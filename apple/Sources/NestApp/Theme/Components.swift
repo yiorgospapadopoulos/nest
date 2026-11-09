@@ -56,6 +56,8 @@ enum Icon {
     static let stop = "stop.fill"
     /// Autopilot (B120).
     static let infinity = "infinity"
+    /// Computer use (B150).
+    static let pointer = "cursorarrow"
     static let play = "play.fill"
     static let warning = "exclamationmark.triangle"
     static let hook = "bolt"

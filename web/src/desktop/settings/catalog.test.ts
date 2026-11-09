@@ -19,6 +19,7 @@ describe("the settings catalog", () => {
       "Appearance",
       "Notifications",
       "Agents",
+      "Computer use",
       "Usage",
       "Performance",
       "Storage",

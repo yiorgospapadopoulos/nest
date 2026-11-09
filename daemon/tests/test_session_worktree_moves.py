@@ -18,6 +18,7 @@ from tests.fake_provider import FakeRun, Turn, background, reply, until_interrup
 from tests.fakes import FakeClock
 from tests.git_support import commit_file, git
 from tests.session_support import Env
+from tests.tool_support import tool_text
 
 TOOL = "worktree"
 
@@ -35,7 +36,7 @@ async def env(tmp_path: Path, db: Database, clock: FakeClock) -> AsyncIterator[E
 
 async def call(run: FakeRun, args: Args) -> str:
     tool = next(tool for tool in run.spec.nest_tools if tool.name == TOOL)
-    return await tool.handler(args)
+    return await tool_text(tool, args)
 
 
 def asks(args: Args, then: Turn) -> Turn:

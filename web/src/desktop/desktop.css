@@ -548,6 +548,13 @@ html.desk button {
   color: var(--t3);
   margin-left: 4px;
 }
+/* Computer use (B150): the chat is using an app right now. */
+.dk-cu-mark {
+  width: 11px;
+  height: 11px;
+  color: var(--run);
+  margin-left: 4px;
+}
 .dk-note {
   color: var(--t3);
   white-space: nowrap;

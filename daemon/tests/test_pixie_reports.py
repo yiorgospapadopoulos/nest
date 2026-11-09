@@ -14,6 +14,7 @@ from tests.async_support import until
 from tests.fake_provider import FakeProvider, FakeRun, edit, engine_error, reply
 from tests.fakes import START
 from tests.pixie_nest_support import ctx, idle, make_boss, provider
+from tests.tool_support import tool_text
 
 __all__ = ["ctx", "provider"]
 
@@ -36,7 +37,7 @@ async def test_the_chats_of_one_turn_are_reported_once_the_pixie_is_idle(
     async def pixie_turn(run: FakeRun) -> None:
         tools = {tool.name: tool for tool in run.spec.tools}
         for prompt in ("Write notes", "Break"):
-            text = await tools["start_session"].handler({"project": "web", "prompt": prompt})
+            text = await tool_text(tools["start_session"], {"project": "web", "prompt": prompt})
             started.append(text.split()[2])
             # One at a time, so each chat takes its own scripted turn.
             await until(lambda: len(provider.runs) == len(started) + 1)

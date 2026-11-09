@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { computerAskOf } from "../../api/payloads.ts";
 import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { engineName } from "../../store/selectors.ts";
@@ -7,6 +8,7 @@ import { Dot } from "../../ui/bits.tsx";
 import { useMerge, usePermission } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
+import { ComputerAskCard } from "./Computer.tsx";
 
 interface Props {
   approval: InlineAsk;
@@ -20,8 +22,14 @@ interface Props {
 export function InlineApproval({ approval, session }: Props) {
   const { state } = useStore();
   switch (approval.kind) {
-    case "permission":
-      return <InlinePermission approval={approval} session={session} />;
+    case "permission": {
+      const computer = computerAskOf(approval);
+      return computer === null ? (
+        <InlinePermission approval={approval} session={session} />
+      ) : (
+        <ComputerAskCard approval={approval} ask={computer} />
+      );
+    }
     case "question":
       return (
         <div className="ask" role="group" aria-label="Question">

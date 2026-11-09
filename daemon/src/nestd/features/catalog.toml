@@ -762,6 +762,18 @@ text = "Every control, row and status is named for screen readers, and the keybo
 where = "Everywhere"
 
 [[features]]
+id = "computer-use"
+group = "chats"
+name = "Agents that use your apps"
+text = "A chat can see and use your Mac apps, the iOS Simulator, an Android emulator and a browser it shares with you, in the background while you keep working. It asks once before using each app, never types passwords, and shows what it sees above the composer with a Stop button."
+where = "Settings > Computer use; a chat asks when it needs an app"
+added = 2026-11-08
+block = "B150"
+
+[features.linux]
+text = "A chat can use an Android emulator and a browser it shares with you, in the background while you keep working. It asks once before each one, never types passwords, and shows what it sees above the composer with a Stop button."
+
+[[features]]
 id = "github-triggers"
 group = "around"
 name = "Start work when GitHub changes"

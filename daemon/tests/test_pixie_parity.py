@@ -53,6 +53,7 @@ from tests.fake_provider import RESULT, FakeRun, limited, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create
+from tests.tool_support import tool_text
 
 CALL = f"mcp__nest__{CALL_PIXIE_TOOL}"
 # Long enough for any step here; a call that never ends fails the test instead of hanging.
@@ -424,7 +425,7 @@ class Caller:
             await run.sink.message([ToolUseBlock(id=tool_id, name=CALL, input=args)], None)
             tool = next(t for t in run.spec.nest_tools if t.name == CALL_PIXIE_TOOL)
             try:
-                text, failed = await tool.handler(args), False
+                text, failed = await tool_text(tool, args), False
             except ToolRefusedError as error:
                 text, failed = str(error), True
             await run.sink.message(

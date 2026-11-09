@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import get_args
+from typing import Literal, get_args
 
 from pydantic import JsonValue
 
@@ -42,6 +42,10 @@ _MAX_CALL_DEPTH = 8
 def keep_planning_message(note: str | None) -> str:
     """What the agent hears when the user wants more planning, with the user's note."""
     return f"{KEEP_PLANNING}: {note}" if note else f"{KEEP_PLANNING}."
+
+
+# The user's answer to a card only they answer (B150).
+type Choice = Literal["deny", "allow", "always"]
 
 
 class SessionPrompts:
@@ -114,9 +118,15 @@ class SessionPrompts:
         """A permission card only the user answers, each time: no rule, mode or Autopilot
         answers it, such as removing a worktree that holds work (B141). True for Allow.
         """
+        return await self.choose(payload, notice) != "deny"
+
+    async def choose(self, payload: dict[str, JsonValue], notice: str) -> Choice:
+        """`confirm` that also tells Always allow apart, for a card that offers it (B150)."""
         approval = await self._wait(ApprovalKind.PERMISSION, payload, notice, None)
         resolution = approval.resolution or {}
-        return approval.status is ApprovalStatus.RESOLVED and resolution.get("behavior") == "allow"
+        if approval.status is not ApprovalStatus.RESOLVED or resolution.get("behavior") != "allow":
+            return "deny"
+        return "always" if resolution.get("always") is True else "allow"
 
     async def ask(self, request: QuestionRequest) -> QuestionAnswer:
         if self._autopilot is not None:

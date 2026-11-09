@@ -22,6 +22,9 @@ import type {
   AgentDefaults,
   CodexAccount,
   CodexMarketplace,
+  ComputerPermission,
+  ComputerStatus,
+  ComputerUseSettings,
   CodexPlugins,
   ConfigurationPage,
   CopyPreview,
@@ -208,6 +211,14 @@ export interface Api {
   // Ends a usage limit pause now (B78): the queued messages, else a continue message, go.
   resumeLimit(id: string): Promise<Session>;
   setAutopilot(id: string, body: SetAutopilot): Promise<Session>;
+  // Computer use (B150): the chat's switch, Stop, and the latest screenshot as a PNG.
+  stopComputerUse(id: string): Promise<Session>;
+  computerFrame(id: string): Promise<Blob>;
+  computerSettings(): Promise<ComputerUseSettings>;
+  saveComputerSettings(settings: ComputerUseSettings): Promise<ComputerUseSettings>;
+  computerStatus(): Promise<ComputerStatus>;
+  // Asks macOS on the daemon's Mac and opens the matching System Settings pane.
+  askComputerPermission(name: ComputerPermission): Promise<{ granted: boolean }>;
   sessionCommands(id: string): Promise<CommandList>;
   repoCommands(name: string): Promise<CommandList>;
   files(id: string, query: string): Promise<{ files: string[] }>;
@@ -1232,6 +1243,32 @@ export class HttpApi implements Api {
 
   saveLimitSettings(settings: LimitSettings) {
     return this.json<LimitSettings>("PUT", "/api/limits/settings", settings);
+  }
+
+  stopComputerUse(id: string) {
+    return this.json<Session>("POST", `${session(id)}/computer/stop`);
+  }
+
+  async computerFrame(id: string) {
+    const response = await this.request(`${session(id)}/computer/frame`, {});
+    if (!response.ok) throw failure(response.status, parse(await response.text()));
+    return response.blob();
+  }
+
+  computerSettings() {
+    return this.json<ComputerUseSettings>("GET", "/api/computer/settings");
+  }
+
+  saveComputerSettings(settings: ComputerUseSettings) {
+    return this.json<ComputerUseSettings>("PUT", "/api/computer/settings", settings);
+  }
+
+  computerStatus() {
+    return this.json<ComputerStatus>("GET", "/api/computer/status");
+  }
+
+  askComputerPermission(name: ComputerPermission) {
+    return this.json<{ granted: boolean }>("POST", `/api/computer/permissions/${name}`);
   }
 
   worktreeSettings() {

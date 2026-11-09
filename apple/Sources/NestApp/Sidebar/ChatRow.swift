@@ -53,12 +53,22 @@ struct ChatRow: View {
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
             StatusMark(tone: tone)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.shownTitle)
-                    .font(.ui(TypeSize.ui))
-                    .foregroundStyle(
-                        finished && rowState != .focused ? Palette.t2 : rowState.titleColor
-                    )
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(session.shownTitle)
+                        .font(.ui(TypeSize.ui))
+                        .foregroundStyle(
+                            finished && rowState != .focused ? Palette.t2 : rowState.titleColor
+                        )
+                        .lineLimit(1)
+                    // Computer use (B150): the chat is using an app right now.
+                    if !shell.model.computer.targets(of: session.id).isEmpty {
+                        Image(systemName: Icon.pointer)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.link)
+                            .help("Using an app")
+                            .accessibilityLabel("Using an app")
+                    }
+                }
                 if place != nil || session.issue != nil || session.pinned || session.stuck != nil
                     || startedBy != nil
                 {

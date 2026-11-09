@@ -19,6 +19,7 @@ dependencies = [
     "pywebpush>=2.5.0",
     "tomli-w>=1.2.0",
     "uvicorn[standard]>=0.54.0",
+    "websockets>=17.0",
 ]
 
 [project.scripts]

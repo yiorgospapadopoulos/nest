@@ -221,3 +221,9 @@ ARTIFACT_ASK: Final = "artifact.ask"
 # Settings > Performance (B115): a run started or finished, `{id, state}` with `state`
 # `running`, `done` or `failed`; ephemeral and global. Open pages read `GET /api/perf`.
 PERF_RUN: Final = "perf.run"
+# Computer use (B150). A new screenshot of what the chat uses, after each look and action
+# (ephemeral): `{target, label, seq}`; the PNG is at `GET /api/sessions/{id}/computer/frame`.
+COMPUTER_FRAME: Final = "computer.frame"
+# What the chat holds now (stored): `{targets}`, each `{key, name}`; empty when it let them
+# go, its turn ended or Stop.
+COMPUTER_STATE: Final = "computer.state"

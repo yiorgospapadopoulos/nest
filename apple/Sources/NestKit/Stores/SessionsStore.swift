@@ -40,6 +40,8 @@ public final class SessionsStore {
     public private(set) var resumingLimit: Set<String> = []
     /// Chats whose Autopilot change the daemon has not answered yet (B120).
     public private(set) var settingAutopilot: Set<String> = []
+    /// Chats whose computer use switch or Stop the daemon has not answered yet (B150).
+    public private(set) var settingComputer: Set<String> = []
     /// Chats whose branch is being rebased or pushed onto its new base (B149).
     public private(set) var restacking: Set<String> = []
     /// Chats whose review guide is being asked for or posted (B149).
@@ -354,6 +356,14 @@ public final class SessionsStore {
         settingAutopilot.insert(id)
         defer { settingAutopilot.remove(id) }
         try await fetch { try await self.api.setAutopilot(id, request) }
+    }
+
+    /// Stop on the preview (B150): the chat lets go, asks again next time, and its turn
+    /// stops.
+    public func stopComputer(_ id: String) async throws {
+        settingComputer.insert(id)
+        defer { settingComputer.remove(id) }
+        try await fetch { try await self.api.stopComputer(id) }
     }
 
     /// Send a nudge: stops the stuck turn and sends a message asking for another

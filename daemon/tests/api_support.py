@@ -1,5 +1,6 @@
 """Helpers for building a daemon app around a temporary context."""
 
+from collections.abc import Sequence
 from datetime import UTC
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import httpx
 from claude_agent_sdk import ClaudeAgentOptions
 
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
+from nestd.computer.backends.base import Backend
 from nestd.configuration.engines import CodexLocations
 from nestd.context import AppContext
 from nestd.gitops.runner import CommandRunner, run_command
@@ -90,6 +92,7 @@ async def build_context(
     local_setup: LocalSetup | None = None,
     npm: FakeNpm | None = None,
     acp: AcpTransportFactory | None = None,
+    computer_backends: Sequence[Backend] = (),
 ) -> AppContext:
     record = log if log is not None else []
     paths = make_paths(
@@ -134,6 +137,8 @@ async def build_context(
         perf_client=no_context_client,
         # The same apps and folders on every system the tests run on (B117).
         platform=MACOS,
+        # Never the real apps, simulators or browsers (B150).
+        computer_backends=computer_backends,
     )
 
 

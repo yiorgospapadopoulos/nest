@@ -11,6 +11,7 @@ from nestd.config.errors import ConfigError
 from nestd.config.models import (
     AgentChoices,
     AgentDefaults,
+    ComputerUseSettings,
     ConfigurationSettings,
     LimitSettings,
     NotificationSettings,
@@ -88,6 +89,11 @@ def save_stuck(paths: AppPaths, stuck: StuckSettings) -> StuckSettings:
 def save_limits(paths: AppPaths, limits: LimitSettings) -> LimitSettings:
     """Replace the `[limits]` section of settings.toml, keeping every other section."""
     return _save_section(paths, "limits", _dump(limits)).limits
+
+
+def save_computer_use(paths: AppPaths, computer_use: ComputerUseSettings) -> ComputerUseSettings:
+    """Replace the `[computer_use]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "computer_use", _dump(computer_use)).computer_use
 
 
 def save_worktrees(paths: AppPaths, worktrees: WorktreeDefaults) -> WorktreeDefaults:

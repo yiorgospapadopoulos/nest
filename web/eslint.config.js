@@ -28,6 +28,7 @@ const DESKTOP_SHARED = [
   "screens/chat/thumbnails.ts",
   "screens/chat/useAutopilot.ts",
   "screens/chat/useCompactAt.ts",
+  "screens/chat/useComputer.ts",
   "screens/chat/useJumpOnSend.ts",
   "screens/chat/useStopTask.ts",
   "screens/chat/useSuggestions.ts",

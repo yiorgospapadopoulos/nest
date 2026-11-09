@@ -355,6 +355,16 @@ class LimitSettings(_Strict):
     can_push: bool = False
 
 
+class ComputerUseSettings(_Strict):
+    """`[computer_use]` (B150, D178): whether chats may see and use apps at all; a chat
+    still asks the user per app."""
+
+    enabled: bool = False
+    # Whether pixie chats, habit runs, chats pixies start and pixies called as subagents
+    # may use it.
+    pixies: bool = False
+
+
 class ProjectSettings(_Strict):
     # Project names in the order clients show them, set by reordering the Mac app's tabs
     # (D090); projects not listed follow in file name order.
@@ -423,6 +433,7 @@ class Settings(_Strict):
     usage: UsageSettings = Field(default_factory=UsageSettings)
     stuck: StuckSettings = Field(default_factory=StuckSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
+    computer_use: ComputerUseSettings = Field(default_factory=ComputerUseSettings)
     projects: ProjectSettings = Field(default_factory=ProjectSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     pixies: PixieDefaults = Field(default_factory=PixieDefaults)

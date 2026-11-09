@@ -3,7 +3,7 @@
 // transcript (`inline`) a quiet coloured label names it; the Needs you panel (`panel`)
 // shows it under its own row.
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
-import { mergeOf, questionsOf, type QuestionView } from "../../api/payloads.ts";
+import { computerAskOf, mergeOf, questionsOf, type QuestionView } from "../../api/payloads.ts";
 import type { Approval, PlanMode, SessionDiff } from "../../api/types.ts";
 import {
   usePermission,
@@ -18,6 +18,7 @@ import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { Button, Segmented, Toggle } from "../ui/controls.tsx";
 import { DiffBar, DiffCounts } from "./bits.tsx";
+import { ComputerAskBody } from "./Computer.tsx";
 import { Glyph } from "./glyphs.tsx";
 import { PublishSheet } from "./PublishSheet.tsx";
 import { useQuestionPicks } from "./questionPicks.ts";
@@ -35,18 +36,28 @@ const TITLES: Record<Approval["kind"], string> = {
   restack: "Branch to move",
 };
 
+const COMPUTER_TITLE = "Needs approval";
+
 export function ApprovalCard({ approval, style }: { approval: Approval; style: CardStyle }) {
   const { state } = useStore();
   const session = state.sessions[approval.session_id];
   const green = approval.kind === "review" || approval.kind === "merge";
+  const computer = computerAskOf(approval);
   const title =
     approval.kind === "question"
       ? `Question from ${engineName(state, session?.provider)}`
-      : TITLES[approval.kind];
+      : computer !== null
+        ? COMPUTER_TITLE
+        : TITLES[approval.kind];
   let body: ReactNode;
   switch (approval.kind) {
     case "permission":
-      body = <PermissionBody approval={approval} />;
+      body =
+        computer === null ? (
+          <PermissionBody approval={approval} />
+        ) : (
+          <ComputerAskBody approval={approval} ask={computer} />
+        );
       break;
     case "question":
       body = <QuestionBody approval={approval} />;

@@ -7,6 +7,7 @@ import type { PixieTab } from "../pixies/PixieView.tsx";
 import { AccountsPage } from "./AccountsPage.tsx";
 import { AgentsPage } from "./AgentsPage.tsx";
 import { AppearancePage } from "./AppearancePage.tsx";
+import { ComputerPage } from "./ComputerPage.tsx";
 import { ConfigurationView } from "./Configuration.tsx";
 import { DevicesPage } from "./DevicesPage.tsx";
 import { newCount } from "./featureNew.ts";
@@ -26,6 +27,7 @@ const PAGES: Record<SettingsPageId, { title: string; icon: IconName }> = {
   appearance: { title: "Appearance", icon: "contrast" },
   notifications: { title: "Notifications", icon: "bell" },
   agents: { title: "Agents", icon: "bot" },
+  computer: { title: "Computer use", icon: "pointer" },
   usage: { title: "Usage", icon: "chart" },
   performance: { title: "Performance", icon: "gauge" },
   storage: { title: "Storage", icon: "drive" },
@@ -145,6 +147,7 @@ function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
     appearance: () => <AppearancePage />,
     notifications: () => <NotificationsPage />,
     agents: () => <AgentsPage />,
+    computer: () => <ComputerPage />,
     usage: () => (
       <UsagePage
         onDetails={() => {

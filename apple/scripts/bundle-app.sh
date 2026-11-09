@@ -9,6 +9,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 swift build -c release --product NestApp
+swift build -c release --product NestComputer
 bin_path="$(swift build -c release --show-bin-path)"
 
 app="build/Nest.app"
@@ -32,6 +33,17 @@ xcrun actool support/AppIcon.icon --compile "$app/Contents/Resources" --app-icon
 test -f "$app/Contents/Resources/Assets.car"
 cp support/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 plutil -lint "$app/Contents/Info.plist" >/dev/null
+# The computer use helper (B150): its own app inside Nest.app, so macOS gives it its own
+# Accessibility and Screen Recording entries. It takes the app's version.
+helper="$app/Contents/Helpers/Nest Computer.app"
+mkdir -p "$helper/Contents/MacOS"
+cp "$bin_path/NestComputer" "$helper/Contents/MacOS/NestComputer"
+cp support/NestComputer-Info.plist "$helper/Contents/Info.plist"
+for key in CFBundleShortVersionString CFBundleVersion; do
+    plutil -replace "$key" -string "$(plutil -extract "$key" raw support/Info.plist)" \
+        "$helper/Contents/Info.plist"
+done
+plutil -lint "$helper/Contents/Info.plist" >/dev/null
 identities="$(security find-identity -v -p codesigning)"
 identity="-"
 for name in ${NEST_SIGNING_IDENTITY:+"$NEST_SIGNING_IDENTITY"} "Nest Local Signing" "Harness Local Signing"; do
@@ -44,6 +56,8 @@ for name in ${NEST_SIGNING_IDENTITY:+"$NEST_SIGNING_IDENTITY"} "Nest Local Signi
         exit 1
     fi
 done
+# The helper is signed first, then the app around it (no --deep).
+codesign --force --sign "$identity" "$helper"
 codesign --force --sign "$identity" "$app"
 
 echo "Built $(pwd)/$app"

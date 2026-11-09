@@ -25,6 +25,7 @@ final class AppController {
     var pairing: DaemonPairing?
     /// The pixies around the notch (B114), for the window's daemon.
     private(set) var island: IslandController?
+    private var glow: ComputerGlow?
     /// The device token is being asked for, for the first start.
     @ObservationIgnored private var starting = false
     @ObservationIgnored private var notifier: Notifier?
@@ -170,6 +171,9 @@ final class AppController {
         island?.stop()
         island = IslandController(shell: shell)
         island?.start()
+        glow?.stop()
+        glow = ComputerGlow(store: model.computer)
+        glow?.start()
     }
 
     /// Connect, Pair and connect, Use This Mac and Remove of the selected daemon: the

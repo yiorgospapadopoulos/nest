@@ -34,6 +34,7 @@ import type {
   Marketplace,
   LimitSettings,
   WorktreeSettings,
+  ComputerUseSettings,
   PixieDefaults,
   StorageSettings,
   StuckSettings,
@@ -114,6 +115,13 @@ export interface InstallProgress {
 }
 
 /** The daemon's settings sections and accounts the Settings pages show, once asked for. */
+/** A chat's newest screenshot from `computer.frame` (B150); its PNG is fetched by `seq`. */
+export interface ComputerFrame {
+  target: string;
+  label: string;
+  seq: number;
+}
+
 export interface SettingsState {
   usage: UsageSettings | null;
   stuck: StuckSettings | null;
@@ -121,6 +129,8 @@ export interface SettingsState {
   pixies: PixieDefaults | null;
   limits: LimitSettings | null;
   worktrees: WorktreeSettings | null;
+  // Computer use (B150); the composers ask for it too, to show the chat's switch.
+  computer: ComputerUseSettings | null;
   github: GithubAccount | null;
   claude: ClaudeAccount | null;
   install: InstallProgress | null;
@@ -164,6 +174,7 @@ export const NO_SETTINGS: SettingsState = {
   pixies: null,
   limits: null,
   worktrees: null,
+  computer: null,
   github: null,
   claude: null,
   install: null,
@@ -253,6 +264,10 @@ export interface State {
   runs: Record<string, RunStatus>;
   // The output of the runs whose sheet is open, by folder, raw; live from `run.output`.
   runOutput: Record<string, string>;
+  // The latest screenshot of what each chat uses (B150), by session id; live only.
+  computerFrames: Record<string, ComputerFrame>;
+  // The chats using an app now (B150), from every chat's `computer.state`; live only.
+  computerUsing: Record<string, true>;
   // Local models, their failures in chats and what this device dismissed (B106, B116).
   local: LocalState;
   toast: Toast | null;
@@ -303,6 +318,8 @@ export const initialState: State = {
   unseenArtifacts: 0,
   runs: {},
   runOutput: {},
+  computerFrames: {},
+  computerUsing: {},
   local: NO_LOCAL,
   toast: null,
 };

@@ -258,6 +258,8 @@ export interface Session {
   // Oldest first, never the current one.
   earlier_worktrees?: EarlierWorktree[];
   moved_at?: string | null;
+  // Computer use (B150): the targets the user let the chat use.
+  computer_targets: string[];
   // The next three are missing on daemons before B149.
   merge_when_ready?: MergeWhenReady | null;
   stack?: ChatStack | null;
@@ -1471,6 +1473,33 @@ export interface StuckSettings {
 export interface LimitSettings {
   can_push: boolean;
 }
+
+/** Whether chats may see and use apps (`/api/computer/settings`, B150). */
+export interface ComputerUseSettings {
+  enabled: boolean;
+  // Whether pixie chats, habit runs and chats pixies start may use it.
+  pixies: boolean;
+}
+
+export type ComputerKind = "mac" | "ios" | "android" | "browser";
+
+/** Whether a kind of target can be used on this computer, and if not, how to get it. */
+export interface ComputerAvailability {
+  kind: ComputerKind;
+  ready: boolean;
+  reason: string | null;
+  link: string | null;
+}
+
+/** `GET /api/computer/status` (B150); the permissions are null off a Mac or when unknown. */
+export interface ComputerStatus {
+  enabled: boolean;
+  kinds: ComputerAvailability[];
+  accessibility: boolean | null;
+  screen_recording: boolean | null;
+}
+
+export type ComputerPermission = "accessibility" | "screen_recording";
 
 /** How Nest makes and tidies worktrees, for every project (`/api/worktrees/settings`, B141). */
 export interface WorktreeSettings {

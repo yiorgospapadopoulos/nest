@@ -95,6 +95,10 @@ struct Composer: View {
                 WorkingCopyRow(draft: draft, repo: shell.repo)
                     .padding(.horizontal, 4)
             }
+            if let live, !start {
+                // Option A of B150: on the composer while the chat holds an app.
+                ComputerStrip(chat: live)
+            }
             field(draft, suggestions: open ? suggestions : nil)
             ControlRow(chat: chat, live: live, pixie: pixie != nil, start: start, draft: draft)
         }

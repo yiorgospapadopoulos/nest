@@ -18,6 +18,7 @@ from tests.fake_provider import FakeRun, Turn, reply
 from tests.fakes import FakeClock
 from tests.git_support import commit_file, git
 from tests.session_support import Env
+from tests.tool_support import tool_text
 
 type Args = dict[str, JsonValue]
 type Work = Callable[[Path], object]
@@ -48,7 +49,7 @@ def removing(seen: list[str], then: Work | None = None) -> Turn:
     async def turn(run: FakeRun) -> None:
         tool = next(tool for tool in run.spec.nest_tools if tool.name == "worktree")
         try:
-            seen.append(await tool.handler({"action": "remove"}))
+            seen.append(await tool_text(tool, {"action": "remove"}))
         except ToolRefusedError as error:
             seen.append(f"refused: {error}")
         if then is not None:

@@ -38,6 +38,7 @@ import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import { AutopilotButton } from "./Autopilot.tsx";
 import { useAutopilot, type AutopilotControl } from "./useAutopilot.ts";
+import { ComputerStrip } from "./Computer.tsx";
 import { ConnectorsSheet, ResumeSheet, type ChatNav } from "./CommandSheets.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
 import { prepareImage } from "./images.ts";
@@ -556,6 +557,7 @@ export function Composer({
           </ul>
         )}
         {hint !== null && <p className="cnote sign">{hint}</p>}
+        {live !== undefined && <ComputerStrip session={live} />}
         {/* An oval field with the round send inside it, as the Mac's pane composer (B102). */}
         <div className="cfield">
           <label className="sr" htmlFor="composer">
@@ -614,7 +616,7 @@ export function Composer({
             </button>
           )}
         </div>
-        {/* +, the mic, Autopilot and where the chat works; then the model, thinking and mode. */}
+        {/* +, the mic, Autopilot, where it works; then model, thinking, mode. */}
         <div className="crow">
           {pixie === undefined && (
             <>

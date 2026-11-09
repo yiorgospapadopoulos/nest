@@ -8,6 +8,8 @@ let package = Package(
     products: [
         .library(name: "NestKit", targets: ["NestKit"]),
         .executable(name: "NestApp", targets: ["NestApp"]),
+        // The computer use helper, bundled as Nest.app/Contents/Helpers/Nest Computer.app.
+        .executable(name: "NestComputer", targets: ["NestComputer"]),
     ],
     dependencies: [
         // The terminal panes' emulator (MIT); the app target only, NestKit stays free of
@@ -21,6 +23,9 @@ let package = Package(
             name: "NestApp",
             dependencies: ["NestKit", .product(name: "SwiftTerm", package: "SwiftTerm")]
         ),
+        .target(name: "NestComputerCore"),
+        .executableTarget(name: "NestComputer", dependencies: ["NestComputerCore"]),
+        .testTarget(name: "NestComputerCoreTests", dependencies: ["NestComputerCore"]),
         .testTarget(
             name: "NestKitTests",
             dependencies: ["NestKit"],

@@ -196,6 +196,8 @@ class Session(NewSession):
     limit_pause: LimitPause | None = None
     # The Autopilot run in progress, and the last one's report until it is dismissed.
     autopilot: Autopilot | None = None
+    # The computer-use targets the user let the chat use (B150).
+    computer_targets: list[str] = Field(default_factory=list[str])
     # A rewound or forked conversation its next run cuts into a new engine session: resume
     # `fork_from` up to the entry `fork_at`, refusing unless only the turn of `fork_drops`
     # goes when that is set (B59). Cleared once the run reports the new session.

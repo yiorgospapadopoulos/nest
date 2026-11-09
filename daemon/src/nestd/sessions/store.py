@@ -449,6 +449,7 @@ _JSON_COLUMNS = (
 def _session(row: sqlite3.Row) -> Session:
     data = dict(row)
     data["allowed_tools"] = json.loads(data["allowed_tools"])
+    data["computer_targets"] = json.loads(data["computer_targets"])
     data["earlier_worktrees"] = json.loads(data["earlier_worktrees"])
     for column in _JSON_COLUMNS:
         data[column] = None if data[column] is None else json.loads(data[column])

@@ -169,6 +169,10 @@ final class FakeAPI: NestAPI {
         var runOutputs: [String: String] = [:]
         /// The engine updates (B121). An accepted relaunch reports none, as the daemon does.
         var updates = EngineUpdates()
+        /// Computer use (B150): its settings and status, and each chat's latest screenshot.
+        var computerSettings = ComputerUseSettings()
+        var computerStatus = ComputerStatus(enabled: false, kinds: [])
+        var computerFrames: [String: Data] = [:]
     }
 
     let state = Mutex(State())
@@ -1854,5 +1858,36 @@ final class FakeAPI: NestAPI {
 
     func shareTailscale() async throws -> SetupCheck {
         try call("shareTailscale") { $0.tailscaleShare }
+    }
+
+    func computerSettings() async throws -> ComputerUseSettings {
+        try call("computerSettings") { $0.computerSettings }
+    }
+
+    func updateComputerSettings(_ settings: ComputerUseSettings) async throws
+        -> ComputerUseSettings
+    {
+        try call("updateComputerSettings") { state in
+            state.computerSettings = settings
+            return settings
+        }
+    }
+
+    func computerStatus() async throws -> ComputerStatus {
+        try call("computerStatus") { $0.computerStatus }
+    }
+
+    func askComputerPermission(_ permission: ComputerPermission) async throws -> Bool {
+        try call("askComputerPermission", permission.rawValue) { _ in false }
+    }
+
+    func stopComputer(_ id: String) async throws -> Session {
+        try call("stopComputer", id) { state in
+            session(id, in: &state) { $0.computerTargets = [] }
+        }
+    }
+
+    func computerFrame(_ id: String) async throws -> Data? {
+        try call("computerFrame", id) { $0.computerFrames[id] }
     }
 }

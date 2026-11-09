@@ -193,6 +193,23 @@ A run ends when the agent says the task is done, or sooner if you set a time or 
 
 A run can use git as it needs, commits and merges included, and can make a worktree and move to it. It merges into the default branch only if the task says so. Pushes and pull requests wait for you unless **Pixies and subagents can push** (Settings > Pixies) is on. Removing worktrees always waits for you. Each decision shows as a line in the chat where it happened, and opens to the options, the one picked and the reason the agent gave. The bar above the composer shows the current step, the time and the number of decisions. A card in the chat says how the run ended and lists what was decided while you were away, with the same lines. It stays where the run ended, like a message, so a chat that ran several times keeps a report for each run. A new chat started on Autopilot gets its own worktree. Habits have the same switch, with their maximum minutes as the time limit.
 
+## Computer use
+
+A chat can see and use your Mac apps, the iOS Simulator, an Android emulator and a browser it shares with you. It works in the background: it reads each window's buttons and fields and acts on them directly, so your cursor, keyboard and front app stay yours. It is off until you turn it on in **Settings > Computer use**. Then any chat can use it, and asks you first when it needs an app.
+
+On the Mac, a small helper app inside Nest.app, Nest Computer, does the work. Allow **Nest Computer** under **Accessibility** and **Nest** under **Screen & System Audio Recording** (macOS gives a helper inside an app that app's Screen Recording). Settings > Computer use shows whether each is on and opens the right System Settings page. The programs agents run get neither.
+
+It asks you once per app, on a card in the chat (from the Mac or the iPhone): "Let this chat use TextEdit?" with Allow or Deny. Allow covers everything the chat does in that app until the chat ends or you press Stop; it asks nothing more. A card nobody answers within a minute counts as no: it goes away and the chat carries on without that app, so it never holds up the rest of its work. It never types into password or payment fields: the agent asks you to type those yourself. Only you answer these cards; pixies never do, and a chat on Autopilot never uses the computer. Pixies, habits and chats pixies start get computer use only when **Pixies may use it** is on.
+
+While a chat uses something, the strip above the composer shows its latest screenshot. Tap it to enlarge it; **Stop** lets go of the app and stops the turn, and the chat asks again before it uses an app next time. One chat uses an app at a time; another chat waits until the first lets go or its turn ends.
+
+- **Mac apps:** native apps and Chrome-based apps (Chrome, VS Code, Slack) work in the background. macOS only shows Nest the windows on the desktop (Space) you are on, plus windows Nest saw being opened; for a window on another desktop, show it once or let the agent open a new one from the app's menu. Games and drawing apps need the app in front.
+- **iOS Simulator:** needs Xcode. The agent can boot a device, open links and use its screen.
+- **Android emulator:** needs Android Studio (free) with an emulator set up.
+- **Shared browser:** a Chrome window with its own profile that you and the agent share; sign in to what it needs there. Your own browser profile is never touched.
+
+On Linux, the Android emulator and the shared browser work the same way.
+
 ## Terminal and browser panes
 
 The Mac workspace can hold terminals and browsers next to chats (still up to four panes). New terminal: project menu, palette or Cmd+Shift+T; the Terminal button at the bottom right opens one in the focused chat's folder (its worktree for a worktree chat), or in the project folder when no chat is focused; the sidebar's "Terminal here" opens one in that chat's folder. New browser: project menu, palette or Cmd+Shift+B; the address field accepts a bare port (`3000`), `localhost:3000` or a URL, and "Local servers" lists dev servers listening on this Mac. Shell code blocks in chats offer Copy and **Run in terminal**, which runs the command in a terminal in the chat's folder (its worktree for a worktree chat) after removing control and text-direction characters, and runs nothing when that folder no longer exists; a command of several lines offers Copy only. Closing a project tab keeps its terminals and browsers; removing the project ends them.

@@ -34,9 +34,12 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
   const starter = session.started_by_pixie;
   const startedBy = starter === null ? "" : `, ${startedByText(state.pixies[starter]?.name)}`;
   const place = sessionPlace(session, repoNamed(state.repos, session.repo));
+  // Computer use (B150): the chat is using an app right now.
+  const using = state.computerUsing[session.id] === true;
   const label =
     `${session.title}, ${status.label}${startedBy}` +
     `${session.stuck !== null ? ", stuck" : ""}${session.pinned ? ", pinned" : ""}` +
+    (using ? ", using an app" : "") +
     placeLabel(place) +
     (session.issue === null ? "" : `, issue #${String(session.issue.number)}`);
   const row = (
@@ -55,6 +58,7 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
               </span>
             )}
             {session.pinned && <Icon name="pin" />}
+            {using && <Icon name="pointer" className="rcu" />}
           </span>
         </span>
         <span className="rtime">{ago(session.updated_at, new Date())}</span>

@@ -15,7 +15,7 @@ from typing import cast
 
 from pydantic import JsonValue
 
-from nestd.providers.base import ToolResultBlock, ToolUseBlock
+from nestd.providers.base import ImageData, ToolResultBlock, ToolUseBlock
 from nestd.providers.codex_rpc import JsonObject
 
 # The kinds of item drawn as tool calls; a web search only once it is done, since its
@@ -172,7 +172,19 @@ def _call_result(item_id: str, item: JsonObject) -> ToolResultBlock:
     result = obj(item.get("result"))
     parts = items(result.get("content")) or items(item.get("contentItems"))
     texts = [text(obj(part).get("text")) for part in parts]
-    return ToolResultBlock(tool_use_id=item_id, content="\n".join(t for t in texts if t))
+    return ToolResultBlock(
+        tool_use_id=item_id,
+        content="\n".join(t for t in texts if t),
+        image_data=[image for part in parts if (image := mcp_image(obj(part))) is not None],
+    )
+
+
+def mcp_image(part: JsonObject) -> ImageData | None:
+    """An MCP image content item, such as a Nest tool's screenshot (B150)."""
+    data, media_type = part.get("data"), part.get("mimeType")
+    if part.get("type") != "image" or not isinstance(data, str) or not isinstance(media_type, str):
+        return None
+    return ImageData(media_type=media_type, data=data)
 
 
 def _query(item: JsonObject) -> str:

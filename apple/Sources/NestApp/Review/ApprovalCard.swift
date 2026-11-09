@@ -79,14 +79,23 @@ private struct PermissionBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let permission = approval.permission {
+            if let permission = approval.permission, permission.computer == nil {
                 CommandBox(
                     text:
                         "\(permission.tool) \(ToolSummary.argument(tool: permission.tool, input: permission.input))"
                 )
                 .padding(.top, 7)
                 .padding(.bottom, 5)
-                if let title = permission.title {
+            }
+            if let permission = approval.permission {
+                if let computer = permission.computer {
+                    // Computer use (B150): the question alone.
+                    Text(permission.title ?? computer.name)
+                        .font(.ui(TypeSize.ui, .medium))
+                        .foregroundStyle(Palette.t1)
+                        .lineSpacing(1.5)
+                        .padding(.top, 7)
+                } else if let title = permission.title {
                     Text(title)
                         .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t2)
@@ -130,11 +139,13 @@ private struct PermissionBody: View {
         }
     }
 
+    private var isComputer: Bool { approval.permission?.computer != nil }
+
     private var approve: some View {
         Button {
             shell.allow(approval)
         } label: {
-            Text("Approve").grows(style)
+            Text(isComputer ? "Allow" : "Approve").grows(style)
         }
         .buttonStyle(.nest(.primary))
     }
@@ -143,14 +154,15 @@ private struct PermissionBody: View {
         Button {
             shell.deny(approval)
         } label: {
-            Text("Reject").grows(style)
+            Text(isComputer ? "Deny" : "Reject").grows(style)
         }
         .buttonStyle(.nest(.soft))
     }
 
     /// Names exactly what it allows; a long command is cut in the middle, whole in the help.
     @ViewBuilder private var always: some View {
-        if approval.permission?.always ?? true {
+        // A computer use card never offers it: Allow covers its chat only (D178).
+        if approval.permission?.always ?? true, approval.permission?.computer == nil {
             Button {
                 shell.allow(approval, always: true)
             } label: {

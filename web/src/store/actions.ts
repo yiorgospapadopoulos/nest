@@ -1371,6 +1371,20 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
+    /** Turns the chat's computer use on or off (B150); its next message follows it. */
+    /** Stop (B150): the chat lets go of what it uses and asks again next time; its turn stops. */
+    async stopComputerUse(id: string): Promise<boolean> {
+      const updated = await attempt(() => api.stopComputerUse(id));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      return true;
+    },
+
+    /** The chat's latest screenshot (B150); null when there is none yet. */
+    computerFrame(id: string): Promise<Blob | null> {
+      return quietly(() => api.computerFrame(id));
+    },
+
     async update(id: string, body: UpdateSessionBody, done?: string): Promise<boolean> {
       const updated = await attempt(() => api.updateSession(id, body));
       if (updated === null) return false;

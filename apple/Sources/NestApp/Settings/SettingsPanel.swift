@@ -116,6 +116,7 @@ extension SettingsPage {
         case .appearance: "circle.lefthalf.filled"
         case .notifications: "bell"
         case .agents: "cpu"
+        case .computer: Icon.pointer
         case .usage: "chart.bar"
         case .performance: "gauge.with.needle"
         case .storage: "internaldrive"
@@ -346,6 +347,7 @@ private struct SettingsDetail: View {
         case .appearance: AppearancePage()
         case .notifications: NotificationsPage()
         case .agents: AgentsPage()
+        case .computer: ComputerPage()
         case .usage: UsagePage()
         case .performance: PerformancePage()
         case .storage: StoragePage()

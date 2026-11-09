@@ -150,6 +150,7 @@ While Nest runs, a strip around the MacBook's notch shows your pixies at work: t
 - **Terminals, browsers and dev servers.** Open a terminal or a browser as a pane, and run the project's dev server per chat, each worktree on its own ports. See [Terminal and browser panes](docs/using-nest.md#terminal-and-browser-panes) and [Dev servers](docs/using-nest.md#dev-servers).
 - **Usage limits.** When you hit your plan's limit, a chat pauses and carries on by itself once the limit resets. See [What the agent is doing](docs/using-nest.md#what-the-agent-is-doing).
 - **Files in chats.** Send PDFs, text files and videos up to 500 MB, and open them, or a file the agent names in its reply, in a viewer inside Nest. Replies show pictures, tables and math. See [Files and messages](docs/using-nest.md#files-and-messages).
+- **Computer use.** A chat can see and use your Mac apps, the iOS Simulator, an Android emulator and a browser it shares with you, in the background. It asks you once before it uses each app. See [Computer use](docs/using-nest.md#computer-use).
 - **Search.** Find any chat by what was said in it. See [Search](docs/using-nest.md#search).
 - **Linux and another machine.** A Linux app that works like the Mac app, and a Mac app that can drive Nest on another computer of yours. See [Linux desktop app](docs/using-nest.md#linux-desktop-app) and [A daemon on another machine](docs/using-nest.md#a-daemon-on-another-machine).
 
@@ -174,6 +175,7 @@ Every device can be revoked in Settings > Devices.
 | Notifications | To tell you when a chat needs you, has work to review or finishes. |
 | Microphone and speech recognition | Only for Dictation, while you dictate a message. Speech is turned into text on the Mac. |
 | Accessibility (optional) | Lets the pixie strip around the notch see where the menu bar is free, so it can grow into that space. |
+| Accessibility for Nest Computer, Screen Recording for Nest (optional) | Only if you turn on computer use: the small helper inside Nest.app reads and uses the windows of apps a chat is allowed to use, and takes their screenshots, which macOS allows through Nest's Screen Recording. |
 | Tailscale sharing | Share with my devices makes Nest reachable at your private tailnet address, so the iPhone can open it. `tailscale serve --https=443 off` stops it. |
 
 ## Privacy

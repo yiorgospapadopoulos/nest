@@ -1,4 +1,5 @@
 import {
+  computerAskOf,
   mergeOf,
   permissionOf,
   planOf,
@@ -84,6 +85,8 @@ export function needsYouLine(approval: Approval): string {
     case "restack":
       return line("Branch to move", restackTitle(restackOf(approval)));
     default: {
+      const computer = computerAskOf(approval);
+      if (computer !== null) return line("Permission", computer.question);
       const { tool, command } = permissionOf(approval, null);
       // A command reads as the others do, after its tool's name.
       return line("Permission", tool === "Bash" ? `Bash ${command}` : command);

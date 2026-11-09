@@ -95,6 +95,30 @@ export function permissionOf(approval: Approval, root: string | null): Permissio
   };
 }
 
+/** A computer use card (B150): a chat asks to use an app; Allow covers its chat. */
+export interface ComputerAsk {
+  target: string;
+  name: string;
+  // Such as `Press "Send" in Mail?`.
+  question: string;
+  reason: string | null;
+}
+
+/** The computer use part of a permission approval; null for any other approval. */
+export function computerAskOf(approval: Approval): ComputerAsk | null {
+  if (approval.kind !== "permission") return null;
+  const computer = obj(approval.payload.computer);
+  const target = str(computer.target);
+  if (target === null || computer.kind !== "use") return null;
+  const name = str(computer.name) ?? target;
+  return {
+    target,
+    name,
+    question: str(approval.payload.title) ?? `Let this chat use ${name}?`,
+    reason: str(approval.payload.reason),
+  };
+}
+
 export interface QuestionOption {
   label: string;
   description: string | null;

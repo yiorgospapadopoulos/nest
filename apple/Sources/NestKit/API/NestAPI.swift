@@ -434,6 +434,20 @@ public protocol NestAPI: Sendable {
     /// Runs `tailscale serve` for the user; the Tailscale check again, with the link to turn
     /// HTTPS on when Tailscale asks for it.
     func shareTailscale() async throws -> SetupCheck
+
+    // MARK: Computer use (B150)
+
+    func computerSettings() async throws -> ComputerUseSettings
+    func updateComputerSettings(_ settings: ComputerUseSettings) async throws
+        -> ComputerUseSettings
+    /// The master switch, both permissions and each kind's availability.
+    func computerStatus() async throws -> ComputerStatus
+    /// Asks macOS through the helper, which opens the matching System Settings pane.
+    func askComputerPermission(_ permission: ComputerPermission) async throws -> Bool
+    /// The chat lets go of what it uses and asks again next time; its turn stops.
+    func stopComputer(_ id: String) async throws -> Session
+    /// The latest screenshot of what the chat uses; nil before the first.
+    func computerFrame(_ id: String) async throws -> Data?
 }
 
 extension NestAPI {

@@ -2003,6 +2003,62 @@ button.dc-line:disabled {
   color: var(--bad);
   background: var(--fail-soft);
 }
+/* Computer use (B150): the live strip on the composer while the chat holds an app. */
+.dc-cu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px 5px 5px;
+  border-radius: 12px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--div);
+  font-size: var(--dc-ui);
+}
+.dc-cu-shot {
+  flex: none;
+  width: 96px;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--raised);
+  box-shadow: 0 0 0 1px var(--div);
+  cursor: zoom-in;
+}
+.dc-cu-shot:disabled {
+  cursor: default;
+}
+.dc-cu-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.dc-cu-app {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  color: var(--t1);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dc-dot.run {
+  background: var(--st-run);
+}
+.dk-btn.dc-cu-stop {
+  gap: 5px;
+  padding: 0 8px 0 6px;
+  color: var(--bad);
+  background: var(--fail-soft);
+  font-weight: 500;
+}
+.dc-thumb.small {
+  max-width: 128px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--div);
+}
 .dc-crow .dk-quiet:disabled {
   cursor: default;
   background: transparent;

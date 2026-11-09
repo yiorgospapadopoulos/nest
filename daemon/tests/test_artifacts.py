@@ -34,6 +34,7 @@ from tests.fake_provider import FakeProvider, FakeRun
 from tests.fakes import FakeClock
 from tests.pixie_nest_support import ctx, idle, make_boss, provider, user_chat
 from tests.test_claude_provider import ScriptedHandler
+from tests.tool_support import tool_text
 
 __all__ = ["ctx", "provider"]
 
@@ -63,15 +64,16 @@ async def chat(ctx: AppContext, provider: FakeProvider, repo: str = "web") -> tu
 
 async def create(tools: Tools, **args: JsonValue) -> str:
     """The new artifact's id, read from the tool's answer."""
-    text = await tools["create_artifact"].handler(
-        {"title": "Options", "kind": "markdown", "content": REPORT, **args}
+    text = await tool_text(
+        tools["create_artifact"],
+        {"title": "Options", "kind": "markdown", "content": REPORT, **args},
     )
     return text.split()[2]
 
 
 async def refused(tools: Tools, tool: str, **args: JsonValue) -> str:
     with pytest.raises(ToolRefusedError) as refusal:
-        await tools[tool].handler(args)
+        await tool_text(tools[tool], args)
     return str(refusal.value)
 
 
@@ -211,8 +213,9 @@ async def test_creating_saves_the_first_version_and_announces_it(
 ) -> None:
     session, tools = await chat(ctx, provider)
 
-    answer = await tools["create_artifact"].handler(
-        {"title": "  Options\n compared ", "kind": "markdown", "content": REPORT}
+    answer = await tool_text(
+        tools["create_artifact"],
+        {"title": "  Options\n compared ", "kind": "markdown", "content": REPORT},
     )
 
     [artifact] = await ctx.artifacts.list_artifacts()
@@ -262,11 +265,12 @@ async def test_updating_adds_a_version_and_keeps_the_earlier_ones(
     await ctx.artifacts.mark_seen(artifact_id)
     clock.advance(timedelta(minutes=5))
 
-    renamed = await tools["update_artifact"].handler(
-        {"artifact_id": artifact_id, "content": "<h1>v2</h1>", "title": "Plan"}
+    renamed = await tool_text(
+        tools["update_artifact"],
+        {"artifact_id": artifact_id, "content": "<h1>v2</h1>", "title": "Plan"},
     )
-    kept = await tools["update_artifact"].handler(
-        {"artifact_id": artifact_id, "content": "<h1>v3</h1>"}
+    kept = await tool_text(
+        tools["update_artifact"], {"artifact_id": artifact_id, "content": "<h1>v3</h1>"}
     )
 
     detail = await ctx.artifacts.detail(artifact_id)
@@ -389,7 +393,7 @@ async def test_a_pixie_runs_artifacts_are_kept_with_the_pixie(
     # Another run of the same pixie, such as a habit run, may update it.
     habit_run = chat_session.model_copy(update={"id": "habit-session"})
     again = {t.name: t for t in artifact_tools(ctx.artifacts, habit_run)}
-    await again["update_artifact"].handler({"artifact_id": artifact_id, "content": "week 2"})
+    await tool_text(again["update_artifact"], {"artifact_id": artifact_id, "content": "week 2"})
 
     [artifact] = await ctx.artifacts.list_artifacts(pixie_id=boss.pixie.id)
     assert "create_artifact" not in {tool.name for tool in run.spec.tools}
@@ -425,7 +429,7 @@ async def test_a_deleted_chat_keeps_its_artifacts(ctx: AppContext, provider: Fak
 async def test_deleting_removes_rows_and_files(ctx: AppContext, provider: FakeProvider) -> None:
     _, tools = await chat(ctx, provider)
     gone = await create(tools)
-    await tools["update_artifact"].handler({"artifact_id": gone, "content": "v2"})
+    await tool_text(tools["update_artifact"], {"artifact_id": gone, "content": "v2"})
     kept = await create(tools, title="Kept")
 
     await ctx.artifacts.delete(gone)
@@ -468,7 +472,7 @@ async def test_lists_filter_and_put_the_latest_update_first(
     clock.advance(timedelta(minutes=1))
     other = await create(api_tools, title="Other")
     clock.advance(timedelta(minutes=1))
-    await web_tools["update_artifact"].handler({"artifact_id": older, "content": "new"})
+    await tool_text(web_tools["update_artifact"], {"artifact_id": older, "content": "new"})
 
     every = await ctx.artifacts.list_artifacts()
     in_api = await ctx.artifacts.list_artifacts(repo="api")
@@ -515,7 +519,7 @@ async def test_a_failed_save_leaves_no_file(
 
     fail_saving_versions(monkeypatch)
     with pytest.raises(OSError, match="disk full"):
-        await tools["update_artifact"].handler({"artifact_id": artifact_id, "content": "v2"})
+        await tool_text(tools["update_artifact"], {"artifact_id": artifact_id, "content": "v2"})
     with pytest.raises(OSError, match="disk full"):
         await create(tools, title="Never")
 
@@ -600,7 +604,7 @@ async def test_the_ready_made_kinds_save_their_data(
     _, tools = await chat(ctx, provider)
 
     artifact_id = await create(tools, kind=kind, content=content)
-    await tools["update_artifact"].handler({"artifact_id": artifact_id, "content": content})
+    await tool_text(tools["update_artifact"], {"artifact_id": artifact_id, "content": content})
 
     detail = await ctx.artifacts.detail(artifact_id)
     assert detail.kind == kind
@@ -645,11 +649,11 @@ async def test_reading_an_artifact_shows_its_latest_version_and_who_saved_it(
 ) -> None:
     _, tools = await chat(ctx, provider)
     artifact_id = await create(tools, kind="document", content=DOCUMENT, title="Plan")
-    agent_read = await tools["read_artifact"].handler({"artifact_id": artifact_id})
+    agent_read = await tool_text(tools["read_artifact"], {"artifact_id": artifact_id})
     edited = DOCUMENT.replace("Ship it.", "Ship it soon.")
     await ctx.artifacts.edit(artifact_id, edited, 1)
 
-    user_read = await tools["read_artifact"].handler({"artifact_id": artifact_id})
+    user_read = await tool_text(tools["read_artifact"], {"artifact_id": artifact_id})
 
     assert agent_read == (
         f"Artifact {artifact_id}: Plan\nKind: document. Latest version: 1, saved by an agent."
@@ -672,7 +676,7 @@ async def test_reading_a_page_shows_its_files_and_what_it_stored(
     artifact_id = await create(tools, kind="html", content="<p>x</p>", title="Tracker", files=files)
     await ctx.artifacts.write_storage(artifact_id, {"day": "Mon", "habits": '["read"]'}, [])
 
-    text = await tools["read_artifact"].handler({"artifact_id": artifact_id})
+    text = await tool_text(tools["read_artifact"], {"artifact_id": artifact_id})
 
     assert text == (
         f"Artifact {artifact_id}: Tracker\nKind: html. Latest version: 1, saved by an agent.\n"
@@ -693,8 +697,8 @@ async def test_reading_shows_at_most_20_kb_of_stored_data(
     big = await create(tools, kind="html", content="<p>y</p>", title="Big")
     await ctx.artifacts.write_storage(big, {"huge": "h" * 30_000}, [])
 
-    text = await tools["read_artifact"].handler({"artifact_id": artifact_id})
-    huge = await tools["read_artifact"].handler({"artifact_id": big})
+    text = await tool_text(tools["read_artifact"], {"artifact_id": artifact_id})
+    huge = await tool_text(tools["read_artifact"], {"artifact_id": big})
 
     shown = json.loads(text.split("as JSON:\n", 1)[1].split("\n", 1)[0])
     assert list(shown) == [f"k{i:02}" for i in range(20)]
@@ -727,7 +731,7 @@ async def test_a_pixie_reads_what_its_other_runs_saved(
     habit_run = chat_session.model_copy(update={"id": "habit-session"})
     again = {t.name: t for t in artifact_tools(ctx.artifacts, habit_run)}
 
-    text = await again["read_artifact"].handler({"artifact_id": artifact_id})
+    text = await tool_text(again["read_artifact"], {"artifact_id": artifact_id})
 
     assert text.endswith(REPORT)
 
@@ -735,7 +739,7 @@ async def test_a_pixie_reads_what_its_other_runs_saved(
 async def test_the_guide_is_nests_design_guidance(ctx: AppContext, provider: FakeProvider) -> None:
     _, tools = await chat(ctx, provider)
 
-    guide = await tools["artifact_guide"].handler({})
+    guide = await tool_text(tools["artifact_guide"], {})
 
     assert tools["artifact_guide"].schema == {"type": "object", "properties": {}}
     assert 150 <= len(guide.splitlines()) <= 260
@@ -871,13 +875,13 @@ async def test_reading_says_how_often_the_page_asked_claude_today(
 ) -> None:
     _, tools = await chat(ctx, provider)
     artifact_id = await create(tools, kind="html", content="<p>x</p>", title="Ask")
-    quiet = await tools["read_artifact"].handler({"artifact_id": artifact_id})
+    quiet = await tool_text(tools["read_artifact"], {"artifact_id": artifact_id})
     await ctx.db.execute(
         "INSERT INTO artifact_asks (artifact_id, at, ok) VALUES (?, ?, 1), (?, ?, 0)",
         (artifact_id, ctx.clock.now().isoformat(), artifact_id, ctx.clock.now().isoformat()),
     )
 
-    text = await tools["read_artifact"].handler({"artifact_id": artifact_id})
+    text = await tool_text(tools["read_artifact"], {"artifact_id": artifact_id})
 
     assert "Asks of Claude" not in quiet
     assert "\nAsks of Claude today: 2 of 20.\nStored by its page: nothing." in text
