@@ -273,12 +273,12 @@ Nest also lists the Codex chats of each registered repo that were started outsid
 | Level | What it may do |
 |---|---|
 | Read only | See whether Nest runs, list projects, chats, pixies and teams, show a chat and its last answer, read its conversation |
-| Read and message | Also send a message to a chat |
+| Read and message | Also send a message to a chat (one that calls a pixie or team with `@` needs Full) |
 | Full | Also start a chat and call a pixie or team |
 
 Switching on **Claude Code** adds Nest to Claude Code's own config as the MCP server `nest-app` (`claude mcp add --scope user`), and **Codex** to Codex's (`codex mcp add`); switching off takes it out again. For **Other MCP apps**, the page shows the line to give the app, `<nest> mcp --client other`. Changing a level applies at once, also to an app that is already running.
 
-What they can never do: touch a pixie's own chats, habit runs or called pixies; answer a chat's permission prompts, questions or plans (those wait for you in Needs you); or push and open pull requests while **Pixies and subagents can push** is off. A chat they start shows "from Claude Code" (or the app's name) on its first message, starts in Ask unless they choose Plan or Accept edits, stays in its worktree if it got one, and is reviewed and merged by you like any chat. Each app starts at most 2 chats running at once and 5 a day.
+What they can never do: touch a pixie's own chats, habit runs or called pixies; call a hidden pixie; or answer a chat's permission prompts, questions or plans (those wait for you in Needs you). A chat they start cannot push or open a pull request while **Pixies and subagents can push** is off. A message they send into one of your own chats is worked on with that chat's own permission mode, as a pixie's message is, so give Read and message only to apps you trust with your chats. A chat they start shows "from Claude Code" (or the app's name) on its first message, starts in Ask unless they choose Plan or Accept edits, stays in its worktree if it got one, and is reviewed and merged by you like any chat. Each app starts at most 2 chats running at once and 5 a day.
 
 The `nest` command (on your PATH after the one-line install; in a checkout it is `daemon/.venv/bin/nest`):
 
@@ -294,9 +294,9 @@ nest call reviewer "Review the last commit" --project NAME [--wait]
 nest open CHAT                       # opens the chat in the Mac app, or in the browser
 ```
 
-Every command takes `--json` and prints what Nest answered, for scripts. `--wait` waits until the chat stops working (30 minutes at most, or `--timeout` minutes) and prints its last answer; the command then exits 0, 2 when the chat waits on you in Nest, or 1 when it failed. In MCP apps the same actions are tools (`nest_status`, `list_projects`, `list_chats`, `get_chat`, `read_chat`, `start_chat`, `send_message`, `list_pixies`, `call_pixie`); the ones that start or message a chat take `wait_seconds`.
+Every command takes `--json` and prints what Nest answered, for scripts. `--wait` waits until the chat stops working (30 minutes at most, or `--timeout` minutes) and prints its last answer; the command then exits 0, 2 when the chat waits on you in Nest, 3 when it was still working when the wait ran out, or 1 when it failed or was stopped. In MCP apps the same actions are tools (`nest_status`, `list_projects`, `list_chats`, `get_chat`, `read_chat`, `start_chat`, `send_message`, `list_pixies`, `call_pixie`); the ones that start or message a chat take `wait_seconds` (at most 50 in Codex, which stops a tool after a minute).
 
-How it connects: the command and `nest mcp` get a token from Nest over a private socket in its data folder, then use Nest's API on `127.0.0.1`. Tokens are made on request and kept only in memory, so a restart or switching an app off ends them. Nest's own chats get no token, so an agent running inside Nest keeps to its own Nest tools; in them `nest-app` offers no tools. This keeps Nest's chats from using it by accident. It is no wall against a program that tries hard, since anything running as you can act as you.
+How it connects: the command and `nest mcp` get a token from Nest over a private socket in its data folder, then use Nest's API on `127.0.0.1`. Tokens are made on request and kept only in memory, so a restart or switching an app off ends them. Nest's own chats get no token, so an agent running inside Nest keeps to its own Nest tools; in them `nest-app` offers no tools. This keeps Nest's chats from using it by accident. It is no wall against a program that tries hard (one that hands the command to `tmux`, say), since anything running as you can act as you.
 
 ## Codex
 
