@@ -97,6 +97,11 @@ from nestd.notifications.delivery import NotificationDelivery
 from nestd.notifications.notifier import Notifier
 from nestd.notifications.subscriptions import PushSubscriptionStore
 from nestd.notifications.vapid import VapidKeys
+from nestd.outside.config import McpConfig
+from nestd.outside.service import OutsideService
+from nestd.outside.socket import ClientSocket
+from nestd.outside.store import ClientStore
+from nestd.outside.tokens import ClientTokens
 from nestd.paths import AppPaths
 from nestd.perf.collectors.context import ContextClientFactory
 from nestd.perf.collectors.load import InProcess
@@ -277,6 +282,10 @@ class AppContext:
     features: Features
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
+    # Terminal agents (B151): what outside clients may do, and the socket that hands them
+    # tokens (None when the paths name no socket, as in tests).
+    outside: OutsideService
+    outside_socket: ClientSocket | None
     # The machine's name for people, for clients on other machines (B105).
     machine: str
     # Model servers on this Mac or the network (B106).
@@ -985,6 +994,29 @@ class AppContext:
             clock=clock,
             access=WriteAccess(runner, paths.data_dir, clock),
         )
+        codex_where = codex_locations or CodexLocations.default(
+            Path.home(), os.environ, bundled_binary().executable, system
+        )
+        outside = OutsideService(
+            store=ClientStore(db, clock),
+            tokens=ClientTokens(),
+            config=McpConfig(
+                claude=claude_code,
+                codex_program=lambda: codex_where.standalone() or codex_where.bundled,
+                codex_home=paths.codex_home,
+                run=runner,
+                cwd=paths.data_dir,
+            ),
+            sessions=sessions,
+            session_store=store,
+            approvals=approvals,
+            bus=bus,
+            repos=repos,
+            pixies=pixies,
+            teams=teams,
+            clock=clock,
+            zone=zone,
+        )
         context = cls(
             paths=paths,
             platform=system,
@@ -1098,6 +1130,10 @@ class AppContext:
             token_socket=None
             if paths.token_socket is None
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
+            outside=outside,
+            outside_socket=None
+            if paths.outside_socket is None
+            else ClientSocket(paths.outside_socket, outside.issue_token),
             machine=machine_name_text,
             local=local,
             runs=runs,

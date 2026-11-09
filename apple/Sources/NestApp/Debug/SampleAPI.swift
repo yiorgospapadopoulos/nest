@@ -40,6 +40,20 @@
         private var archiveDays: Int? = 30
         /// Settings > Computer use (B150), as S2 of its design shows it.
         private var computerUse = ComputerUseSettings(enabled: true)
+        private var terminalClients: [OutsideClient] = {
+            let nest = "/Users/me/.local/bin/nest"
+            return [
+                OutsideClient(
+                    kind: .claudeCode, label: "Claude Code", on: true, access: .full,
+                    command: [nest, "mcp", "--client", "claude_code"]),
+                OutsideClient(
+                    kind: .codex, label: "Codex", command: [nest, "mcp", "--client", "codex"]),
+                OutsideClient(
+                    kind: .other, label: "Other MCP apps", on: true, access: .read,
+                    command: [nest, "mcp", "--client", "other"]),
+                OutsideClient(kind: .shell, label: "nest command", command: [nest]),
+            ]
+        }()
         private var pixieDefaults = PixieSettings()
         private var limits = LimitSettings()
         private var worktrees = WorktreeSettings()
@@ -2196,6 +2210,30 @@
                 id: "tailscale", title: "Tailscale and iPhone", state: .missing,
                 message: "Nest is shared. Pair your iPhone.", detail: "mac-mini.tail3f2a.ts.net",
                 stage: "pair")
+        }
+
+        func outsideClients() async throws -> [OutsideClient] {
+            lock.withLock { terminalClients }
+        }
+
+        func turnOnOutsideClient(_ kind: OutsideClientKind, _ access: OutsideAccess)
+            async throws -> OutsideClient
+        {
+            lock.withLock {
+                let index = terminalClients.firstIndex { $0.kind == kind }!
+                terminalClients[index].on = true
+                terminalClients[index].access = access
+                return terminalClients[index]
+            }
+        }
+
+        func turnOffOutsideClient(_ kind: OutsideClientKind) async throws -> OutsideClient {
+            lock.withLock {
+                let index = terminalClients.firstIndex { $0.kind == kind }!
+                terminalClients[index].on = false
+                terminalClients[index].access = nil
+                return terminalClients[index]
+            }
         }
 
         func computerSettings() async throws -> ComputerUseSettings {

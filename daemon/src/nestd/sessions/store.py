@@ -310,6 +310,14 @@ class SessionStore:
         )
         return [_session(row) for row in rows]
 
+    async def started_by_client(self, kind: str) -> list[Session]:
+        """Every chat the outside client started, oldest first (B151)."""
+        rows = await self._db.fetch_all(
+            "SELECT * FROM sessions WHERE started_by_client = ? ORDER BY created_at, rowid",
+            (kind,),
+        )
+        return [_session(row) for row in rows]
+
     async def batch_members(self, pixie_id: str) -> list[Session]:
         """The pixie's started chats whose report has not gone back to it yet, oldest first."""
         rows = await self._db.fetch_all(

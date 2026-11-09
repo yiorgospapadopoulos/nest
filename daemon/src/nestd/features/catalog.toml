@@ -824,3 +824,21 @@ text = "An agent reads the pull request's changes and writes what changed, where
 where = "Pull request popover > Write review guide"
 added = 2026-11-08
 block = "B149"
+
+[[features]]
+id = "terminal-agents"
+group = "around"
+name = "AI apps in your terminal use Nest"
+text = "Switch on a coding app you run in a terminal and it can list your chats, read them, send messages and start chats or call pixies in Nest, as far as the level you give it. Chats it starts are reviewed in Nest and cannot push unless you let agents push."
+where = "Settings > Terminal agents"
+added = 2026-11-09
+block = "B151"
+
+[[features]]
+id = "nest-command"
+group = "around"
+name = "The `nest` command for chats"
+text = "`nest new`, `nest list`, `nest show`, `nest send`, `nest call` and `nest open` work your chats from a shell. `--wait` waits for the answer and `--json` prints it for scripts."
+where = "Settings > Terminal agents > nest command"
+added = 2026-11-09
+block = "B151"

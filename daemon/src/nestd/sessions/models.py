@@ -114,10 +114,13 @@ class NewSession(BaseModel):
     issue: IssueRef | None = None
     # The project's GitHub trigger that started the chat, and the event (B148).
     started_by_trigger: TriggerRef | None = None
+    # The outside client that started the chat through Nest's API, such as "claude_code"
+    # (B151); guarded like a trigger's chat.
+    started_by_client: str | None = None
     # A chat that outlives its worktree (B119): merging leaves it open, deleting it keeps
     # its worktrees, and its agent moves it between worktrees with its tool. Set when a
-    # chat is created, never on a pixie's chat, a habit run or a chat a pixie or a GitHub
-    # trigger started.
+    # chat is created, never on a pixie's chat, a habit run or a chat a pixie, a GitHub
+    # trigger or an outside client started.
     movable: bool = False
 
 

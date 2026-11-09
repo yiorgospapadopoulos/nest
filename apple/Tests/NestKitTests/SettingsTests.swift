@@ -271,9 +271,9 @@ import Testing
     @Test func pagesHaveTitlesAndSearchFindsRows() {
         #expect(
             SettingsPage.fixed.map(\.title) == [
-                "General", "Appearance", "Notifications", "Agents", "Computer use", "Usage",
-                "Performance", "Storage", "Pixies", "Accounts", "Devices", "Keyboard shortcuts",
-                "Configuration", "Features",
+                "General", "Appearance", "Notifications", "Agents", "Computer use",
+                "Terminal agents", "Usage", "Performance", "Storage", "Pixies", "Accounts",
+                "Devices", "Keyboard shortcuts", "Configuration", "Features",
             ])
         // B97: plugins, marketplaces, skills, MCP servers and connectors live there now.
         for word in ["plugins", "marketplaces", "skills", "mcp servers", "connectors", "hooks"] {

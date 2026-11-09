@@ -27,6 +27,7 @@ struct NestApp: App {
                 .environment(controller)
                 .containerBackground(.clear, for: .window)
                 .onAppear { controller.start() }
+                .onOpenURL { controller.open($0) }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 900)

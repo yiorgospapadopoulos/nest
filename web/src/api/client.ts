@@ -24,6 +24,9 @@ import type {
   CodexMarketplace,
   ComputerPermission,
   ComputerStatus,
+  OutsideAccess,
+  OutsideClient,
+  OutsideClientKind,
   ComputerUseSettings,
   VoiceModelId,
   VoiceStatus,
@@ -225,6 +228,9 @@ export interface Api {
   computerSettings(): Promise<ComputerUseSettings>;
   saveComputerSettings(settings: ComputerUseSettings): Promise<ComputerUseSettings>;
   computerStatus(): Promise<ComputerStatus>;
+  outsideClients(): Promise<OutsideClient[]>;
+  turnOnOutsideClient(kind: OutsideClientKind, access: OutsideAccess): Promise<OutsideClient>;
+  turnOffOutsideClient(kind: OutsideClientKind): Promise<OutsideClient>;
   // Asks macOS on the daemon's Mac and opens the matching System Settings pane.
   askComputerPermission(name: ComputerPermission): Promise<{ granted: boolean }>;
   // Voice input (B154): its state, fetching it, the model, and a WAV recording to text.
@@ -1287,6 +1293,18 @@ export class HttpApi implements Api {
 
   computerStatus() {
     return this.json<ComputerStatus>("GET", "/api/computer/status");
+  }
+
+  outsideClients() {
+    return this.json<OutsideClient[]>("GET", "/api/outside-clients");
+  }
+
+  turnOnOutsideClient(kind: OutsideClientKind, access: OutsideAccess) {
+    return this.json<OutsideClient>("PUT", `/api/outside-clients/${kind}`, { access });
+  }
+
+  turnOffOutsideClient(kind: OutsideClientKind) {
+    return this.json<OutsideClient>("DELETE", `/api/outside-clients/${kind}`);
   }
 
   askComputerPermission(name: ComputerPermission) {

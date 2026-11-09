@@ -452,6 +452,15 @@ public protocol NestAPI: Sendable {
     func stopComputer(_ id: String) async throws -> Session
     /// The latest screenshot of what the chat uses; nil before the first.
     func computerFrame(_ id: String) async throws -> Data?
+
+    // MARK: Terminal agents (B151)
+
+    func outsideClients() async throws -> [OutsideClient]
+    /// Switches the client on at `access`, or changes its level; Claude Code and Codex get
+    /// Nest in their own config, and a failure to write it leaves the client off.
+    func turnOnOutsideClient(_ kind: OutsideClientKind, _ access: OutsideAccess) async throws
+        -> OutsideClient
+    func turnOffOutsideClient(_ kind: OutsideClientKind) async throws -> OutsideClient
 }
 
 extension NestAPI {

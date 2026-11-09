@@ -17,6 +17,8 @@ final class AppController {
 
     private(set) var phase = Phase.loading
     private(set) var shell: Shell?
+    /// A `nest://` link that came before the window had a shell (B151), opened once it has.
+    private var pendingLink: NestLink?
     /// Starts the daemon's launchd service when the daemon cannot be reached.
     let service: ServiceStarter
     /// This Mac and the paired remotes, with the one selected.
@@ -174,6 +176,33 @@ final class AppController {
         glow?.stop()
         glow = ComputerGlow(store: model.computer)
         glow?.start()
+        if let link = pendingLink {
+            pendingLink = nil
+            reveal(link, in: shell)
+        }
+    }
+
+    /// Opens the chat of a `nest://chat/<id>?project=<name>` link, as `nest open` sends one
+    /// (B151); any other link is ignored.
+    func open(_ url: URL) {
+        guard let link = NestLink(url) else { return }
+        NSApp.activate()
+        guard let shell else {
+            pendingLink = link
+            return
+        }
+        reveal(link, in: shell)
+    }
+
+    /// Reveals the link's chat once its project has loaded, as it has not yet when the
+    /// link launched the app; after 15 seconds it tries anyway.
+    private func reveal(_ link: NestLink, in shell: Shell) {
+        Task {
+            for _ in 0..<75 where shell.app.repo(link.project) == nil {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            shell.reveal(chat: link.chat, in: link.project)
+        }
     }
 
     /// Connect, Pair and connect, Use This Mac and Remove of the selected daemon: the

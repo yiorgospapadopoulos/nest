@@ -580,7 +580,14 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
         </div>
       );
       const files = sent && !bare ? <Sent files={item.attachments} /> : null;
-      const from = item.from === undefined ? null : <FromPixie id={item.from} />;
+      const from =
+        item.from !== undefined ? (
+          <FromPixie id={item.from} />
+        ) : item.client !== undefined ? (
+          <div className="m-from">
+            <span>from {item.client}</span>
+          </div>
+        ) : null;
       if (onActions === undefined) {
         return (
           <>

@@ -227,3 +227,6 @@ COMPUTER_FRAME: Final = "computer.frame"
 # What the chat holds now (stored): `{targets}`, each `{key, name}`; empty when it let them
 # go, its turn ended or Stop.
 COMPUTER_STATE: Final = "computer.state"
+# An outside client was switched on or off, or its level changed (B151); global,
+# `{client}` with the whole client as Settings shows it.
+OUTSIDE_CLIENT_CHANGED: Final = "outside_client.changed"

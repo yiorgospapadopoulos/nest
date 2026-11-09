@@ -377,11 +377,14 @@ class SessionManager:
         started_by_pixie: str | None = None,
         pixie_batch: str | None = None,
         started_by_trigger: TriggerRef | None = None,
+        started_by_client: str | None = None,
     ) -> Session:
         """`started_by_pixie` marks a chat a pixie starts with its tools, in the batch of
         its turn; its prompt is shown as the pixie's. Such a chat needs a git repository,
         since it must work in its own worktree (B41). So does a chat a project's GitHub
         trigger starts (`started_by_trigger`, B148); both need the engine's git block.
+        A chat an outside client starts (`started_by_client`, B151) may work in place or
+        in a folder that is no repository, but in a repository it needs the git block too.
         """
         unattended = started_by_pixie is not None or started_by_trigger is not None
         try:
@@ -398,7 +401,7 @@ class SessionManager:
             if request.provider is not None
             else await self._engines.listing(request.model, self._defaults_engine(defaults))
         )
-        if unattended:
+        if unattended or (started_by_client is not None and repo.git):
             # Its git block is a promise the engine must keep (B107).
             engine.require("pixies")
         if not is_local(request.model):
@@ -466,8 +469,9 @@ class SessionManager:
             pixie_batch=pixie_batch,
             issue=None if issue is None else issue.ref(),
             started_by_trigger=started_by_trigger,
+            started_by_client=started_by_client,
             # A chat no one started by hand stays in its worktree (B148).
-            movable=not unattended,
+            movable=not unattended and started_by_client is None,
         )
         await self._refuse_member_calls(new, request.prompt)
         attachments = await self._attachments.for_session(request.attachment_ids, None)
@@ -488,10 +492,12 @@ class SessionManager:
             session = await self.autopilot.start(
                 session, request.autopilot, permission_mode or DEFAULT_MODE, announce=False
             )
-        sender = Sender(
-            from_pixie=started_by_pixie,
-            extra=None if issue is None else {"issue": issue_meta(issue, request.prompt)},
-        )
+        extra: dict[str, JsonValue] = {}
+        if issue is not None:
+            extra["issue"] = issue_meta(issue, request.prompt)
+        if started_by_client is not None:
+            extra["from_client"] = started_by_client
+        sender = Sender(from_pixie=started_by_pixie, extra=extra or None)
         await self._bus.publish(
             types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
         )

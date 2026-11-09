@@ -251,6 +251,7 @@ public final class AppModel {
     public let performance: PerformanceStore
     /// Computer use (B150).
     public let computer: ComputerStore
+    public let terminalAgents: TerminalAgentsStore
     public let shortcuts: ShortcutsStore
     /// Artifacts the chats saved and the Artifacts view (B79).
     public let artifacts: ArtifactsStore
@@ -325,6 +326,7 @@ public final class AppModel {
         features = FeaturesStore(api: api, store: preferences)
         performance = PerformanceStore(api: api)
         computer = ComputerStore(api: api)
+        terminalAgents = TerminalAgentsStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api, store: daemonPreferences ?? preferences)

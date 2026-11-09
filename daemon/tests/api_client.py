@@ -37,6 +37,7 @@ class Api:
         claude: FakeClaude,
         codex: FakeAppServer,
         npm: FakeNpm,
+        transport: httpx.AsyncBaseTransport,
     ) -> None:
         self.ctx = ctx
         self.http = http
@@ -49,6 +50,8 @@ class Api:
         self.claude = claude
         self.codex = codex
         self.npm = npm
+        # The app's own transport, for other clients of it, such as the `nest` command's.
+        self.transport = transport
 
 
 def wants_loops(request: pytest.FixtureRequest) -> bool:
@@ -105,7 +108,18 @@ async def running_api(
         ):
             http.headers["Authorization"] = f"Bearer {local_token(secrets)}"
             yield Api(
-                ctx, http, provider, runner, opener, probes, engine, restart, claude, codex, npm
+                ctx,
+                http,
+                provider,
+                runner,
+                opener,
+                probes,
+                engine,
+                restart,
+                claude,
+                codex,
+                npm,
+                transport,
             )
     finally:
         await ctx.close()

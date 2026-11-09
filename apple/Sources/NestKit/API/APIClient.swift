@@ -1206,6 +1206,23 @@ public struct APIClient: NestAPI {
         }
     }
 
+    // MARK: Terminal agents (B151)
+
+    public func outsideClients() async throws -> [OutsideClient] {
+        try await get("outside-clients")
+    }
+
+    public func turnOnOutsideClient(_ kind: OutsideClientKind, _ access: OutsideAccess)
+        async throws -> OutsideClient
+    {
+        try await call(
+            "PUT", ["outside-clients", kind.rawValue], body: OutsideTurnOn(access: access))
+    }
+
+    public func turnOffOutsideClient(_ kind: OutsideClientKind) async throws -> OutsideClient {
+        try await call("DELETE", ["outside-clients", kind.rawValue])
+    }
+
     // MARK: Plumbing
 
     private func get<T: Decodable>(_ path: String...) async throws -> T {

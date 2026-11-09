@@ -163,6 +163,7 @@ export type TranscriptItem =
   | DecisionItem
   | AutopilotReportItem
   // `from`: the pixie that sent it into this chat (B41).
+  // `client`: the app or command outside Nest that sent it (B151), as words.
   // `github`: the issue or review comments Nest wrote into it (B101), after `text`.
   | {
       kind: "user";
@@ -170,6 +171,7 @@ export type TranscriptItem =
       text: string;
       attachments: SentFile[];
       from?: string;
+      client?: string;
       github?: GitHubPart;
     }
   // What Nest tells a pixie once the chats it started have finished (B41), or after a
@@ -539,7 +541,23 @@ function userItems(key: string, p: JsonObject): TranscriptItem[] {
   if (commands.length > 0 && rest === "" && attachments.length === 0) return bash;
   const item: TranscriptItem = { kind: "user", key, text: rest, attachments };
   const from = str(p.from_pixie);
-  return [...bash, from === null ? item : { ...item, from }];
+  const client = clientLabel(str(p.from_client));
+  return [
+    ...bash,
+    { ...item, ...(from === null ? {} : { from }), ...(client === null ? {} : { client }) },
+  ];
+}
+
+const CLIENT_LABELS: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex: "Codex",
+  other: "an AI app",
+  shell: "the nest command",
+};
+
+/** Who outside Nest sent a message (B151), or null for the user or a pixie. */
+function clientLabel(kind: string | null): string | null {
+  return kind === null ? null : (CLIENT_LABELS[kind] ?? "outside Nest");
 }
 
 function sentFile(value: JsonValue): SentFile {
