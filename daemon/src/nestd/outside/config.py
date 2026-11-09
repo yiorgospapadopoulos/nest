@@ -10,6 +10,7 @@ from nestd.claude_code.cli import ENV_PROGRAM, ClaudeCli, ClaudeCliError
 from nestd.errors import NestError
 from nestd.gitops.runner import CommandError, CommandRunner
 from nestd.outside.models import MCP_NAME, ClientKind
+from nestd.paths import is_packaged
 
 
 class McpConfigError(NestError):
@@ -18,10 +19,21 @@ class McpConfigError(NestError):
     status_code = 502
 
 
-def nest_program() -> Path | None:
-    """The `nest` command beside the daemon's Python: the checkout's or the release's."""
-    program = Path(sys.executable).parent / "nest"
-    return program if program.is_file() else None
+# A checkout's `nest`: <repo>/daemon/.venv/bin/nest, next to <repo>/daemon/src/nestd.
+CHECKOUT_PROGRAM = Path(__file__).resolve().parents[3] / ".venv" / "bin" / "nest"
+
+
+def nest_program(home: Path | None = None) -> Path | None:
+    """The `nest` command at a path that outlives updates: the one the installer puts on
+    the PATH (a link that follows releases), else a checkout's, else the one beside the
+    daemon's Python. The daemon's own Python may sit in an engine environment whose folder
+    an update deletes (B121), so it comes last."""
+    candidates = [
+        (home or Path.home()) / ".local" / "bin" / "nest",
+        *([] if is_packaged() else [CHECKOUT_PROGRAM]),
+        Path(sys.executable).parent / "nest",
+    ]
+    return next((path for path in candidates if path.is_file()), None)
 
 
 class McpConfig:
