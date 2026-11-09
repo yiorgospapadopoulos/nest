@@ -46,6 +46,7 @@ from nestd.repos.service import RepoService
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import IN_FLIGHT, CreateSession, Sender, Session, SessionMode
 from nestd.sessions.store import SessionStore
+from nestd.sessions.subagents import mention
 
 TRANSCRIPT_LIMIT = 40
 TRANSCRIPT_MAX = 200
@@ -133,10 +134,12 @@ class OutsideService:
     # Tokens
 
     async def issue_token(self, kind: ClientKind) -> str | None:
-        """A fresh token for a client that is on; None when it is off."""
-        if await self._store.get(kind) is None:
-            return None
-        return self._tokens.issue(kind)
+        """A fresh token for a client that is on; None when it is off. Waits for a switch
+        in progress, so no token outlives switching the client off."""
+        async with self._changing:
+            if await self._store.get(kind) is None:
+                return None
+            return self._tokens.issue(kind)
 
     async def authenticate(self, token: str) -> ClientRow | None:
         kind = self._tokens.kind_of(token)
@@ -214,6 +217,7 @@ class OutsideService:
     async def send(self, client: ClientRow, session_id: str, text: str) -> ChatDetails:
         require(client, "message", "send a message")
         session = await self._session(session_id)
+        await self._check_calls(client, text)
         await self._sessions.send(
             session.id, text, [], sender=Sender(extra={"from_client": client.kind})
         )
@@ -235,6 +239,7 @@ class OutsideService:
             permission_mode=request.permission_mode,
             provider=request.engine,
         )
+        await self._check_calls(client, request.prompt)
         async with self._start_locks.setdefault(client.kind, asyncio.Lock()):
             await self._require_room(client.kind)
             session = await self._sessions.create(create, started_by_client=client.kind)
@@ -269,6 +274,19 @@ class OutsideService:
             types.OUTSIDE_CLIENT_CHANGED, {"client": view.model_dump(mode="json")}
         )
         return view
+
+    async def _check_calls(self, client: ClientRow, text: str) -> None:
+        """A message that calls a pixie or team (`@handle`) needs Full access, as calling
+        one does; a hidden pixie is the user's alone to call."""
+        handles = [(pixie.slug, pixie.hidden) for pixie in await self._pixies.list_pixies()]
+        handles += [(team.handle, False) for team in await self._teams.list_teams()]
+        for handle, hidden in handles:
+            if not mention(handle).search(text):
+                continue
+            if hidden:
+                msg = f"@{handle} is a hidden pixie; only the user calls it, in Nest."
+                raise OutsideRefusedError(msg)
+            require(client, "full", "call a pixie")
 
     async def _session(self, session_id: str) -> Session:
         session = await self._sessions.get(session_id)

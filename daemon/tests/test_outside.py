@@ -9,10 +9,12 @@ import tempfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 
 from nestd.events import types
 from nestd.gitops.runner import CommandError
+from nestd.outside.config import CHECKOUT_PROGRAM, nest_program
 from nestd.outside.models import ClientKind
 from nestd.outside.socket import ClientSocket, IssueToken, runs_under
 from nestd.pixies.models import CreatePixie
@@ -146,6 +148,44 @@ async def test_a_client_starts_at_most_five_chats_a_day(api: Api) -> None:
     assert "today" in refused.json()["detail"]
 
 
+async def test_a_client_starts_at_most_two_chats_running(api: Api) -> None:
+    token = await turn_on(api, "shell", "full")
+    for _ in range(2):
+        chat = await api.ctx.sessions.create(CreateSession(repo="repo", prompt="Earlier"))
+        await until(lambda chat_id=chat.id: settled(api, chat_id))
+        await api.ctx.db.execute(
+            "UPDATE sessions SET started_by_client = 'shell', state = 'running' WHERE id = ?",
+            (chat.id,),
+        )
+
+    refused = await api.http.post(
+        "/api/outside/chats", json={"project": "repo", "prompt": "Go"}, headers=as_client(token)
+    )
+
+    assert refused.status_code == 403
+    assert "running" in refused.json()["detail"]
+
+
+async def test_a_message_that_calls_a_pixie_needs_full_access(api: Api) -> None:
+    chat = await a_chat(api)
+    await api.ctx.pixies.create(CreatePixie(name="Closer"))
+    await api.ctx.pixies.create(CreatePixie(name="Auditor", hidden=True))
+    token = await turn_on(api, "shell", "message")
+
+    async def message(text: str) -> httpx.Response:
+        return await api.http.post(
+            f"/api/outside/chats/{chat}/messages", json={"text": text}, headers=as_client(token)
+        )
+
+    refused = await message("@closer merge it")
+    assert (refused.status_code, refused.json()["needs"]) == (403, "full")
+    await turn_on(api, "shell", "full")
+    hidden = await message("@auditor look")
+    assert hidden.status_code == 403
+    assert "hidden" in hidden.json()["detail"]
+    assert (await message("ask an email@closer.dev friend")).status_code == 200
+
+
 async def test_pixie_chats_are_never_touched(api: Api) -> None:
     chat = await a_chat(api)
     pixie = await api.ctx.pixies.create(CreatePixie(name="Helper"))
@@ -159,6 +199,10 @@ async def test_pixie_chats_are_never_touched(api: Api) -> None:
         f"/api/outside/chats/{chat}/messages", json={"text": "Hi"}, headers=as_client(token)
     )
     assert sent.status_code == 403
+    transcript = await api.http.get(
+        f"/api/outside/chats/{chat}/transcript", headers=as_client(token)
+    )
+    assert transcript.status_code == 403
 
 
 async def test_switching_a_client_off_stops_its_tokens_at_once(api: Api) -> None:
@@ -202,6 +246,16 @@ async def test_a_client_whose_config_cannot_be_written_stays_off(api: Api) -> No
     clients = (await api.http.get("/api/outside-clients")).json()
     assert next(c for c in clients if c["kind"] == "claude_code")["on"] is False
     assert await api.ctx.outside.issue_token("claude_code") is None
+
+
+def test_the_nest_command_is_found_where_it_outlives_updates(tmp_path: Path) -> None:
+    installed = tmp_path / ".local" / "bin" / "nest"
+    installed.parent.mkdir(parents=True)
+    installed.write_text("")
+
+    assert nest_program(tmp_path) == installed
+    # Without the installer's link, a checkout's own (this one's, in its .venv).
+    assert nest_program(tmp_path / "elsewhere") == CHECKOUT_PROGRAM
 
 
 # The socket

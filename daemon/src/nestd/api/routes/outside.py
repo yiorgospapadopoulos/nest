@@ -8,11 +8,12 @@ client cannot reach the rest of Nest and a lost device token cannot pose as a cl
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.requests import HTTPConnection
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.outside.models import (
+    TEXT_MAX,
     Chat,
     ChatDetails,
     ClientKind,
@@ -53,7 +54,7 @@ class CallPixie(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     project: Text
-    task: Text
+    task: Annotated[Text, StringConstraints(max_length=TEXT_MAX)]
 
 
 @router.get("/status")
