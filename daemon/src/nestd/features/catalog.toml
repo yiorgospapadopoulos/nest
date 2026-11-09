@@ -150,12 +150,13 @@ block = "B45"
 id = "open-in-tools"
 group = "around"
 name = "Open in your tools"
-text = "Open a project in your editor, Finder or Terminal."
-where = "Project menu"
+text = "Open a project in any code editor you have installed, in Finder or in Terminal. A shortcut opens it in the editor you pick in Settings."
+where = "Project menu > Open in"
 added = 2026-10-06
-block = "B20"
+changed = 2026-11-09
+block = "B152"
 [features.linux]
-text = "Open a project in your editor, file manager or terminal."
+text = "Open a project in any code editor you have installed, in the file manager or in a terminal. A shortcut opens it in the editor you pick in Settings."
 
 [[features]]
 id = "search-commands"
@@ -782,6 +783,19 @@ text = "A project's trigger starts a chat in its own worktree when an issue or p
 where = "Settings > the project > Triggers, or a pixie's habit editor"
 added = 2026-11-08
 block = "B148"
+
+[[features]]
+id = "voice-input"
+group = "chats"
+name = "Voice input on the phone"
+text = "Tap the mic, talk, tap again, and the words land in the message. The speech is turned into text on your own computer with a free model, downloaded the first time."
+where = "Composer > mic, and Settings > General > Voice input"
+added = 2026-11-09
+block = "B154"
+
+[features.linux]
+name = "Voice input"
+text = "Click the mic, talk, click again, and the words land in the message. The speech is turned into text on this computer with a free model, downloaded the first time."
 
 [[features]]
 id = "merge-when-checks-pass"

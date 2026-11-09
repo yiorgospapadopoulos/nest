@@ -87,6 +87,7 @@ import { isoDay } from "../format.ts";
 import { filterKey } from "./artifacts.ts";
 import { nudgeText } from "./selectors.ts";
 import { accountActions } from "./accountActions.ts";
+import { voiceActions } from "./voiceActions.ts";
 import { localActions } from "./localActions.ts";
 import { settingsActions } from "./settingsActions.ts";
 import { updateActions } from "./updateActions.ts";
@@ -534,6 +535,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     ...local,
     ...accounts,
     ...updates,
+    ...voiceActions(api, { attempt, quietly }),
     /** This device's id, when it was paired since B81. */
     toast,
     dismissToast: () => {

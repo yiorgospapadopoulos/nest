@@ -230,6 +230,8 @@ public final class AppStore {
     /// The latest project order save `moveProject` started; saves run one at a time.
     @ObservationIgnored public private(set) var savingOrder: Task<Void, Never>?
     public private(set) var repos: [Repo] = []
+    /// What Open in lists (B152); none until the daemon answers.
+    public private(set) var editors = Editors.none
     /// The latest settings save of each project, which the next one waits for.
     private var settingSaves: [String: Task<Repo?, any Error>] = [:]
     /// Open project tabs by repo name, in the repos' shared order (D090) once they load.
@@ -533,6 +535,15 @@ public final class AppStore {
 
     public func openProject(_ name: String, in app: RepoApp) async throws {
         try await api.openRepo(name, in: app)
+    }
+
+    /// Lists the installed editors again, as one may have been installed meanwhile.
+    public func loadEditors() async throws {
+        editors = try await api.editors()
+    }
+
+    public func setDefaultEditor(_ id: String?) async throws {
+        editors = try await api.setDefaultEditor(id)
     }
 
     // MARK: Project settings

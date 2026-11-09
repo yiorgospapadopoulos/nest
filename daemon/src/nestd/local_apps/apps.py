@@ -1,20 +1,27 @@
-"""Open a session's conversation in Claude Code, or a project in VS Code, the file manager
-or a terminal, the platform's way (`openers`)."""
+"""Open a session's conversation in Claude Code, or a project in an editor, the file
+manager or a terminal, the platform's way (`openers`)."""
 
 import asyncio
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from nestd.errors import ConflictError
 from nestd.gitops.runner import CommandRunner
+from nestd.local_apps.editors import Editor, EditorId, default_editor
+from nestd.local_apps.errors import AppNotInstalledError
 from nestd.local_apps.launchers import write_launcher
 from nestd.local_apps.openers import RepoApp, Which, opener_for
 from nestd.platform import Platform
 from nestd.sessions.models import Session
 from nestd.sessions.rules import require_workspace
 
-__all__ = ["LIVE_WARNING", "ClaudeCodeLaunch", "LocalApps", "RepoApp"]
+__all__ = ["LIVE_WARNING", "ClaudeCodeLaunch", "LocalApps", "OpenTarget", "RepoApp"]
+
+# What a project opens in: an app, or "editor" for the default editor.
+type OpenTarget = RepoApp | Literal["editor"]
 
 LIVE_WARNING = "This chat is also open in Nest. Avoid sending messages from both at once."
 
@@ -32,9 +39,11 @@ class LocalApps:
         launchers_dir: Path,
         platform: Platform,
         which: Which = shutil.which,
+        editor_folders: Sequence[Path] | None = None,
     ) -> None:
+        """`editor_folders` replaces where editors are looked for (tests)."""
         self._launchers_dir = launchers_dir
-        self._opener = opener_for(platform, run, launchers_dir, which)
+        self._opener = opener_for(platform, run, launchers_dir, which, editor_folders)
 
     async def open_in_claude_code(self, session: Session, live: bool) -> ClaudeCodeLaunch:
         """Open a terminal running `claude --resume` in the session's folder.
@@ -50,5 +59,18 @@ class LocalApps:
         await self._opener.open_launcher(launcher)
         return ClaudeCodeLaunch(launcher, LIVE_WARNING if live else None)
 
-    async def open_repo(self, path: Path, app: RepoApp) -> None:
+    async def installed_editors(self) -> list[Editor]:
+        return await asyncio.to_thread(self._opener.installed_editors)
+
+    async def default_editor(self, chosen: EditorId | None) -> Editor | None:
+        return default_editor(await self.installed_editors(), chosen)
+
+    async def open_repo(self, path: Path, app: OpenTarget, chosen: EditorId | None) -> None:
+        """Open the project; `chosen` is the default editor picked in Settings."""
+        if app == "editor":
+            editor = await self.default_editor(chosen)
+            if editor is None:
+                msg = "No code editor is installed on this computer"
+                raise AppNotInstalledError(msg)
+            app = editor.id
         await self._opener.open_repo(path, app)

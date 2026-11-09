@@ -146,6 +146,18 @@
 
         func openRepo(_ name: String, in app: RepoApp) async throws {}
 
+        func editors() async throws -> Editors {
+            Editors(
+                installed: [Editor(id: "vscode", name: "VS Code"), Editor(id: "zed", name: "Zed")],
+                default: "vscode")
+        }
+
+        func setDefaultEditor(_ id: String?) async throws -> Editors {
+            var editors = try await editors()
+            editors.default = id ?? "vscode"
+            return editors
+        }
+
         func removeRepo(_ name: String, purgeSessions: Bool) async throws {}
 
         func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo {

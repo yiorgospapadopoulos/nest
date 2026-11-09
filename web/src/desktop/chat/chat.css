@@ -1995,6 +1995,14 @@ button.dc-line:disabled {
 .dc-attach {
   color: var(--t3) !important;
 }
+.dc-mic {
+  color: var(--t3);
+}
+/* The mic while it listens (B154). */
+.dk-btn.k-plain.dc-mic.dict.starting,
+.dk-btn.k-plain.dc-mic.dict.recording {
+  color: var(--bad);
+}
 /* Autopilot (B120): red when on, as Bypass beside it. */
 .dk-btn.k-plain.dc-apb {
   color: var(--t3);

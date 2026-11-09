@@ -2,7 +2,7 @@
 // ChatActions, ClaudeChatRow.swift's ClaudeChatActions, TabStrip.swift's AddProjectPopover),
 // as entries for the desktop kit's Menu, so what each lists in each state is tested alone.
 import type { RepoApp } from "../../../api/client.ts";
-import type { ClaudeChat, RepoConfig, Session } from "../../../api/types.ts";
+import type { ClaudeChat, Editors, RepoConfig, Session } from "../../../api/types.ts";
 import { GENERAL } from "../../../store/general.ts";
 import { separator, type MenuEntry } from "../../ui/menuItems.ts";
 
@@ -16,11 +16,12 @@ export interface ProjectMenuActions {
 
 /**
  * The project name's menu. General's folder belongs to Nest: no terminal in it, no path to
- * copy and no settings (B110).
+ * copy and no settings (B110). `editors` is null until the daemon has listed them.
  */
 export function projectMenu(
   project: string,
-  vscodeShortcut: string,
+  editors: Editors | null,
+  editorShortcut: string,
   run: ProjectMenuActions,
 ): MenuEntry[] {
   const general = project === GENERAL;
@@ -30,28 +31,7 @@ export function projectMenu(
       : [{ title: "New terminal", icon: "terminal" as const, onSelect: run.newTerminal }]),
     { title: "New browser", icon: "globe", onSelect: run.newBrowser },
     separator,
-    {
-      title: "Open in VS Code",
-      icon: "code",
-      shortcut: vscodeShortcut,
-      onSelect: () => {
-        run.openIn("vscode");
-      },
-    },
-    {
-      title: "Show in Files",
-      icon: "folder",
-      onSelect: () => {
-        run.openIn("finder");
-      },
-    },
-    {
-      title: "Open in Terminal",
-      icon: "terminal",
-      onSelect: () => {
-        run.openIn("terminal");
-      },
-    },
+    openInMenu(editors, editorShortcut, run.openIn),
     ...(general
       ? []
       : [
@@ -61,6 +41,38 @@ export function projectMenu(
           { title: "Project settings…", icon: "gear" as const, onSelect: run.settings },
         ]),
   ];
+}
+
+/**
+ * Open in (B152): every installed editor, the default one with the shortcut, then the file
+ * manager and a terminal.
+ */
+function openInMenu(
+  editors: Editors | null,
+  shortcut: string,
+  openIn: (app: RepoApp) => void,
+): MenuEntry {
+  const installed = editors?.installed ?? [];
+  const app = (title: string, target: RepoApp, extra: { shortcut?: string } = {}): MenuEntry => ({
+    title,
+    ...extra,
+    onSelect: () => {
+      openIn(target);
+    },
+  });
+  return {
+    type: "submenu",
+    title: "Open in",
+    icon: "code",
+    items: [
+      ...installed.map((editor) =>
+        app(editor.name, editor.id, editor.id === editors?.default ? { shortcut } : {}),
+      ),
+      ...(installed.length > 0 ? [separator] : []),
+      app("Files", "finder"),
+      app("Terminal", "terminal"),
+    ],
+  };
 }
 
 export interface ChatMenuActions {

@@ -711,8 +711,9 @@ html.desk button {
   position: absolute;
   inset: 0;
 }
-/* Linux has no system dictation yet: no mic anywhere in the app (user, 2026-11-03). */
-.dk button.qb[aria-label="Dictate"] {
+
+/* The phone's fallback mic opens the keyboard's dictation, which Linux has none of. */
+.dk button.qb.kbmic {
   display: none;
 }
 

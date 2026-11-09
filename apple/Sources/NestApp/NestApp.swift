@@ -71,9 +71,12 @@ struct NestCommands: Commands {
             Button("New Browser") { inWindow { $0.newBrowser() } }
                 .shortcut(.newBrowser, shell)
                 .disabled(shell?.project == nil)
-            Button("Open Project in VS Code") { shell?.openProject(in: .vscode) }
-                .shortcut(.openInVSCode, shell)
-                .disabled(shell?.project == nil || shell?.isRemote == true)
+            let editor = shell?.app.editors.defaultEditor
+            Button("Open Project in \(editor?.name ?? "Editor")") {
+                shell?.openProject(in: .defaultEditor)
+            }
+            .shortcut(.openInEditor, shell)
+            .disabled(shell?.project == nil || shell?.isRemote == true || editor == nil)
             Divider()
             Button("Send Message") { shell?.sendFocused() }
                 .shortcut(.sendMessage, shell)

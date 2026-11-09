@@ -72,11 +72,7 @@ fn is_app_url(url: &Url, dev_url: Option<&Url>) -> bool {
 /// Keeps an app window on the bundled UI; links open elsewhere (see below).
 fn app_navigation(app: &AppHandle) -> impl Fn(&Url) -> bool + Send + 'static {
     let app = app.clone();
-    let dev_url = if tauri::is_dev() {
-        app.config().build.dev_url.clone()
-    } else {
-        None
-    };
+    let dev_url = dev_url(&app);
     move |url| {
         // Frames pass this check too: artifact frames load from their own scheme.
         let artifact_frame = url.scheme() == artifact::SCHEME;
@@ -103,7 +99,7 @@ fn app_navigation(app: &AppHandle) -> impl Fn(&Url) -> bool + Send + 'static {
 }
 
 pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App(MAIN_PAGE.into()))
+    let main = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App(MAIN_PAGE.into()))
         .title("Nest")
         .inner_size(1280.0, 820.0)
         // The Mac's smallest window (RootView.swift).
@@ -111,7 +107,61 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .decorations(false)
         .visible(false)
         .on_navigation(app_navigation(app))
-        .build()
+        .build()?;
+    #[cfg(target_os = "linux")]
+    allow_microphone(&main, dev_url(app));
+    Ok(main)
+}
+
+fn dev_url(app: &AppHandle) -> Option<Url> {
+    if tauri::is_dev() {
+        app.config().build.dev_url.clone()
+    } else {
+        None
+    }
+}
+
+/// Whether a page may record: the microphone alone, for voice input (B154), and only on
+/// Nest's own page. A camera or a screen is never given.
+#[cfg(any(target_os = "linux", test))]
+fn microphone_allowed(uri: &str, dev_url: Option<&Url>, audio: bool, video: bool) -> bool {
+    audio && !video && uri.parse::<Url>().is_ok_and(|url| is_app_url(&url, dev_url))
+}
+
+/// WebKitGTK keeps media streams off and turns down any request no handler answers, so the
+/// mic would never start; this answers them for the main window (B154).
+#[cfg(target_os = "linux")]
+fn allow_microphone(main: &WebviewWindow, dev_url: Option<Url>) {
+    let result = main.with_webview(move |webview| {
+        use gtk::glib::prelude::Cast;
+        use webkit2gtk::{
+            PermissionRequestExt, SettingsExt, UserMediaPermissionRequest,
+            UserMediaPermissionRequestExt, WebViewExt,
+        };
+        let view = webview.inner();
+        if let Some(settings) = WebViewExt::settings(&view) {
+            settings.set_enable_media_stream(true);
+        }
+        view.connect_permission_request(move |view, request| {
+            let Some(media) = request.downcast_ref::<UserMediaPermissionRequest>() else {
+                return false;
+            };
+            // The main page's address, not the asking frame's: artifact frames have no
+            // `allow="microphone"`, so WebKit refuses their requests before this runs.
+            let uri = view.uri().map(|uri| uri.to_string()).unwrap_or_default();
+            let audio = media.is_for_audio_device();
+            let video = media.is_for_video_device();
+            if microphone_allowed(&uri, dev_url.as_ref(), audio, video) {
+                request.allow();
+            } else {
+                request.deny();
+            }
+            true
+        });
+    });
+    if let Err(error) = result {
+        eprintln!("nest: the microphone stays off: {error}");
+    }
 }
 
 /// Brings the main window back, hidden or minimised, focused (platform::activate says how).
@@ -493,6 +543,16 @@ mod tests {
         // Beside it and below it.
         assert_eq!(pointer_in((749.0, 49.0), (750, 32), (420, 34), 1.0), None);
         assert_eq!(pointer_in((960.0, 66.0), (750, 32), (420, 34), 1.0), None);
+    }
+
+    #[test]
+    fn only_nest_s_own_page_gets_the_microphone_and_nothing_else() {
+        let app = "tauri://localhost/desktop.html";
+        assert!(microphone_allowed(app, None, true, false));
+        assert!(!microphone_allowed(app, None, true, true));
+        assert!(!microphone_allowed(app, None, false, true));
+        assert!(!microphone_allowed("https://example.com/", None, true, false));
+        assert!(!microphone_allowed("", None, true, false));
     }
 
     #[test]

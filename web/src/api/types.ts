@@ -1378,6 +1378,30 @@ export interface StorageSettings {
   archive_after_days: number | null;
 }
 
+// The code editors a project opens in (daemon/src/nestd/local_apps/editors.py), B152.
+export type EditorId =
+  | "vscode"
+  | "cursor"
+  | "zed"
+  | "xcode"
+  | "idea"
+  | "pycharm"
+  | "webstorm"
+  | "goland"
+  | "rustrover"
+  | "clion"
+  | "phpstorm"
+  | "rubymine"
+  | "rider"
+  | "android-studio";
+
+/** The editors installed on the daemon's computer, in Open in's order (`GET /api/editors`). */
+export interface Editors {
+  installed: { id: EditorId; name: string }[];
+  // What Open in's shortcut opens: the one chosen in Settings while installed, else the first.
+  default: EditorId | null;
+}
+
 /** A stored attachment, largest first (`GET /api/storage/attachments`). */
 export interface StoredAttachment {
   id: string;
@@ -1479,6 +1503,23 @@ export interface ComputerUseSettings {
   enabled: boolean;
   // Whether pixie chats, habit runs and chats pixies start may use it.
   pixies: boolean;
+}
+
+/** The Whisper models voice input offers (B154), English only. */
+export type VoiceModelId = "tiny.en" | "base.en" | "small.en" | "medium.en";
+
+/** `GET /api/voice` (B154): speech to text on the daemon's computer. */
+export interface VoiceStatus {
+  state: "not_installed" | "installing" | "ready" | "install_failed";
+  // The settings' choice, or the computer's default.
+  model: VoiceModelId;
+  default_model: VoiceModelId;
+  models: { id: VoiceModelId; label: string; size_mb: number }[];
+  // What installing would fetch now, about, in MB.
+  download_mb: number;
+  step: "packages" | "model" | null;
+  // Why the last install failed.
+  detail: string | null;
 }
 
 export type ComputerKind = "mac" | "ios" | "android" | "browser";

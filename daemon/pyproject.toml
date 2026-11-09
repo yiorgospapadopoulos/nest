@@ -57,6 +57,8 @@ select = [
 
 [tool.pyright]
 include = ["src", "tests"]
+# Run with the voice engine's own Python, whose packages the daemon does not have (B154).
+ignore = ["src/nestd/voice/worker.py"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 

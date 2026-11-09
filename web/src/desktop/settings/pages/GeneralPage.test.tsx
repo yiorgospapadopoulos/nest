@@ -103,3 +103,32 @@ describe("a bug report", () => {
     expect(openPath).toHaveBeenCalledWith("/home/me/.local/share/nest/reports/r.txt", true);
   });
 });
+
+describe("Default editor (B152)", () => {
+  it("lists the installed editors and saves the one picked", async () => {
+    const api = fakeApi();
+    const editors = {
+      installed: [
+        { id: "vscode" as const, name: "VS Code" },
+        { id: "zed" as const, name: "Zed" },
+      ],
+      default: "vscode" as const,
+    };
+    api.editors.mockResolvedValue(editors);
+    api.setDefaultEditor.mockResolvedValue({ ...editors, default: "zed" });
+    await openGeneral({}, api);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Default editor: VS Code" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Zed" }));
+
+    expect(api.setDefaultEditor).toHaveBeenCalledWith("zed");
+    expect(await screen.findByRole("button", { name: "Default editor: Zed" })).toBeVisible();
+  });
+
+  it("is not shown while no editor is installed", async () => {
+    await openGeneral({});
+
+    await screen.findByRole("button", { name: "Restart" });
+    expect(screen.queryByText("Default editor")).toBeNull();
+  });
+});

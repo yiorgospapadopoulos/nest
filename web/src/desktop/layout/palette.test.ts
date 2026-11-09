@@ -26,6 +26,7 @@ function input(overrides: Partial<CatalogInput> = {}): CatalogInput {
     view: "workspace",
     leftCollapsed: false,
     rightCollapsed: false,
+    editor: "Zed",
     attention: (project) => (project === "map-viewer" ? 1 : 0),
     ...overrides,
   };
@@ -53,7 +54,7 @@ describe("command palette", () => {
       "Collapse the chat sidebar",
       "Collapse the activity panel",
       "Show usage",
-      "Open todo-ui in VS Code",
+      "Open todo-ui in Zed",
       "Go to map-viewer",
     ]);
     expect(items[2]?.subtitle).toBe("map-viewer · Question");
@@ -68,6 +69,8 @@ describe("command palette", () => {
     expect(titles).toContain("Expand the chat sidebar");
     expect(titles).toContain("Expand the activity panel");
     expect(catalog(input({ current: null })).some((i) => i.group === "Commands")).toBe(false);
+    // B152: with no editor installed there is nothing to open the project in.
+    expect(catalog(input({ editor: null })).some((i) => "openInEditor" in i.action)).toBe(false);
     // General's folder belongs to Nest: no terminal there (B110).
     const general = catalog(input({ current: "general" }));
     expect(general.some((i) => "newTerminal" in i.action)).toBe(false);
