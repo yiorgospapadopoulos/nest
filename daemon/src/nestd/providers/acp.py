@@ -1,5 +1,6 @@
-"""Engines on the Agent Client Protocol as Nest chats (B107): OpenCode, Gemini CLI and the
-untested Cursor agent, one `AcpProvider` per engine (`acp_engines`).
+"""Engines on the Agent Client Protocol as Nest chats (B107, B153): OpenCode, Gemini CLI,
+Cursor, Copilot CLI, Antigravity and Grok Build, one `AcpProvider` per engine
+(`acp_engines`).
 
 Each run is one engine process with one ACP session: new, or reopened by the session id
 Nest keeps as the session's provider session id, with `session/resume` where the engine
@@ -54,11 +55,15 @@ from nestd.providers.acp_engines import (
     GEMINI,
     GEMINI_SUBAGENT_SETTINGS,
     GEMINI_SYSTEM_SETTINGS_ENV,
+    GROK,
     AcpEngine,
     gemini_subagent_files,
 )
 from nestd.providers.acp_events import AcpStream, NestTools
 from nestd.providers.acp_fs import AcpFiles
+from nestd.providers.acp_grok import HOOK_METHOD as GROK_HOOK_METHOD
+from nestd.providers.acp_grok import hook_answer
+from nestd.providers.acp_meta import session_meta
 from nestd.providers.acp_permissions import AcpPermissions, AcpRules
 from nestd.providers.acp_process import AcpLaunch, AcpTransportFactory, spawn_acp
 from nestd.providers.acp_questions import ask_user_tool
@@ -123,6 +128,8 @@ ACP_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
 DEFAULT_MODEL = "default"
 PROTOCOL_VERSION = 1
 PROBE_TIMEOUT = timedelta(seconds=60)
+# Antigravity waits 5 minutes for the browser.
+SIGN_IN_TIMEOUT = timedelta(minutes=6)
 PLAN_MODE = "plan"
 # A text file up to this size goes in the prompt for an engine that takes files' content;
 # a larger one is passed by path, as for other engines.
@@ -366,10 +373,14 @@ class AcpRun:
         spec: SessionSpec,
         handler: ApprovalHandler,
         sink: ProviderEventSink,
+        meta: JsonObject | None = None,
     ) -> None:
-        """The run serves its Nest tools from `start` until it closes."""
+        """The run serves its Nest tools from `start` until it closes; `meta` goes with
+        the session when it opens (`acp_meta`).
+        """
         self._engine = engine
         self._spec = spec
+        self._meta = meta or {}
         self._handler = handler
         self._sink = sink
         self._tools: ToolHost | None = None
@@ -408,6 +419,7 @@ class AcpRun:
             spec.write_root,
             self._nest,
             worktrees=spec.guard_worktrees,
+            subagents=spec.guard_subagents,
         )
 
     @property
@@ -435,7 +447,9 @@ class AcpRun:
         if self._new_session:
             self._default_model = options.model
         self._engine_mode = options.mode
-        if PLAN_MODE in options.modes:
+        if self._engine.normal_mode in options.modes:
+            self._normal_mode = self._engine.normal_mode
+        elif PLAN_MODE in options.modes:
             self._normal_mode = _normal_mode(options)
         try:
             await self._apply_model(self._model)
@@ -470,6 +484,8 @@ class AcpRun:
             return await self._files.read(params)
         if method == "fs/write_text_file":
             return await self._files.write(params)
+        if method == GROK_HOOK_METHOD and self._engine.id == GROK.id:
+            return hook_answer(params, self.rules(), self._session_id)
         msg = f"Nest does not answer {method}"
         raise AcpRpcError(METHOD_NOT_FOUND, msg)
 
@@ -569,6 +585,8 @@ class AcpRun:
     ) -> tuple[str, JsonObject]:
         spec = self._spec
         params: JsonObject = {"cwd": str(spec.cwd), "mcpServers": servers}
+        if self._meta:
+            params["_meta"] = self._meta
         try:
             resume_id = None if self._new_session else spec.resume_id
             if resume_id is None:
@@ -630,7 +648,8 @@ class AcpRun:
         options = self._options
         if self._normal_mode is None:
             return
-        wanted = PLAN_MODE if self._mode == "plan" else self._normal_mode
+        plan = self._mode == "plan" and PLAN_MODE in options.modes
+        wanted = PLAN_MODE if plan else self._normal_mode
         if wanted == self._engine_mode:
             return
         try:
@@ -750,9 +769,13 @@ class AcpProvider:
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
     ) -> AcpRun:
-        launch = await self._launcher(spec.account)
-        run = AcpRun(self._engine, spec, handler, sink)
         engine = self._engine
+        if spec.write_root is not None and not engine.asks_edits:
+            msg = f"{engine.name} cannot keep this run to its own folder: pick another engine."
+            raise AcpNotReadyError(msg)
+        launch = await self._launcher(spec.account)
+        meta = await asyncio.to_thread(session_meta, engine, launch, spec.cwd, spec.guard_git)
+        run = AcpRun(engine, spec, handler, sink, meta)
         extra = {
             **spec.env,
             **(await _subagent_env(engine) if spec.guard_subagents else {}),
@@ -762,7 +785,12 @@ class AcpProvider:
         if spec.guard_git:
             block = await push_block((spec.cwd, *spec.extra_dirs))
             env.update(block.env(env.get("PATH")))
-        transport = await self._transport(AcpLaunch(launch.args, env), spec.cwd)
+        args = (
+            *launch.args,
+            *(engine.push_deny_args if spec.guard_git else ()),
+            *(engine.worktree_deny_args if spec.guard_worktrees else ()),
+        )
+        transport = await self._transport(AcpLaunch(args, env), spec.cwd)
         rpc = AcpRpc(
             transport, run.stream.handle, run.on_request, run.closed, peer=self._engine.name
         )
@@ -823,6 +851,33 @@ async def probe(
     except Exception as error:
         # The engine's errors can quote what it printed; only their kind is kept.
         raise AcpProbeError(type(error).__name__) from error
+
+
+async def sign_in(
+    launch: AcpLaunch,
+    cwd: Path,
+    method: str,
+    transport: AcpTransportFactory = spawn_acp,
+    time_limit: timedelta = SIGN_IN_TIMEOUT,
+) -> None:
+    """The engine's own sign-in `method`, for an engine with no login command (B153): the
+    engine opens the browser and keeps the login itself. Raises AcpRpcError when it
+    refuses, TimeoutError when the browser was not finished in time.
+    """
+
+    async def ignore(_method: str, _params: JsonObject) -> None:
+        return None
+
+    async def refuse(method: str, _params: JsonObject) -> JsonValue:
+        raise AcpRpcError(METHOD_NOT_FOUND, f"Nest does not answer {method} here")
+
+    async with asyncio.timeout(time_limit.total_seconds()):
+        rpc = AcpRpc(await transport(launch, cwd), ignore, refuse)
+        try:
+            await initialize(rpc)
+            await rpc.request("authenticate", {"methodId": method})
+        finally:
+            await rpc.close()
 
 
 async def _subagent_env(engine: AcpEngine) -> dict[str, str]:

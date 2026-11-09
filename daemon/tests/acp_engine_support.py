@@ -7,6 +7,7 @@ from pathlib import Path
 
 from nestd.engine.acp import AcpSetup
 from nestd.engine.acp_install import NpmError, installed_program, platform_names
+from nestd.engine.acp_registry import platform_name
 from nestd.providers.acp_engines import ACP_ENGINES, AcpEngine
 from nestd.providers.acp_process import AcpLaunch, AcpTransportFactory
 from nestd.providers.base import ModelOption
@@ -47,9 +48,16 @@ class FakeNpm:
 
 def program_path(engine: AcpEngine, prefix: Path) -> Path:
     """Where the engine's real program lands in an npm prefix on this machine."""
+    if engine.delivery == "download":
+        return prefix / engine.downloads[platform_name()].program
+    os_name, arch = platform_names()
     if engine.package == "opencode-ai":
-        os_name, arch = platform_names()
         return prefix / "node_modules" / f"opencode-{os_name}-{arch}" / "bin" / engine.executable
+    if engine.package == "@github/copilot":
+        return prefix / "node_modules" / "@github" / f"copilot-{os_name}-{arch}" / "copilot"
+    if engine.package == "@xai-official/grok":
+        platform = f"grok-{os_name}-{arch}"
+        return prefix / "node_modules" / "@xai-official" / platform / "bin" / engine.executable
     return prefix / "node_modules" / ".bin" / engine.executable
 
 
