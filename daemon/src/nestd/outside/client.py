@@ -4,8 +4,8 @@ database: it is a thin client (D180)."""
 
 import asyncio
 import os
-import socket
 import re
+import socket
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
