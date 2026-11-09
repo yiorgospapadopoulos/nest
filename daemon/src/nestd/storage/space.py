@@ -23,7 +23,8 @@ class StorageUsage(BaseModel):
     chats_bytes: int
     attachments_bytes: int
     artifacts_bytes: int
-    # The engine environments the daemon runs in (B121) and the extra engines it installed.
+    # The engine environments the daemon runs in (B121), the extra engines it installed and
+    # voice input's engine and model (B154).
     engines_bytes: int
     # Copies of the database and of changed config files.
     backups_bytes: int
@@ -65,6 +66,7 @@ def _part(paths: AppPaths, name: str) -> Part:
         paths.artifacts_dir.name: "artifacts",
         paths.environments_dir.name: "engines",
         paths.engines_dir.name: "engines",
+        paths.voice_dir.name: "engines",
         paths.logs_dir.name: "logs",
         CONFIG_BACKUPS_DIR: "backups",
     }
