@@ -58,28 +58,37 @@ def read_peer_uid(sock: PeerSocket, platform: str = sys.platform) -> int:
     return uid
 
 
-class TokenSocket:
-    def __init__(
-        self,
-        path: Path,
-        tokens: TokenSource,
-        *,
-        uid: int | None = None,
-        peer_uid: PeerUid = read_peer_uid,
-        close_wait: float = CLOSE_WAIT,
-    ) -> None:
-        """`tokens` gives the current token for each connection; `uid` is who may ask
-        (default: the daemon's own user)."""
+# How to read the connecting process's id: (level, option, size, pid offset). macOS:
+# SOL_LOCAL, LOCAL_PEERPID gives a pid_t; Linux: the pid at the start of struct ucred.
+_PEER_PID = {
+    "darwin": (0, 0x002, 4, 0),
+    "linux": (socket.SOL_SOCKET, 17, 12, 0),
+}
+
+
+def read_peer_pid(sock: PeerSocket, platform: str = sys.platform) -> int:
+    """The id of the process at the other end of a Unix socket (B151)."""
+    try:
+        level, option, size, offset = _PEER_PID[platform]
+    except KeyError:
+        raise OSError(f"peer process ids are not supported on {platform}") from None
+    (pid,) = struct.unpack_from("=i", sock.getsockopt(level, option, size), offset)
+    return pid
+
+
+class PrivateSocket:
+    """A Unix socket in a private folder that only the daemon's own user can reach: made
+    0600 in a 0700 folder, a stale one cleared on start, removed on stop only if it is still
+    the one it made. Subclasses answer each connection in `respond`."""
+
+    def __init__(self, path: Path, *, what: str, close_wait: float = CLOSE_WAIT) -> None:
+        """`what` names what it serves, for the log."""
         self._path = path
-        self._tokens = tokens
-        self._uid = os.geteuid() if uid is None else uid
-        self._peer_uid = peer_uid
+        self._what = what
         self._close_wait = close_wait
         self._server: asyncio.Server | None = None
         # The socket file this server made, so stop never removes another daemon's.
         self._identity: tuple[int, int] | None = None
-        # One token read at a time: a token that needs rotating is rotated once.
-        self._reading = asyncio.Lock()
 
     async def start(self) -> None:
         folder = self._path.parent
@@ -90,7 +99,7 @@ class TokenSocket:
         self._server = await asyncio.start_unix_server(self._answer, path=self._path)
         self._path.chmod(0o600)
         self._identity = _identity(self._path)
-        logger.info("serving this computer's device token on %s", self._path)
+        logger.info("serving %s on %s", self._what, self._path)
 
     async def stop(self) -> None:
         server, self._server = self._server, None
@@ -101,6 +110,9 @@ class TokenSocket:
         current = _identity(self._path)
         if current is not None and current == self._identity:
             self._path.unlink()
+
+    async def respond(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        raise NotImplementedError
 
     async def _clear_stale(self) -> None:
         """Removes what a daemon that did not stop cleanly left at the path. A socket
@@ -118,7 +130,7 @@ class TokenSocket:
 
     async def _answer(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
-            await self._send_token(writer)
+            await self.respond(reader, writer)
         finally:
             await self._close(reader, writer)
 
@@ -136,7 +148,27 @@ class TokenSocket:
         writer.close()
         await writer.wait_closed()
 
-    async def _send_token(self, writer: asyncio.StreamWriter) -> None:
+
+class TokenSocket(PrivateSocket):
+    def __init__(
+        self,
+        path: Path,
+        tokens: TokenSource,
+        *,
+        uid: int | None = None,
+        peer_uid: PeerUid = read_peer_uid,
+        close_wait: float = CLOSE_WAIT,
+    ) -> None:
+        """`tokens` gives the current token for each connection; `uid` is who may ask
+        (default: the daemon's own user)."""
+        super().__init__(path, what="this computer's device token", close_wait=close_wait)
+        self._tokens = tokens
+        self._uid = os.geteuid() if uid is None else uid
+        self._peer_uid = peer_uid
+        # One token read at a time: a token that needs rotating is rotated once.
+        self._reading = asyncio.Lock()
+
+    async def respond(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             uid = self._peer_uid(writer.get_extra_info("socket"))
         except (OSError, struct.error):
