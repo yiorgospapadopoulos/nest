@@ -786,9 +786,10 @@ block = "B148"
 id = "merge-when-checks-pass"
 group = "git"
 name = "Merge when checks pass"
-text = "Switch it on for a pull request and it merges by itself once its checks pass. GitHub does it when the repository requires those checks; otherwise Nest does, while it is running."
+text = "Switch it on for a pull request and it merges by itself once its checks pass. GitHub does it when the repository requires those checks; otherwise Nest does, while it is running. New commits after you switch it on cancel it and bring back the merge approval."
 where = "Pull request popover"
 added = 2026-11-08
+changed = 2026-11-09
 block = "B149"
 
 [[features]]
