@@ -783,6 +783,19 @@ added = 2026-11-08
 block = "B148"
 
 [[features]]
+id = "voice-input"
+group = "chats"
+name = "Voice input on the phone"
+text = "Tap the mic, talk, tap again, and the words land in the message. The speech is turned into text on your own computer with a free model, downloaded the first time."
+where = "Composer > mic, and Settings > General > Voice input"
+added = 2026-11-09
+block = "B154"
+
+[features.linux]
+name = "Voice input"
+text = "Click the mic, talk, click again, and the words land in the message. The speech is turned into text on this computer with a free model, downloaded the first time."
+
+[[features]]
 id = "merge-when-checks-pass"
 group = "git"
 name = "Merge when checks pass"
