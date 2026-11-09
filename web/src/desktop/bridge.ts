@@ -174,8 +174,8 @@ export interface Bridge {
     room?: number;
   }): Promise<void>;
   // Where the pointer is in the pill's window (CSS px from its top left), as the window
-  // system says; null outside it or when it cannot tell.
-  pillPointer(): Promise<{ x: number; y: number } | null>;
+  // system says; "outside" when it is not over that window, null when it cannot tell.
+  pillPointer(): Promise<{ x: number; y: number } | "outside" | null>;
   // The tray menu's items; returns the unsubscribe.
   onTray(event: TrayEvent, callback: () => void): () => void;
   // From the pill: brings the main window forward and asks it to show `target`.
@@ -413,7 +413,7 @@ export function tauriBridge(tauri: TauriGlobal): Bridge {
     async pillPointer() {
       try {
         const at = (await invoke("pill_pointer")) as [number, number] | null;
-        return at === null ? null : { x: at[0], y: at[1] };
+        return at === null ? "outside" : { x: at[0], y: at[1] };
       } catch {
         return null;
       }

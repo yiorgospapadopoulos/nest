@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev \
       libayatana-appindicator3-dev librsvg2-dev ca-certificates pkg-config xz-utils \
+      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-pulseaudio patchelf \
     && rm -rf /var/lib/apt/lists/*
 
 ARG NODE_VERSION=22.23.4

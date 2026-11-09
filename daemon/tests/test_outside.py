@@ -6,15 +6,17 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Sequence
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
 
+from nestd.claude_code.cli import ClaudeCli
 from nestd.events import types
 from nestd.gitops.runner import CommandError
-from nestd.outside.config import CHECKOUT_PROGRAM, nest_program
+from nestd.outside.config import CHECKOUT_PROGRAM, McpConfig, nest_program
 from nestd.outside.models import ClientKind
 from nestd.outside.socket import ClientSocket, IssueToken, runs_under
 from nestd.pixies.models import CreatePixie
@@ -270,6 +272,35 @@ def test_the_nest_command_is_found_where_it_outlives_updates(tmp_path: Path) -> 
     assert nest_program(tmp_path) == installed
     # Without the installer's link, a checkout's own (this one's, in its .venv).
     assert nest_program(tmp_path / "elsewhere") == CHECKOUT_PROGRAM
+
+
+# Regression (B157, Ubuntu 26.04): switching Codex on failed on a computer where Codex never
+# ran: Nest sets CODEX_HOME to ~/.codex, which did not exist, and Codex refuses that.
+async def test_codex_gets_nest_where_its_home_does_not_exist_yet(tmp_path: Path) -> None:
+    home = tmp_path / ".codex"
+    calls: list[list[str]] = []
+
+    async def codex(argv: Sequence[str], cwd: Path) -> str:
+        if not home.is_dir():
+            raise CommandError(
+                argv, 1, f'CODEX_HOME points to "{home}", but that path does not exist'
+            )
+        calls.append(list(argv))
+        return ""
+
+    config = McpConfig(
+        claude=cast(ClaudeCli, None),
+        codex_program=lambda: tmp_path / "codex",
+        codex_home=home,
+        run=codex,
+        cwd=tmp_path,
+        program=lambda: tmp_path / "nest",
+    )
+    await config.add("codex")
+
+    assert [argv[3:6] for argv in calls] == [["mcp", "add", "nest-app"]]
+    await config.remove("codex")
+    assert calls[-1][3:5] == ["mcp", "remove"]
 
 
 # The socket

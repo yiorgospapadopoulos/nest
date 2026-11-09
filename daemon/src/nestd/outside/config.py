@@ -75,6 +75,10 @@ class McpConfig:
         if kind == "claude_code":
             await self._claude_mcp(["add", "--scope", "user", MCP_NAME, "--", *command])
         else:
+            # Codex refuses a CODEX_HOME that does not exist, as on a computer where it
+            # never ran; its own default home is made the same way when first needed.
+            if self._codex_home is not None:
+                self._codex_home.mkdir(parents=True, exist_ok=True)
             await self._codex_mcp(["add", MCP_NAME, "--", *command])
 
     async def remove(self, kind: ClientKind) -> None:
@@ -82,7 +86,7 @@ class McpConfig:
         try:
             if kind == "claude_code":
                 await self._claude_mcp(["remove", "--scope", "user", MCP_NAME])
-            elif kind == "codex":
+            elif kind == "codex" and self._codex_home is not None and self._codex_home.is_dir():
                 await self._codex_mcp(["remove", MCP_NAME])
         except McpConfigError as error:
             if "not found" not in str(error).lower() and "no mcp server" not in str(error).lower():
