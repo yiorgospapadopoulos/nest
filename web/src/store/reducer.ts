@@ -1,4 +1,4 @@
-import { COMPUTER_FRAME } from "../api/events.ts";
+import { COMPUTER_FRAME, COMPUTER_STATE } from "../api/events.ts";
 import { contextOf, list, obj, prOf, queuedOf, str, stuckOf } from "../api/payloads.ts";
 import type {
   Approval,
@@ -482,6 +482,14 @@ export function applyEvent(state: State, event: NestEvent): State {
       return runChanged(next, p);
     case "run.output":
       return runOutputAdded(next, p);
+    case COMPUTER_STATE: {
+      if (id === null) return next;
+      const others = Object.fromEntries(
+        Object.entries(next.computerUsing).filter(([chat]) => chat !== id),
+      );
+      const using = list(p.targets).length > 0;
+      return { ...next, computerUsing: using ? { ...others, [id]: true } : others };
+    }
     case COMPUTER_FRAME: {
       const { target, label, seq } = p;
       if (id === null || typeof target !== "string" || typeof seq !== "number") return next;
@@ -710,6 +718,7 @@ function removeSession(state: State, id: string): State {
     transcripts: without(state.transcripts),
     history: without(state.history),
     computerFrames: without(state.computerFrames),
+    computerUsing: without(state.computerUsing),
     live: without(state.live),
     thinking: without(state.thinking),
     thoughts: without(state.thoughts),

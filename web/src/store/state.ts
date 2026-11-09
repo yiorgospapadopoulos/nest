@@ -266,6 +266,8 @@ export interface State {
   runOutput: Record<string, string>;
   // The latest screenshot of what each chat uses (B150), by session id; live only.
   computerFrames: Record<string, ComputerFrame>;
+  // The chats using an app now (B150), from every chat's `computer.state`; live only.
+  computerUsing: Record<string, true>;
   // Local models, their failures in chats and what this device dismissed (B106, B116).
   local: LocalState;
   toast: Toast | null;
@@ -317,6 +319,7 @@ export const initialState: State = {
   runs: {},
   runOutput: {},
   computerFrames: {},
+  computerUsing: {},
   local: NO_LOCAL,
   toast: null,
 };

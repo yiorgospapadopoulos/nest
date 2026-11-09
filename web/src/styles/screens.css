@@ -824,6 +824,10 @@ a.b {
   height: 12px;
   flex: none;
 }
+/* Computer use (B150): the chat is using an app right now. */
+.rsub .ic.rcu {
+  color: var(--run);
+}
 /* "main · Started by Tester": a dot before a mark that follows another. */
 .rsub > .rby:not(:first-child)::before,
 .rsub > .rstuck:not(:first-child)::before {

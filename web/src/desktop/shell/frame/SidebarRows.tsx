@@ -173,8 +173,10 @@ export function ChatRow({ session, status, map, items }: ChatRowProps) {
   const pixie = starter === null ? undefined : state.pixies[starter];
   const startedBy = starter === null ? null : `Started by ${pixie?.name ?? "a pixie"}`;
   const earlier = earlierOf(session);
+  // Computer use (B150): the chat is using an app right now.
+  const using = state.computerUsing[session.id] === true;
   const marks =
-    place !== null || session.issue !== null || session.pinned || session.stuck !== null;
+    place !== null || session.issue !== null || session.pinned || session.stuck !== null || using;
   const label = [
     session.title,
     status.label,
@@ -187,6 +189,7 @@ export function ChatRow({ session, status, map, items }: ChatRowProps) {
     session.stuck === null ? null : "stuck",
     startedBy,
     session.pinned ? "pinned" : null,
+    using ? "using an app" : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -220,6 +223,7 @@ export function ChatRow({ session, status, map, items }: ChatRowProps) {
               </>
             )}
             {session.pinned && <Icon name="pin" className="dk-pin" />}
+            {using && <Icon name="pointer" className="dk-cu-mark" />}
             {session.stuck !== null && (
               <>
                 {(place !== null || session.pinned) && <span>·</span>}
