@@ -131,18 +131,32 @@ async def _spawn(argv: Sequence[str]) -> Child:
     )
 
 
-def find_browser(env: Mapping[str, str], home: Path) -> Path | None:
+# Snaps' commands: the background service's PATH leaves them out, and Ubuntu ships
+# Chromium only as a snap.
+SNAP_BIN = Path("/snap/bin")
+
+
+def find_browser(env: Mapping[str, str], home: Path, snap_bin: Path = SNAP_BIN) -> Path | None:
     if sys.platform == "darwin":
         for folder in (Path("/Applications"), home / "Applications"):
             for app in MAC_APPS:
                 if (folder / app).is_file():
                     return folder / app
         return None
-    for name in LINUX_NAMES:
-        found = shutil.which(name, path=env.get("PATH"))
-        if found:
-            return Path(found)
+    for path in (env.get("PATH"), str(snap_bin)):
+        for name in LINUX_NAMES:
+            found = shutil.which(name, path=path)
+            if found:
+                return Path(found)
     return None
+
+
+def profile_for(browser: Path, profile: Path, home: Path, snap_bin: Path = SNAP_BIN) -> Path:
+    """Where the browser keeps Nest's profile. A snap may not write hidden folders in the
+    home folder, so a snap browser keeps it in its own `~/snap/<name>/common` instead."""
+    if browser.parent == snap_bin:
+        return home / "snap" / browser.name / "common" / "nest-shared-browser"
+    return profile
 
 
 @dataclass(frozen=True)
@@ -312,7 +326,7 @@ class BrowserBackend:
         env: Mapping[str, str] | None = None,
         start_seconds: float = START_SECONDS,
     ) -> None:
-        self._profile = profile
+        self._default_profile = profile
         self._executable = executable
         self._spawn = spawn
         self._transport = transport
@@ -329,6 +343,13 @@ class BrowserBackend:
 
     def _browser(self) -> Path | None:
         return self._executable or find_browser(self._env, Path.home())
+
+    @property
+    def _profile(self) -> Path:
+        browser = self._browser()
+        if browser is None:
+            return self._default_profile
+        return profile_for(browser, self._default_profile, Path.home())
 
     async def available(self) -> Availability:
         if self._browser() is None:
@@ -415,12 +436,13 @@ class BrowserBackend:
         browser = self._browser()
         if browser is None:
             raise TargetError("Chrome is not installed.")
-        self._profile.mkdir(parents=True, exist_ok=True, mode=0o700)
-        (self._profile / PORT_FILE).unlink(missing_ok=True)
+        profile = profile_for(browser, self._default_profile, Path.home())
+        profile.mkdir(parents=True, exist_ok=True, mode=0o700)
+        (profile / PORT_FILE).unlink(missing_ok=True)
         self._child = await self._spawn(
             [
                 str(browser),
-                f"--user-data-dir={self._profile}",
+                f"--user-data-dir={profile}",
                 "--remote-debugging-port=0",
                 "--remote-debugging-address=127.0.0.1",
                 "--no-first-run",

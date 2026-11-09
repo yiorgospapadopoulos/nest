@@ -2,6 +2,7 @@
 never types into secret fields and stops only the browser it started (B150)."""
 
 import json
+import sys
 from collections.abc import AsyncGenerator, Sequence
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,12 @@ import httpx
 import pytest
 from websockets.asyncio.server import ServerConnection, serve
 
-from nestd.computer.backends.browser import BrowserBackend, map_ax_tree
+from nestd.computer.backends.browser import (
+    BrowserBackend,
+    find_browser,
+    map_ax_tree,
+    profile_for,
+)
 from nestd.computer.models import Action, SecureFieldError
 
 type Json = dict[str, Any]
@@ -229,3 +235,27 @@ async def test_close_stops_the_browser_it_started_and_keeps_the_profile(
     assert info.running
     assert children[0].signals == ["term"]
     assert profile.is_dir()
+
+
+# Regression (B157, Ubuntu 26.04): with Chromium installed, Settings said "Chrome is not
+# installed". Ubuntu has Chromium only as a snap, in /snap/bin, which the background
+# service's PATH leaves out; and a snap may not write Nest's profile in ~/.local.
+def test_a_snap_browser_is_found_and_keeps_its_profile_where_snaps_may_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    snap_bin = tmp_path / "snap-bin"
+    snap_bin.mkdir()
+    chromium = snap_bin / "chromium"
+    chromium.write_text("#!/bin/sh\n")
+    chromium.chmod(0o755)
+    home = tmp_path / "home"
+    default = home / ".local" / "share" / "nest" / "computer" / "browser"
+
+    found = find_browser({"PATH": str(tmp_path / "empty")}, home, snap_bin)
+
+    assert found == chromium
+    assert profile_for(chromium, default, home, snap_bin) == (
+        home / "snap" / "chromium" / "common" / "nest-shared-browser"
+    )
+    assert profile_for(tmp_path / "chrome", default, home, snap_bin) == default

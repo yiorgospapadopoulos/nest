@@ -216,7 +216,7 @@ While a chat uses something, the strip above the composer shows its latest scree
 - **Android emulator:** needs Android Studio (free) with an emulator set up.
 - **Shared browser:** a Chrome window with its own profile that you and the agent share; sign in to what it needs there. Your own browser profile is never touched.
 
-On Linux, the Android emulator and the shared browser work the same way.
+On Linux, the Android emulator and the shared browser work the same way. Any Chrome-family browser counts, Ubuntu's Chromium snap included; a snap browser keeps Nest's profile in its own folder, `~/snap/<name>/common/nest-shared-browser`.
 
 ## Open in
 
