@@ -9,11 +9,19 @@ struct PublishTarget: View {
 
     var body: some View {
         if let target = diff.target(pushes: pushes) {
-            Label(target, systemImage: pushes ? Icon.pullRequest : Icon.branch)
-                .labelStyle(TightLabelStyle())
-                .font(.ui(TypeSize.ui))
-                .foregroundStyle(Palette.t2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Label {
+                Text(target)
+            } icon: {
+                if pushes {
+                    Image(systemName: Icon.pullRequest)
+                } else {
+                    BranchIcon(size: 11)
+                }
+            }
+            .labelStyle(TightLabelStyle())
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(Palette.t2)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

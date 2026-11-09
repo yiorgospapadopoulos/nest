@@ -63,7 +63,7 @@ private struct BranchLabel: View {
             HoverReader { hovering in
                 WidthCap(maxWidth: Self.maxWidth - 14) {
                     HStack(spacing: 5) {
-                        Image(systemName: Icon.branch).font(.system(size: 9.5))
+                        BranchIcon(size: 9.5)
                         Text(branch).lineLimit(1).truncationMode(.middle)
                         Image(systemName: open ? Icon.chevronUp : Icon.chevron)
                             .font(.system(size: 7, weight: .semibold))
@@ -99,7 +99,7 @@ private struct InitGitButton: View {
         } label: {
             HoverReader { hovering in
                 HStack(spacing: 5) {
-                    Image(systemName: Icon.branch).font(.system(size: 9.5))
+                    BranchIcon(size: 9.5)
                     Text("Init").font(.ui(TypeSize.meta))
                 }
                 .foregroundStyle(hovering ? Palette.t1 : Palette.t2)

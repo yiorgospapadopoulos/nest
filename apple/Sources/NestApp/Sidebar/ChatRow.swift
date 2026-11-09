@@ -188,7 +188,7 @@ struct PlaceMark: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: Icon.branch).font(.system(size: 8))
+            BranchIcon(size: 8)
             Text(place.name)
                 .font(.mono(TypeSize.meta))
                 .lineLimit(1)

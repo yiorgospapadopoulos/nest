@@ -82,12 +82,13 @@ const PATHS = {
   pointer: <path d="M4 2.5v10l2.7-2.5 1.9 4 1.7-.8-1.9-3.9h3.6z" />,
   send: <path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2" />,
   stop: <rect x="4" y="4" width="8" height="8" rx="1.2" fill="currentColor" stroke="none" />,
+  // The classic git branch: two commits on a line and a third curving into it.
   branch: (
     <>
-      <circle cx="4.5" cy="3.5" r="1.3" />
-      <circle cx="4.5" cy="12.5" r="1.3" />
-      <circle cx="11.5" cy="5" r="1.3" />
-      <path d="M4.5 4.8v6.4M11.5 6.3c0 3-3.5 2.5-6.3 5" />
+      <circle cx="4.5" cy="3.5" r="1.75" />
+      <circle cx="4.5" cy="12.5" r="1.75" />
+      <circle cx="11.5" cy="3.5" r="1.75" />
+      <path d="M4.5 5.25v5.5M11.5 5.25v1a2.25 2.25 0 0 1-2.25 2.25h-2.5A2.25 2.25 0 0 0 4.5 10.75" />
     </>
   ),
   diff: (

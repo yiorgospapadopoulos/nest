@@ -168,7 +168,12 @@ struct RestackBody: View {
                     Button {
                         shell.restack(approval, action)
                     } label: {
-                        Label(action.title, systemImage: Icon.branch).grows(style)
+                        Label {
+                            Text(action.title)
+                        } icon: {
+                            BranchIcon(size: 11)
+                        }
+                        .grows(style)
                     }
                     .buttonStyle(.nest(.primary))
                     .help(action.help)
