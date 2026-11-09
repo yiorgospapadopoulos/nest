@@ -7,13 +7,70 @@ import {
   useUpdateRestart,
 } from "../../store/updates.ts";
 import { Confirm } from "../pixies/Confirm.tsx";
-import { Row, Section } from "./rows.tsx";
+import { modelChoices, useVoiceSettings, voiceStateLabel } from "../chat/voice/useVoiceSettings.ts";
+import { Row, Section, SelectRow, Status } from "./rows.tsx";
 
 type Phase = "idle" | "confirm" | "restarting" | "failed";
 
-/** Nest itself: the version and Restart (B81). Storage has its own page (B86). */
+/** Nest itself: the version and Restart (B81), and voice input (B154). Storage has its own
+ * page (B86). */
 export function GeneralPage() {
-  return <NestSection />;
+  return (
+    <>
+      <VoiceSection />
+      <NestSection />
+    </>
+  );
+}
+
+/** The mic's model, downloaded on the computer Nest runs on (B154). */
+function VoiceSection() {
+  const { status, choose, download, remove } = useVoiceSettings();
+  const [confirm, setConfirm] = useState(false);
+  if (status === null) return null;
+  const shown = voiceStateLabel(status);
+  return (
+    <Section title="Voice input">
+      <SelectRow
+        label="Model"
+        value={status.model}
+        choices={modelChoices(status)}
+        disabled={status.state === "installing"}
+        onChange={choose}
+      />
+      <Row label="State">
+        <Status tone={shown.tone} label={shown.label} />
+      </Row>
+      {status.detail !== null && <p className="srow note">{status.detail}</p>}
+      <Row label={status.state === "ready" ? "Remove the download" : "Download"}>
+        {status.state === "ready" ? (
+          <button
+            className="b"
+            onClick={() => {
+              setConfirm(true);
+            }}
+          >
+            Remove
+          </button>
+        ) : (
+          <button className="b" disabled={status.state === "installing"} onClick={download}>
+            {status.state === "install_failed" ? "Try again" : "Download"}
+          </button>
+        )}
+      </Row>
+      {confirm && (
+        <Confirm
+          title="Remove voice input?"
+          about="The mic asks to download it again the next time."
+          action="Remove"
+          onConfirm={remove}
+          onClose={() => {
+            setConfirm(false);
+          }}
+        />
+      )}
+    </Section>
+  );
 }
 
 /** The version, and Restart: the daemon restarts, then the page loads again. */

@@ -25,6 +25,8 @@ import type {
   ComputerPermission,
   ComputerStatus,
   ComputerUseSettings,
+  VoiceModelId,
+  VoiceStatus,
   CodexPlugins,
   ConfigurationPage,
   CopyPreview,
@@ -225,6 +227,12 @@ export interface Api {
   computerStatus(): Promise<ComputerStatus>;
   // Asks macOS on the daemon's Mac and opens the matching System Settings pane.
   askComputerPermission(name: ComputerPermission): Promise<{ granted: boolean }>;
+  // Voice input (B154): its state, fetching it, the model, and a WAV recording to text.
+  voiceStatus(): Promise<VoiceStatus>;
+  installVoice(): Promise<VoiceStatus>;
+  removeVoice(): Promise<VoiceStatus>;
+  saveVoiceModel(model: VoiceModelId | null): Promise<VoiceStatus>;
+  transcribe(recording: Blob): Promise<{ text: string }>;
   sessionCommands(id: string): Promise<CommandList>;
   repoCommands(name: string): Promise<CommandList>;
   files(id: string, query: string): Promise<{ files: string[] }>;
@@ -1283,6 +1291,30 @@ export class HttpApi implements Api {
 
   askComputerPermission(name: ComputerPermission) {
     return this.json<{ granted: boolean }>("POST", `/api/computer/permissions/${name}`);
+  }
+
+  voiceStatus() {
+    return this.json<VoiceStatus>("GET", "/api/voice");
+  }
+
+  installVoice() {
+    return this.json<VoiceStatus>("POST", "/api/voice/install");
+  }
+
+  removeVoice() {
+    return this.json<VoiceStatus>("DELETE", "/api/voice");
+  }
+
+  saveVoiceModel(model: VoiceModelId | null) {
+    return this.json<VoiceStatus>("PUT", "/api/voice/settings", { model });
+  }
+
+  transcribe(recording: Blob) {
+    return this.send<{ text: string }>("/api/voice/transcribe", {
+      method: "POST",
+      body: recording,
+      headers: { "Content-Type": "audio/wav" },
+    });
   }
 
   worktreeSettings() {

@@ -58,6 +58,9 @@ import { PickerSheet } from "./PickerSheet.tsx";
 import { Suggestions, type Suggestion } from "./Suggestions.tsx";
 import { dropThumbnail, keepThumbnail, useThumbnail } from "./thumbnails.ts";
 import { useSuggestions } from "./useSuggestions.ts";
+import { Confirm } from "../pixies/Confirm.tsx";
+import { withSpoken } from "./voice/spoken.ts";
+import { dictateTitle, spokenAt, useDictation } from "./voice/useDictation.ts";
 
 const BUSY = new Set<Session["state"]>(["starting", "running", "waiting"]);
 const BYPASS: PermissionMode = "bypassPermissions";
@@ -190,6 +193,23 @@ export function Composer({
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
+  // The mic (B154): what was said goes into the draft as it is now.
+  const spokenCaret = useRef<number | null>(null);
+  const dictation = useDictation((spoken) => {
+    const current = field.current?.value ?? text;
+    const next = withSpoken(current, spokenAt(field.current, current), spoken);
+    spokenCaret.current = next.caret;
+    setText(next.text);
+    setCaret(next.caret);
+  }, key);
+  // After the words, while the field has the keyboard; without it, the iPhone's keyboard
+  // stays down.
+  useLayoutEffect(() => {
+    const at = spokenCaret.current;
+    const el = field.current;
+    spokenCaret.current = null;
+    if (at !== null && el !== null && document.activeElement === el) el.setSelectionRange(at, at);
+  }, [text]);
   const fileInput = useRef<HTMLInputElement>(null);
   // Where the caret goes once a completion is in the field.
   const caretAfter = useRef<number | null>(null);
@@ -642,15 +662,43 @@ export function Composer({
               </button>
             </>
           )}
-          <button
-            className="qb"
-            aria-label="Dictate"
-            title="Use the keyboard's microphone to dictate"
-            disabled={closed}
-            onClick={() => field.current?.focus()}
-          >
-            <Icon name="mic" />
-          </button>
+          {dictation.available ? (
+            <button
+              className={dictation.phase === "idle" ? "qb" : `qb dict ${dictation.phase}`}
+              aria-label="Dictate"
+              aria-pressed={dictation.phase === "starting" || dictation.phase === "recording"}
+              aria-busy={dictation.phase === "working"}
+              title={dictateTitle(dictation)}
+              disabled={closed || dictation.phase === "working"}
+              // Keeps the keyboard in the field, so the words go where the caret is.
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={dictation.toggle}
+            >
+              <Icon name={dictation.phase === "recording" ? "stop" : "mic"} />
+            </button>
+          ) : (
+            <button
+              className="qb kbmic"
+              aria-label="Dictate"
+              title="Use the keyboard's microphone to dictate"
+              disabled={closed}
+              onClick={() => field.current?.focus()}
+            >
+              <Icon name="mic" />
+            </button>
+          )}
+          {dictation.setup !== null && (
+            <Confirm
+              title={dictation.setup.title}
+              about={dictation.setup.about}
+              action={dictation.setup.action}
+              neutral
+              onConfirm={dictation.confirmSetup}
+              onClose={dictation.closeSetup}
+            />
+          )}
           {(pixie === undefined || live !== undefined) && (
             <AutopilotButton control={pilot} disabled={closed} />
           )}

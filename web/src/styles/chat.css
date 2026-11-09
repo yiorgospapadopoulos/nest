@@ -1027,6 +1027,11 @@
   width: 17px;
   height: 17px;
 }
+/* The mic while it listens (B154). */
+.qb.dict.starting,
+.qb.dict.recording {
+  color: var(--bad);
+}
 /* Plain grey text that opens its menu, as the Mac's QuietMenu. */
 .qt {
   display: inline-flex;

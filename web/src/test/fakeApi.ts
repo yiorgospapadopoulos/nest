@@ -19,6 +19,7 @@ import {
   storageUsage,
   stuckSettings,
   usageSettings,
+  voiceStatus,
   detail,
   diff,
   habit,
@@ -110,6 +111,17 @@ export function fakeApi(): FakeApi {
       accessibility: null,
       screen_recording: null,
     }),
+    voiceStatus: vi.fn<Api["voiceStatus"]>().mockResolvedValue(voiceStatus()),
+    installVoice: vi
+      .fn<Api["installVoice"]>()
+      .mockResolvedValue(voiceStatus({ state: "installing", step: "packages" })),
+    removeVoice: vi
+      .fn<Api["removeVoice"]>()
+      .mockResolvedValue(voiceStatus({ state: "not_installed", download_mb: 325 })),
+    saveVoiceModel: vi
+      .fn<Api["saveVoiceModel"]>()
+      .mockImplementation((model) => Promise.resolve(voiceStatus({ model: model ?? "small.en" }))),
+    transcribe: vi.fn<Api["transcribe"]>().mockResolvedValue({ text: "run the tests" }),
     askComputerPermission: vi
       .fn<Api["askComputerPermission"]>()
       .mockResolvedValue({ granted: false }),

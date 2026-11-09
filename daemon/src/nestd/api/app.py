@@ -55,6 +55,7 @@ from nestd.api.routes import (
     triggers,
     updates,
     usage,
+    voice,
     worktrees,
 )
 from nestd.api.static import install_static
@@ -188,6 +189,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         stuck,
         limits,
         computer,
+        voice,
         worktrees,
         engine,
         agents,

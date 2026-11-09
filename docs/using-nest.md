@@ -28,6 +28,14 @@ Agent messages show as formatted text on every client: tables, block quotes, tas
 
 Dictation uses Apple's on-device `SpeechAnalyzer` (macOS 26 and later), downloading the language model on first use, with project names and coding terms as hints; it falls back to the older speech recognizer when needed.
 
+## Voice input on the iPhone and Linux
+
+The mic in the composer works on the iPhone and in the Linux app too. Tap it, talk, tap it again (the button turns red and shows a stop square while it listens), and a second or two later the words land in the message: at the caret if the field had it, otherwise after what is there. Nothing is sent until you send it. One recording can be up to 5 minutes; it stops by itself then.
+
+The speech is turned into text by a free, local Whisper model on the computer Nest runs on (the Mac the iPhone talks to, or the Linux machine), never by an online service, and the recording is deleted as soon as it is read. English only. The first tap asks to download it once: the speech engine (about 180 MB) and the model, in `<data folder>/voice/`. **Settings > General > Voice input** picks the model (Tiny, Base, Small or Medium; bigger is more accurate and slower; the default is Small on a Mac and Base on Linux), shows whether it is downloaded, and removes it. A new model downloads on the next tap. The model stays loaded for 5 minutes after you last talk, then its memory is freed.
+
+The installed iPhone app needs the page over https (as with Share with my devices) and asks for the microphone; iOS may ask again after the app has been closed. On Linux the microphone comes through GStreamer's PulseAudio or PipeWire plugin, which desktop Ubuntu has. The Mac app keeps its own Dictation, described above.
+
 ## Linux desktop app
 
 On Linux, Nest is a desktop app that looks and works like the Mac app: the Pixies and project tabs across the top (the tab strip is the window's title bar, with minimise, maximise and close at its right end), the chat sidebar, a workspace of up to four panes (chat, terminal, browser, run) with focus dim, the right panel with Needs you and Goals, the board, the Pixies tab, Settings (shown inside the main window, with the Mac's pages) and the Ctrl+K palette. Every screen is a desktop component ported from the Mac app (`web/src/desktop/`), with anchored menus and popovers, right-click menus at the pointer, inline rename and details that expand in place; nothing in it comes from the iPhone screens, which an eslint rule enforces. The smallest window is 1000 by 640, as on the Mac. Mac shortcuts use Ctrl for Cmd (Ctrl+N new chat, Ctrl+W close the pane, Ctrl+1 to Ctrl+9 tabs, Ctrl+K, Ctrl+, settings); inside a terminal pane plain Ctrl keys go to the shell, and Ctrl+Shift+C and Ctrl+Shift+V copy and paste. It is a Tauri 2 app (`desktop/`) whose window shows the web UI's desktop layout (`web/desktop.html`, `web/src/desktop/`), bundled in the app, and it talks to the daemon on `127.0.0.1` like the Mac app: it reads this user's device token from the daemon's `token.sock` and sends it as a Bearer token.
@@ -35,7 +43,7 @@ On Linux, Nest is a desktop app that looks and works like the Mac app: the Pixie
 - Terminal panes run your login shell in a real pseudo-terminal (portable-pty) drawn by xterm.js. Shell command blocks in chats offer Run in terminal, as on the Mac.
 - Links (pull requests, issues, checks, chat links) open in the system browser; pages on this computer's dev servers open in a Nest browser window. Add folder (the + after the tabs) and Save as file use the system's file dialogs.
 - On a 2x screen Nest reads GNOME's monitor scale and draws at full sharpness through XWayland; fractional scales look slightly soft there, as for every X11 app on GNOME 46. GTK dialogs draw their text through `GDK_RENDERING=image`, which some virtual and older graphics need, at no measured cost.
-- There is no dictation on Linux for now (no mic button).
+- The mic dictates with voice input (see Voice input on the iPhone and Linux).
 - Browser panes open the page in a small window of its own for now, because Tauri cannot place several web views inside one window on Linux yet (tauri#10420). Pages there can call nothing in Nest.
 - The pixie pill floats at the top centre of the screen, always on top, with the same states as the Mac's notch island. Ubuntu's Wayland session does not let apps keep a window on top or place it, nor take shortcuts while another app is focused, so Nest runs through XWayland by default; Settings > General > Linux > Keep the pixie pill on top turns that off (after a restart, the pill is then an ordinary window).
 - The pill never takes the keyboard: clicking it, the tray's Open Nest or a notification gives the focus to Nest's main window.

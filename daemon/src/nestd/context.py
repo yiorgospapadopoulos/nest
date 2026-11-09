@@ -183,6 +183,7 @@ from nestd.usage.refresher import UsageRefresher
 from nestd.usage.store import UsageStore
 from nestd.usage.visibility import ClientVisibility
 from nestd.usage.warnings import UsageWarnings
+from nestd.voice.service import VoiceService, VoiceSetup
 from nestd.worktrees.manager import WorktreeManager
 from nestd.worktrees.options import claude_worktrees_dir
 from nestd.worktrees.ownership import WORKTREE_PREFIX
@@ -265,6 +266,8 @@ class AppContext:
     artifacts: Artifacts
     # Chats that see and use apps, simulators, emulators and the shared browser (B150).
     computer: ComputerService
+    # Speech to text for the phone and the Linux app (B154).
+    voice: VoiceService
     # Settings > Configuration (B97).
     configuration: Configuration
     project_setup: ProjectSetup
@@ -337,6 +340,7 @@ class AppContext:
         platform: Platform | None = None,
         update_setup: UpdateSetup | None = None,
         computer_backends: Sequence[Backend] | None = None,
+        voice_setup: VoiceSetup | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -360,6 +364,7 @@ class AppContext:
         Claude client of Settings > Performance's context run (B115). `platform` is the
         system the daemon runs on (B117); None is the current one. `update_setup` is what
         the engine updates reach: the registries, uv, npm and the new environment's check.
+        `voice_setup` is what voice input reaches: pip, the model download, its worker (B154).
         """
         system = platform or current_platform()
         paths.ensure()
@@ -1077,6 +1082,9 @@ class AppContext:
             extensions=extensions,
             artifacts=artifacts,
             computer=computer,
+            voice=VoiceService(
+                paths.voice_dir, system.name, lambda: context.settings.voice, voice_setup
+            ),
             configuration=configuration,
             project_setup=ProjectSetup(backups),
             codex_plugins=CodexPluginSetup(codex_setup),
@@ -1157,6 +1165,7 @@ class AppContext:
         # First, so the browser and emulators it started stop even if a slow step after it
         # is cut short.
         await self.computer.close()
+        await self.voice.close()
         await self.local.close()
         await self.accounts.stop()
         for service in self.acp.values():

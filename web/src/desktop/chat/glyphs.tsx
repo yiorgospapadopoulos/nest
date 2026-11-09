@@ -73,6 +73,12 @@ const PATHS = {
     <path d="M8 8C6.8 6.4 5.7 5.4 4.3 5.4a2.6 2.6 0 0 0 0 5.2c1.4 0 2.5-1 3.7-2.6 1.2-1.6 2.3-2.6 3.7-2.6a2.6 2.6 0 0 1 0 5.2c-1.4 0-2.5-1-3.7-2.6z" />
   ),
   plus: <path d="M8 3v10M3 8h10" />,
+  mic: (
+    <>
+      <rect x="6" y="2" width="4" height="7.5" rx="2" />
+      <path d="M3.8 7.6a4.2 4.2 0 0 0 8.4 0M8 11.8V14" />
+    </>
+  ),
   pointer: <path d="M4 2.5v10l2.7-2.5 1.9 4 1.7-.8-1.9-3.9h3.6z" />,
   send: <path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2" />,
   stop: <rect x="4" y="4" width="8" height="8" rx="1.2" fill="currentColor" stroke="none" />,

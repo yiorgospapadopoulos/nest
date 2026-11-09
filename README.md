@@ -174,6 +174,7 @@ Every device can be revoked in Settings > Devices.
 | Keychain (Secret Service on Linux) | Device tokens and the keys you give Nest are kept there and nowhere else. The app gets its own token from the background service, so it never asks for your Keychain password. |
 | Notifications | To tell you when a chat needs you, has work to review or finishes. |
 | Microphone and speech recognition | Only for Dictation, while you dictate a message. Speech is turned into text on the Mac. |
+| Microphone on the iPhone and Linux | Only while you dictate a message. The recording goes to Nest on your own computer, is turned into text there and deleted. |
 | Accessibility (optional) | Lets the pixie strip around the notch see where the menu bar is free, so it can grow into that space. |
 | Accessibility for Nest Computer, Screen Recording for Nest (optional) | Only if you turn on computer use: the small helper inside Nest.app reads and uses the windows of apps a chat is allowed to use, and takes their screenshots, which macOS allows through Nest's Screen Recording. |
 | Tailscale sharing | Share with my devices makes Nest reachable at your private tailnet address, so the iPhone can open it. `tailscale serve --https=443 off` stops it. |

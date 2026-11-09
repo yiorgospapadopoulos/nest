@@ -65,6 +65,7 @@ import type {
   ProjectConfiguration,
   ProviderInfo,
   SkillItem,
+  VoiceStatus,
 } from "../api/types.ts";
 
 import { NO_BACKGROUND } from "../store/state.ts";
@@ -1361,4 +1362,23 @@ export function featuresCatalog(groups?: FeatureGroup[]): FeaturesCatalog {
   ];
   const count = shown.flatMap((g) => g.features).filter((f) => f.new).length;
   return { groups: shown, new_count: count };
+}
+
+/** Voice input set up with the Mac's default model (B154). */
+export function voiceStatus(overrides: Partial<VoiceStatus> = {}): VoiceStatus {
+  return {
+    state: "ready",
+    model: "small.en",
+    default_model: "small.en",
+    models: [
+      { id: "tiny.en", label: "Tiny", size_mb: 75 },
+      { id: "base.en", label: "Base", size_mb: 145 },
+      { id: "small.en", label: "Small", size_mb: 485 },
+      { id: "medium.en", label: "Medium", size_mb: 1530 },
+    ],
+    download_mb: 0,
+    step: null,
+    detail: null,
+    ...overrides,
+  };
 }
