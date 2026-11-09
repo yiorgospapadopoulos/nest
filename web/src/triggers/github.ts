@@ -9,6 +9,7 @@ import type {
   GitHubWatch,
   TriggerActivity,
   TriggerAuthors,
+  TriggerMode,
 } from "../api/types.ts";
 
 // In the order the editors list them; `phrase` follows "On GitHub when".
@@ -27,11 +28,22 @@ export const AUTHORS: { value: TriggerAuthors; label: string }[] = [
   { value: "everyone", label: "Everyone" },
 ];
 
+// What a trigger's chats may do without asking; a new trigger starts in Ask.
+export const TRIGGER_MODES: { value: TriggerMode; label: string }[] = [
+  { value: "default", label: "Ask" },
+  { value: "acceptEdits", label: "Accept edits" },
+  { value: "plan", label: "Plan" },
+  { value: "bypassPermissions", label: "Bypass" },
+];
+
 export const GITHUB_NOTE = "Checked on GitHub every minute. Each event starts at most one run.";
 export const TRIGGER_NOTE =
   "Each event starts a chat in its own worktree. It works once, then waits for you, and cannot push.";
 export const EMPTY_TRIGGERS =
   "No triggers yet. A trigger starts a chat here when something happens on GitHub.";
+// Shown when people without write access count, as their text then drives the agent (D179).
+export const OUTSIDERS_WARNING =
+  "People without write access can start these too, and their text goes straight to the agent.";
 export const NO_REMOTE = "Add the project's GitHub address in General to use triggers.";
 export const PROMPT_MAX = 4000;
 export const NAME_MAX = 120;
@@ -51,14 +63,17 @@ export function githubText(watches: EventFilter[]): string | null {
   return `On GitHub when ${phrases.length > 0 ? `${phrases.join(", ")} or ` : ""}${last}`;
 }
 
-/** "When CI fails · on main · labelled bug · others only", for a trigger's row. */
-export function triggerSummary(filter: EventFilter): string {
+/** "When CI fails · on main · labelled bug · Bypass", for a trigger's row. */
+export function triggerSummary(filter: EventFilter & { permission_mode?: TriggerMode }): string {
   const when = githubText([filter])?.replace("On GitHub when", "When") ?? "";
   return [
     when,
     filter.branches.length > 0 ? `on ${filter.branches.join(", ")}` : null,
     filter.labels.length > 0 ? `labelled ${filter.labels.join(", ")}` : null,
     filter.authors === "members" ? null : authorsLabel(filter.authors).toLowerCase(),
+    filter.permission_mode === undefined || filter.permission_mode === "default"
+      ? null
+      : (TRIGGER_MODES.find((m) => m.value === filter.permission_mode)?.label ?? null),
   ]
     .filter((part) => part !== null && part !== "")
     .join(" · ");
@@ -153,6 +168,7 @@ export interface TriggerDraft {
   branches: string;
   authors: TriggerAuthors;
   enabled: boolean;
+  mode: TriggerMode;
 }
 
 export function newTriggerDraft(): TriggerDraft {
@@ -164,6 +180,7 @@ export function newTriggerDraft(): TriggerDraft {
     branches: "",
     authors: "members",
     enabled: true,
+    mode: "default",
   };
 }
 
@@ -176,6 +193,7 @@ export function triggerDraftOf(trigger: ChatTrigger): TriggerDraft {
     branches: listText(trigger.branches),
     authors: trigger.authors,
     enabled: trigger.enabled,
+    mode: trigger.permission_mode ?? "default",
   };
 }
 
@@ -203,5 +221,6 @@ export function triggerBody(draft: TriggerDraft): ChatTriggerBody {
     labels: parseList(draft.labels),
     branches: parseList(draft.branches),
     authors: draft.authors,
+    permission_mode: draft.mode,
   };
 }

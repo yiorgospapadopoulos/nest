@@ -1266,12 +1266,17 @@ export type GitHubWatch = EventFilter & {
   projects: string[];
 };
 
+// The modes a trigger's chats may start in; Auto is left out, as only some models take it.
+export type TriggerMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
+
 /** A project's trigger: each matching event starts a chat in its own worktree. */
 export type ChatTrigger = EventFilter & {
   id: string;
   name: string;
   prompt: string;
   enabled: boolean;
+  // Ask until the user picks another; missing on daemons before it.
+  permission_mode?: TriggerMode;
 };
 
 export type ChatTriggerBody = Omit<ChatTrigger, "id">;

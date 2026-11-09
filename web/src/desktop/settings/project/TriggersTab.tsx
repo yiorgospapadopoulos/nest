@@ -9,7 +9,9 @@ import {
   GITHUB_EVENTS,
   newTriggerDraft,
   NO_REMOTE,
+  OUTSIDERS_WARNING,
   toggled,
+  TRIGGER_MODES,
   TRIGGER_NOTE,
   triggerBody,
   triggerDraftOf,
@@ -21,7 +23,7 @@ import { clockTime } from "../../pixies/habitText.ts";
 import { SheetFrame } from "../../sheets/SheetFrame.tsx";
 import { Button, TextField, Toggle } from "../../ui/controls.tsx";
 import { Checkbox, SegmentPicker } from "../config/parts.tsx";
-import { Note, SettingsListRow, SettingsSection } from "../rows.tsx";
+import { Note, SettingsListRow, SettingsSection, WarningLine } from "../rows.tsx";
 
 // A project's GitHub triggers (B148), as ProjectPage.swift's Triggers tab: each one starts
 // a chat here when its events happen on GitHub.
@@ -211,6 +213,16 @@ function TriggerSheet({
           value={draft.authors}
           onChange={(authors) => {
             change({ authors });
+          }}
+        />
+        {draft.authors !== "members" && <WarningLine text={OUTSIDERS_WARNING} />}
+        <h3 className="dkp-trigger-h">Runs with</h3>
+        <SegmentPicker
+          label="Runs with"
+          options={TRIGGER_MODES.map((m) => [m.value, m.label] as const)}
+          value={draft.mode}
+          onChange={(mode) => {
+            change({ mode });
           }}
         />
         <h3 className="dkp-trigger-h">Start a chat with</h3>

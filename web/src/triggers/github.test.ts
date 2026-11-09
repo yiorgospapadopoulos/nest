@@ -29,6 +29,14 @@ describe("GitHub triggers", () => {
     expect(watchesOf({ ...draft, events: [] }, before)).toEqual([before[1]]);
   });
 
+  it("starts a new trigger in Ask and shows any other mode on its row", () => {
+    expect(newTriggerDraft().mode).toBe("default");
+    expect(triggerSummary({ ...watch({}), permission_mode: "default" })).toBe("When CI fails");
+    expect(triggerSummary({ ...watch({}), permission_mode: "bypassPermissions" })).toBe(
+      "When CI fails · Bypass",
+    );
+  });
+
   it("says what a trigger waits for", () => {
     expect(githubText([watch({ events: ["ci_failed", "issue_opened"] })])).toBe(
       "On GitHub when an issue is opened or CI fails",
@@ -56,6 +64,7 @@ describe("GitHub triggers", () => {
       labels: [],
       branches: ["main", "release/*"],
       authors: "members",
+      permission_mode: "default",
     });
     expect(parseList(" , ")).toEqual([]);
   });

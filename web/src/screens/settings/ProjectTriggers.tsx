@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import type { ChatTrigger, RepoConfig, TriggerActivity, TriggerAuthors } from "../../api/types.ts";
+import type {
+  ChatTrigger,
+  RepoConfig,
+  TriggerActivity,
+  TriggerAuthors,
+  TriggerMode,
+} from "../../api/types.ts";
 import { activityTime } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
 import {
@@ -10,7 +16,9 @@ import {
   GITHUB_EVENTS,
   newTriggerDraft,
   NO_REMOTE,
+  OUTSIDERS_WARNING,
   toggled,
+  TRIGGER_MODES,
   TRIGGER_NOTE,
   triggerBody,
   triggerDraftOf,
@@ -212,6 +220,26 @@ function TriggerEditor({
             {AUTHORS.map((authors) => (
               <option key={authors.value} value={authors.value}>
                 {authors.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {draft.authors !== "members" && <p className="hint gnote acwarn">{OUTSIDERS_WARNING}</p>}
+      <div className="lgrp gl pxgap">
+        <div className="srow">
+          <label htmlFor={`${id}-mode`}>Runs with</label>
+          <select
+            id={`${id}-mode`}
+            className="ssel"
+            value={draft.mode}
+            onChange={(event) => {
+              change({ mode: event.target.value as TriggerMode });
+            }}
+          >
+            {TRIGGER_MODES.map((mode) => (
+              <option key={mode.value} value={mode.value}>
+                {mode.label}
               </option>
             ))}
           </select>
