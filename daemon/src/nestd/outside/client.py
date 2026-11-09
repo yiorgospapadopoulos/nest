@@ -5,11 +5,11 @@ database: it is a thin client (D180)."""
 import asyncio
 import os
 import socket
+import re
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import TypeVar
-from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -38,6 +38,8 @@ POLL_SECONDS = 2.0
 # A chat that is idle right after a message may not have begun its turn yet.
 START_GRACE_SECONDS = 10.0
 SOCKET_SECONDS = 5.0
+# What a pixie's slug or a team's handle is made of.
+HANDLE = re.compile(r"[\w-]+")
 HTTP_SECONDS = 30.0
 
 M = TypeVar("M", bound=BaseModel)
@@ -179,9 +181,13 @@ class NestClient:
 
     async def call(self, handle: str, project: str, task: str) -> ChatDetails:
         body = {"project": project, "task": task}
-        name = quote(handle.lstrip("@"), safe="")
+        name = handle.lstrip("@")
         if not name:
             raise NestApiError(422, "Name the pixie or team to call.")
+        if not HANDLE.fullmatch(name):
+            raise NestApiError(
+                404, f"No pixie or team is called @{name}. `nest pixies` lists them."
+            )
         return await self._send(ChatDetails, "POST", f"/pixies/{name}/call", body)
 
     async def connect(self) -> None:
