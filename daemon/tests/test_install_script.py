@@ -218,3 +218,38 @@ def test_a_secret_service_that_never_answers_says_so(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "The Secret Service didn't answer" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("version", "refused"),
+    [("15.0", False), ("26.1", False), ("14.7.1", True)],
+)
+def test_a_mac_needs_macos_15_or_later(tmp_path: Path, version: str, refused: bool) -> None:
+    # B158: the Mac app runs on macOS 15 and later. The test release has no Mac app, so an
+    # accepted Mac stops at that, before anything changes.
+    machine = _machine(tmp_path)
+    shims = Path(machine.env["PATH"].split(os.pathsep)[0])
+    _write_program(shims / "uname", 'case "$1" in -s) echo Darwin ;; *) echo arm64 ;; esac')
+    _write_program(shims / "sysctl", "echo 1")
+    _write_program(shims / "sw_vers", f"echo {version}")
+    for program in ("launchctl", "open"):
+        _write_program(shims / program, "exit 1")
+    (tmp_path / "Applications").mkdir()
+    env = {**machine.env, "NEST_MAC_APP": str(tmp_path / "Applications" / "Nest.app")}
+
+    result = subprocess.run(  # noqa: S603 (the repository's own script)
+        ["/bin/sh", str(machine.script)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    needs = f"Nest needs macOS 15 or later. This Mac has {version}."
+    assert (needs in result.stderr) is refused
+    if not refused:
+        assert "This release has no app for macos-arm64." in result.stderr
+    assert not machine.data.exists()

@@ -6,7 +6,7 @@ set -eu
 
 RELEASE_URL="${NEST_RELEASE_URL:-https://github.com/yiorgospapadopoulos/nest/releases/latest/download}"
 MAC_APP="${NEST_MAC_APP:-/Applications/Nest.app}"
-MACOS_MINIMUM=26
+MACOS_MINIMUM=15
 # Nest's release keys, the daemon's RELEASE_KEYS: ECDSA P-256 public keys, base64 DER. The
 # release list must be signed by one of them before anything in it is trusted.
 RELEASE_KEYS="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEX8L6xEBnbhVD+ecB8PGYh6R8R3AwUAiH0NieeALPmlMt6oqrzgx0nR7ga/1DV974RmbmikaPw1Rj3/VbT5T9Rw=="
