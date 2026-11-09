@@ -142,7 +142,7 @@ While Nest runs, a strip around the MacBook's notch shows your pixies at work: t
 
 ### Also in Nest
 
-- **More engines.** Besides Claude Code and Codex, chats can run on OpenCode, Gemini CLI or a model on your own computer (LM Studio, Ollama and others), all from one model menu. See [Local models](docs/using-nest.md#local-models) and [More engines](docs/using-nest.md#more-engines-agent-client-protocol).
+- **More engines.** Besides Claude Code and Codex, chats can run on OpenCode, Gemini CLI, Cursor, Copilot CLI, Antigravity, Grok Build or a model on your own computer (LM Studio, Ollama and others), all from one model menu. See [Local models](docs/using-nest.md#local-models) and [More engines](docs/using-nest.md#more-engines-agent-client-protocol).
 - **Several accounts.** Sign in more than one plan per engine and switch which one chats use. See [Accounts](docs/using-nest.md#settings-storage-pixies-and-accounts).
 - **Your terminal chats.** Chats you started in Claude Code or Codex outside Nest show up too, and **Continue in Nest** picks one up. See [Chats from Claude Code and Codex](docs/using-nest.md#chats-from-claude-code-and-codex).
 - **GitHub issues.** The start screen lists the project's open issues; click one to start a chat on it. See [GitHub issues](docs/using-nest.md#github-issues-and-review-comments).
