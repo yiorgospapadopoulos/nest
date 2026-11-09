@@ -26,6 +26,8 @@ from nestd.providers.base import AgentTool, ToolRefusedError
 from nestd.providers.claude_tools import to_sdk_tool
 
 WAIT_MAX = 600
+# Codex stops a tool after 60 seconds unless its config says otherwise.
+CODEX_WAIT_MAX = 50
 MODES = ["plan", "default", "acceptEdits"]
 
 type Args = dict[str, JsonValue]
@@ -60,8 +62,9 @@ class Tools:
         wait: dict[str, JsonValue] = {
             "wait_seconds": {
                 "type": "integer",
-                "description": f"Wait up to this many seconds (0 to {WAIT_MAX}) for the chat"
-                " to stop working, and answer with its last answer. Default 0.",
+                "description": f"Wait up to this many seconds (0 to {WAIT_MAX}; {CODEX_WAIT_MAX}"
+                " in Codex) for the chat to stop working, and answer with its last answer."
+                " Default 0. Check on it later with get_chat.",
             }
         }
         chat_id: dict[str, JsonValue] = {"id": {"type": "string", "description": "The chat's id."}}
@@ -107,7 +110,8 @@ class Tools:
             (
                 "start_chat",
                 "Needs Full access. Start a chat in one of the user's projects; the user"
-                " reviews its work and answers its questions in Nest, and it cannot push.",
+                " reviews its work and answers its questions in Nest, and it cannot push"
+                " unless the user lets agents push.",
                 {
                     "project": {"type": "string", "description": "A project's name."},
                     "prompt": {"type": "string", "description": "The first message."},
@@ -214,7 +218,8 @@ class Tools:
         return await self._nest.resolve(_text(args, "id"))
 
     async def _waited(self, chat: ChatDetails, args: Args) -> str:
-        seconds = min(max(_number(args, "wait_seconds") or 0, 0), WAIT_MAX)
+        most = CODEX_WAIT_MAX if self._nest.kind == "codex" else WAIT_MAX
+        seconds = min(max(_number(args, "wait_seconds") or 0, 0), most)
         if seconds:
             chat = await self._nest.wait(chat, seconds)
         return chat_details(chat)

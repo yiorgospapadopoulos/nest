@@ -1,6 +1,7 @@
 """B151: the `nest` command and `nest mcp` work Nest's chats through the outside API."""
 
 import argparse
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -13,7 +14,7 @@ from nestd.outside.mcp_server import Tools, tools_for
 from nestd.outside.models import ClientKind
 from nestd.providers.base import AgentTool, ToolRefusedError
 from tests.api_client import Api, running_api
-from tests.fake_provider import reply
+from tests.fake_provider import FakeRun, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.tool_support import tool_text
@@ -61,6 +62,24 @@ async def test_nest_new_waits_for_the_chats_answer(
     assert (chat["state"], chat["last_answer"]) == ("idle", "Fixed the bug.")
     assert chat["started_by"] == "nest command"
     assert chat["permission_mode"] == "default"
+
+
+async def test_a_wait_that_runs_out_says_the_chat_still_works(
+    api: Api, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gate = asyncio.Event()
+
+    async def works_on(_run: FakeRun) -> None:
+        await gate.wait()
+
+    api.provider.script(works_on)
+    shell = await client(api, "shell", "full")
+
+    code = await nest(shell, "new", "Go", "--project", "repo", "--wait", "--timeout", "0.02")
+
+    assert code == 3
+    assert "Status: running" in capsys.readouterr().out
+    gate.set()
 
 
 async def test_a_chat_is_named_by_the_start_of_its_id(

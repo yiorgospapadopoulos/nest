@@ -2,7 +2,8 @@
 call pixies and open a chat in the app, from a terminal. `--json` prints what Nest
 answered; `--wait` waits until the chat stops working.
 
-Exit codes: 0 done, 1 failed or refused, 2 the chat waits on the user in Nest.
+Exit codes: 0 done, 1 failed, stopped or refused, 2 the chat waits on the user in Nest, 3
+the chat was still working when `--wait` ran out.
 """
 
 import argparse
@@ -12,9 +13,9 @@ import sys
 from collections.abc import Callable, Sequence
 from urllib.parse import quote
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from nestd.outside.client import NestApiError, NestClient, NestUnavailableError
+from nestd.outside.client import BUSY, NestApiError, NestClient, NestUnavailableError
 from nestd.outside.models import Chat, ChatDetails, ClientKind, StartChat, StartMode
 from nestd.outside.text import (
     SHORT_ID,
@@ -78,6 +79,11 @@ def run(args: argparse.Namespace, client: NestClient | None = None) -> int:
     except (NestUnavailableError, NestApiError) as error:
         print(f"nest: {error}", file=sys.stderr)
         return 1
+    except ValidationError as error:
+        problem = error.errors()[0]
+        where = ".".join(str(part) for part in problem["loc"])
+        print(f"nest: {where}: {problem['msg']}", file=sys.stderr)
+        return 1
 
 
 async def execute(args: argparse.Namespace, nest: NestClient) -> int:
@@ -106,7 +112,7 @@ async def execute(args: argparse.Namespace, nest: NestClient) -> int:
     else:
         chat = await nest.start(_start(args))
     if args.wait:
-        chat = await nest.wait(chat, args.timeout * 60)
+        chat = await nest.wait(chat, args.timeout * 60, fresh=command != "show")
         return _out(args, chat, chat_details(chat), _exit(chat))
     if command == "show":
         return _out(args, chat, chat_details(chat), _exit(chat))
@@ -155,7 +161,9 @@ def _launch(argv: Sequence[str]) -> bool:
 
 
 def _exit(chat: Chat) -> int:
-    if chat.state == "failed":
+    if chat.state in BUSY:
+        return 3
+    if chat.state in ("failed", "interrupted"):
         return 1
     return 2 if chat.state == "waiting" else 0
 

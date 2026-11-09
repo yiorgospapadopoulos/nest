@@ -182,15 +182,18 @@ class NestClient:
         """Gets a token now, so a client that may not use Nest learns it at once."""
         await self._current_token(fresh=False)
 
-    async def wait(self, sent: ChatDetails, seconds: float) -> ChatDetails:
-        """The chat once it stops working on what was just sent (`sent` is the chat as
-        the start or the message left it), or as it is after `seconds`."""
+    async def wait(self, sent: ChatDetails, seconds: float, *, fresh: bool = True) -> ChatDetails:
+        """The chat once it stops working, or as it is after `seconds`. With `fresh`,
+        `sent` is the chat as a start or a message just left it, whose turn may not have
+        begun yet."""
         started = time.monotonic()
         chat = sent
         while True:
             elapsed = time.monotonic() - started
             # A turn that has not begun yet leaves the chat as it was.
-            unchanged = chat.updated_at <= sent.updated_at and elapsed < START_GRACE_SECONDS
+            unchanged = (
+                fresh and chat.updated_at <= sent.updated_at and elapsed < START_GRACE_SECONDS
+            )
             if (chat.state not in BUSY and not unchanged) or elapsed >= seconds:
                 return chat
             await asyncio.sleep(min(POLL_SECONDS, max(0.0, seconds - elapsed)))
