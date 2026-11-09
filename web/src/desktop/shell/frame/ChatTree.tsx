@@ -190,7 +190,7 @@ export function ChatTree({ session, onOpenAgent, onOpenWork }: Props) {
                 members={entry.members}
                 pixies={state.pixies}
                 className="fr-team"
-                size={10}
+                size={7}
               />
             ) : (
               <Icon name="user" />
