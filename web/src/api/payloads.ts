@@ -95,9 +95,8 @@ export function permissionOf(approval: Approval, root: string | null): Permissio
   };
 }
 
-/** A computer use card (B150): a chat asks to use an app, to act in it, or to bring it up. */
+/** A computer use card (B150): a chat asks to use an app; Allow covers its chat. */
 export interface ComputerAsk {
-  kind: "use" | "act" | "front";
   target: string;
   name: string;
   // Such as `Press "Send" in Mail?`.
@@ -105,17 +104,14 @@ export interface ComputerAsk {
   reason: string | null;
 }
 
-const COMPUTER_KINDS: ReadonlySet<unknown> = new Set(["use", "act", "front"]);
-
 /** The computer use part of a permission approval; null for any other approval. */
 export function computerAskOf(approval: Approval): ComputerAsk | null {
   if (approval.kind !== "permission") return null;
   const computer = obj(approval.payload.computer);
   const target = str(computer.target);
-  if (target === null || !COMPUTER_KINDS.has(computer.kind)) return null;
+  if (target === null || computer.kind !== "use") return null;
   const name = str(computer.name) ?? target;
   return {
-    kind: computer.kind as ComputerAsk["kind"],
     target,
     name,
     question: str(approval.payload.title) ?? `Let this chat use ${name}?`,

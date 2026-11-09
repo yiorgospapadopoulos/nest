@@ -2980,13 +2980,6 @@ button.sf-file {
   font-weight: 500;
   color: var(--t1);
 }
-.cu-askshot {
-  display: block;
-  max-width: 100%;
-  margin-top: 8px;
-  border-radius: 6px;
-  box-shadow: 0 0 0 1px var(--div);
-}
 
 /* Autopilot (B120): its red, on the composer's button and mode, the bar and the report. */
 .qb.ap {

@@ -847,14 +847,8 @@ function resolvedText(approval: Approval | undefined, root: string | null): stri
   switch (approval.kind) {
     case "permission": {
       const computer = computerAskOf(approval);
-      if (computer !== null) {
-        const allowed = r.behavior === "allow";
-        if (computer.kind === "use") {
-          const word = allowed ? (r.always === true ? "Always allowed" : "Allowed") : "Denied";
-          return `${word} ${computer.name}`;
-        }
-        return `${allowed ? "Allowed" : "Denied"}: ${computer.question.replace(/\?$/, "")}`;
-      }
+      if (computer !== null)
+        return `${r.behavior === "allow" ? "Allowed" : "Denied"} ${computer.name}`;
       const command = permissionOf(approval, root).command;
       return r.behavior === "allow" ? `Allowed: ${command}` : `Rejected: ${command}`;
     }

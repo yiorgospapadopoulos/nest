@@ -2054,15 +2054,6 @@ button.dc-line:disabled {
   background: var(--fail-soft);
   font-weight: 500;
 }
-/* The screenshot under an ask-first question. */
-.dc-cu-ask {
-  display: block;
-  align-self: flex-start;
-  max-width: min(100%, 288px);
-  margin-top: 8px;
-  border-radius: 6px;
-  box-shadow: 0 0 0 1px var(--div);
-}
 .dc-thumb.small {
   max-width: 128px;
   border-radius: 6px;

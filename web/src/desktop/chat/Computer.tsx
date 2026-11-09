@@ -85,7 +85,6 @@ export function ComputerAskBody({ approval, ask }: { approval: Approval; ask: Co
     <>
       <p className="dc-ask-t strong">{ask.question}</p>
       {ask.reason !== null && <p className="dc-ask-why">{ask.reason}</p>}
-      {ask.kind === "act" && <AskShot sessionId={approval.session_id} name={ask.name} />}
       <div className="dc-ask-acts">
         <Button kind="primary" disabled={busy} onClick={() => void decide("allow")}>
           Allow
@@ -97,10 +96,4 @@ export function ComputerAskBody({ approval, ask }: { approval: Approval; ask: Co
       </div>
     </>
   );
-}
-
-function AskShot({ sessionId, name }: { sessionId: string; name: string }) {
-  const url = useFrame(sessionId);
-  if (url === null) return null;
-  return <img className="dc-cu-ask" src={url} alt={name} />;
 }
