@@ -80,7 +80,7 @@ EDITORS: tuple[Editor, ...] = (
         "android-studio",
         "Android Studio",
         ("Android Studio.app",),
-        ("android-studio", "studio", "studio.sh", "com.google.AndroidStudio"),
+        ("android-studio", "studio.sh", "com.google.AndroidStudio"),
     ),
 )
 
