@@ -14,7 +14,7 @@ from nestd import __version__
 from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
 from nestd.approvals.queue import ApprovalQueue
 from nestd.clock import Clock
-from nestd.errors import NestError, NotFoundError
+from nestd.errors import InvalidInputError, NestError, NotFoundError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.outside.config import McpConfig
@@ -25,6 +25,7 @@ from nestd.outside.models import (
     LABELS,
     MAX_PER_DAY,
     MAX_RUNNING,
+    TEXT_MAX,
     Access,
     Chat,
     ChatDetails,
@@ -204,6 +205,8 @@ class OutsideService:
         teams = [
             PixieEntry(handle=team.handle, name=team.name, kind="team")
             for team in await self._teams.list_teams()
+            # A team with no leader cannot be called yet.
+            if team.leader_id is not None
         ]
         pixies = [
             PixieEntry(handle=pixie.slug, name=pixie.name, kind="pixie")
@@ -251,9 +254,13 @@ class OutsideService:
         known = {entry.handle for entry in await self.pixies()}
         name = handle.removeprefix("@")
         if name not in known:
-            msg = f"No pixie or team is called @{name}. List them with list_pixies."
+            msg = f"No pixie or team is called @{name}. `nest pixies` or list_pixies lists them."
             raise NotFoundError(msg)
-        return await self.start(client, StartChat(project=project, prompt=f"@{name} {task}"))
+        prompt = f"@{name} {task}"
+        if len(prompt) > TEXT_MAX:
+            msg = f"The task is too long: at most {TEXT_MAX - len(name) - 2} characters."
+            raise InvalidInputError(msg)
+        return await self.start(client, StartChat(project=project, prompt=prompt))
 
     # Inside
 

@@ -186,6 +186,20 @@ async def test_a_message_that_calls_a_pixie_needs_full_access(api: Api) -> None:
     assert (await message("ask an email@closer.dev friend")).status_code == 200
 
 
+async def test_a_task_too_long_for_its_call_is_refused_plainly(api: Api) -> None:
+    await api.ctx.pixies.create(CreatePixie(name="Vic"))
+    token = await turn_on(api, "shell", "full")
+
+    refused = await api.http.post(
+        "/api/outside/pixies/vic/call",
+        json={"project": "repo", "task": "x" * 19_999},
+        headers=as_client(token),
+    )
+
+    assert refused.status_code == 422
+    assert "too long" in refused.json()["detail"]
+
+
 async def test_pixie_chats_are_never_touched(api: Api) -> None:
     chat = await a_chat(api)
     pixie = await api.ctx.pixies.create(CreatePixie(name="Helper"))
@@ -345,6 +359,16 @@ async def test_a_process_whose_session_leader_is_gone_gets_no_token(folder: Path
     server = await serve(folder, {900: 650, 650: 80, 80: 1}, sessions={900: 777})
     try:
         assert await ask(folder / "outside.sock", b"shell\n") == {"error": "inside_nest"}
+    finally:
+        await server.stop()
+
+
+async def test_an_overlong_request_line_is_an_unknown_client(folder: Path) -> None:
+    server = await serve(folder, {900: 80, 80: 1})
+    try:
+        assert await ask(folder / "outside.sock", b"x" * 200_000 + b"\n") == {
+            "error": "unknown_client"
+        }
     finally:
         await server.stop()
 

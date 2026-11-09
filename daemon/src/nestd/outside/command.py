@@ -8,6 +8,7 @@ the chat was still working when `--wait` ran out.
 
 import argparse
 import asyncio
+import math
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -30,6 +31,7 @@ CHAT_COMMANDS = ("status", "projects", "list", "show", "new", "send", "open", "p
 MCP_CLIENTS: tuple[ClientKind, ...] = ("claude_code", "codex", "other")
 MODES: dict[str, StartMode] = {"plan": "plan", "ask": "default", "accept-edits": "acceptEdits"}
 WAIT_MINUTES = 30
+STATES = ["starting", "running", "waiting", "idle", "failed", "interrupted", "closed"]
 
 type AddParser = Callable[..., argparse.ArgumentParser]
 
@@ -40,7 +42,7 @@ def add_commands(add: AddParser) -> None:
     _json(add("projects", help="list the projects"))
     listing = _json(add("list", help="list the chats"))
     listing.add_argument("--project", help="only this project's chats")
-    listing.add_argument("--state", help="only chats in this state, such as running")
+    listing.add_argument("--state", choices=STATES, help="only chats in this state")
     show = _waits(_json(add("show", help="show a chat and its last answer")))
     show.add_argument("chat", help="the chat's id, or the start of it")
     new = _waits(_json(add("new", help="start a chat")))
@@ -80,10 +82,18 @@ def run(args: argparse.Namespace, client: NestClient | None = None) -> int:
         print(f"nest: {error}", file=sys.stderr)
         return 1
     except ValidationError as error:
-        problem = error.errors()[0]
-        where = ".".join(str(part) for part in problem["loc"])
-        print(f"nest: {where}: {problem['msg']}", file=sys.stderr)
+        print(f"nest: {problem(error)}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        # A chat being waited on keeps going.
+        return 130
+
+
+def problem(error: ValidationError) -> str:
+    """The first problem in plain words, as `field: message`."""
+    first = error.errors()[0]
+    where = ".".join(str(part) for part in first["loc"])
+    return f"{where}: {first['msg']}" if where else first["msg"]
 
 
 async def execute(args: argparse.Namespace, nest: NestClient) -> int:
@@ -190,8 +200,19 @@ def _waits(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument("--wait", action="store_true", help="wait until the chat stops working")
     parser.add_argument(
         "--timeout",
-        type=float,
+        type=_minutes,
         default=WAIT_MINUTES,
         help=f"minutes to wait at most (default {WAIT_MINUTES})",
     )
     return parser
+
+
+def _minutes(text: str) -> float:
+    try:
+        minutes = float(text)
+    except ValueError:
+        minutes = math.nan
+    if not math.isfinite(minutes) or minutes <= 0:
+        msg = f"{text!r} is not a number of minutes above 0"
+        raise argparse.ArgumentTypeError(msg)
+    return minutes

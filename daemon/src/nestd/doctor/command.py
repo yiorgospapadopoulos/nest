@@ -10,6 +10,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NoReturn
 
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
 from nestd.auth.secrets import KeyringSecretStore
@@ -76,8 +77,17 @@ def uninstall(machine: Machine, *, delete_data: bool) -> int:
     return 0
 
 
+class _Parser(argparse.ArgumentParser):
+    """Usage errors exit 1, as the chat commands' other failures do; 2 means a chat waits
+    on the user (B151)."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(1, f"{self.prog}: {message}\n")
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="nest", description="Nest from the terminal")
+    parser = _Parser(prog="nest", description="Nest from the terminal")
     commands = parser.add_subparsers(required=True, dest="command", metavar="command")
     check = commands.add_parser("doctor", help="say what is wrong and how to fix it")
     check.add_argument("--report", action="store_true", help="write a bug report with no secrets")

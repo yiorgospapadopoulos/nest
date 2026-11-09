@@ -83,7 +83,7 @@ async def get_chat(session_id: str, ctx: Context) -> ChatDetails:
 async def get_transcript(
     session_id: str,
     ctx: Context,
-    since: Annotated[int | None, Query(ge=0)] = None,
+    since: Annotated[int | None, Query(ge=0, le=2**62)] = None,
     limit: Annotated[int | None, Query(ge=1, le=TRANSCRIPT_MAX)] = None,
 ) -> Transcript:
     return await ctx.outside.transcript(session_id, since, limit)

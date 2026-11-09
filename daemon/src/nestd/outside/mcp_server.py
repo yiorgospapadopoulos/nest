@@ -10,10 +10,11 @@ from collections.abc import Awaitable, Callable
 
 from claude_agent_sdk import create_sdk_mcp_server
 from mcp.server.stdio import stdio_server
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from nestd import __version__
 from nestd.outside.client import InsideNestError, NestApiError, NestClient, NestUnavailableError
+from nestd.outside.command import problem
 from nestd.outside.models import MCP_NAME, ChatDetails, StartChat
 from nestd.outside.text import (
     chat_details,
@@ -229,6 +230,8 @@ def _guarded(handler: Handler) -> Handler:
     async def run(args: Args) -> str:
         try:
             return await handler(args)
+        except ValidationError as error:
+            raise ToolRefusedError(problem(error)) from error
         except (NestApiError, NestUnavailableError, ValueError) as error:
             raise ToolRefusedError(str(error)) from error
 

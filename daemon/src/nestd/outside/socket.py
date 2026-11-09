@@ -118,6 +118,9 @@ class ClientSocket(PrivateSocket):
                 line = await reader.readline()
         except TimeoutError:
             return
+        except (ValueError, ConnectionError):
+            # A line past the reader's limit, or a client that left.
+            line = b"?" * (REQUEST_MAX + 1)
         answer = await self._answer_for(line, pid)
         writer.write(answer.model_dump_json(exclude_none=True).encode() + b"\n")
         await writer.drain()

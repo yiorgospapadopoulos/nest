@@ -7,6 +7,7 @@ logs the token.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import socket
@@ -137,16 +138,18 @@ class PrivateSocket:
     async def _close(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Ends the answer, then waits a moment for the client to close first. On Linux,
         closing a Unix socket with unread input resets the connection, and the client loses
-        the answer; so what the client sent is read and dropped."""
-        writer.write_eof()
+        the answer; so what the client sent is read and dropped. A client that already
+        left is no error."""
         try:
+            writer.write_eof()
             async with asyncio.timeout(self._close_wait):
                 while await reader.read(4096):
                     pass
-        except TimeoutError:
+        except (TimeoutError, OSError):
             pass
         writer.close()
-        await writer.wait_closed()
+        with contextlib.suppress(OSError):
+            await writer.wait_closed()
 
 
 class TokenSocket(PrivateSocket):

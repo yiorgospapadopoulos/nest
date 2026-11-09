@@ -9,6 +9,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import TypeVar
+from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -156,6 +157,8 @@ class NestClient:
 
     async def resolve(self, chat: str) -> str:
         """A chat's id from its id or the start of it, as `nest list` shows them."""
+        if not chat.strip():
+            raise NestApiError(422, "Give the chat's id, or the start of it.")
         found = [c.id for c in await self.chats() if c.id.startswith(chat)]
         if chat in found:
             return chat
@@ -176,7 +179,10 @@ class NestClient:
 
     async def call(self, handle: str, project: str, task: str) -> ChatDetails:
         body = {"project": project, "task": task}
-        return await self._send(ChatDetails, "POST", f"/pixies/{handle.lstrip('@')}/call", body)
+        name = quote(handle.lstrip("@"), safe="")
+        if not name:
+            raise NestApiError(422, "Name the pixie or team to call.")
+        return await self._send(ChatDetails, "POST", f"/pixies/{name}/call", body)
 
     async def connect(self) -> None:
         """Gets a token now, so a client that may not use Nest learns it at once."""
