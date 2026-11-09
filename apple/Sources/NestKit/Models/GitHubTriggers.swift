@@ -55,10 +55,13 @@ public struct ChatTriggerBody: Codable, Sendable, Hashable {
     public var labels: [String]
     public var branches: [String]
     public var authors: TriggerAuthors
+    /// The mode its chats start in: Ask until the user picks another.
+    public var permissionMode: PermissionMode
 
     public init(
         name: String, prompt: String, enabled: Bool = true, events: [GitHubEventKind],
-        labels: [String] = [], branches: [String] = [], authors: TriggerAuthors = .members
+        labels: [String] = [], branches: [String] = [], authors: TriggerAuthors = .members,
+        permissionMode: PermissionMode = .default
     ) {
         self.name = name
         self.prompt = prompt
@@ -67,6 +70,12 @@ public struct ChatTriggerBody: Codable, Sendable, Hashable {
         self.labels = labels
         self.branches = branches
         self.authors = authors
+        self.permissionMode = permissionMode
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, prompt, enabled, events, labels, branches, authors
+        case permissionMode = "permission_mode"
     }
 }
 
@@ -80,6 +89,7 @@ public struct ChatTrigger: Codable, Sendable, Hashable, Identifiable {
     public var labels: [String]
     public var branches: [String]
     public var authors: TriggerAuthors
+    public var permissionMode: PermissionMode
 
     public init(id: String, _ body: ChatTriggerBody) {
         self.id = id
@@ -90,12 +100,34 @@ public struct ChatTrigger: Codable, Sendable, Hashable, Identifiable {
         labels = body.labels
         branches = body.branches
         authors = body.authors
+        permissionMode = body.permissionMode
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, prompt, enabled, events, labels, branches, authors
+        case permissionMode = "permission_mode"
+    }
+
+    /// A daemon from before the per-trigger mode sends none: its chats asked.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        events = try container.decode([GitHubEventKind].self, forKey: .events)
+        labels = try container.decode([String].self, forKey: .labels)
+        branches = try container.decode([String].self, forKey: .branches)
+        authors = try container.decode(TriggerAuthors.self, forKey: .authors)
+        permissionMode =
+            try container.decodeIfPresent(PermissionMode.self, forKey: .permissionMode)
+            ?? .default
     }
 
     public var body: ChatTriggerBody {
         ChatTriggerBody(
             name: name, prompt: prompt, enabled: enabled, events: events, labels: labels,
-            branches: branches, authors: authors)
+            branches: branches, authors: authors, permissionMode: permissionMode)
     }
 }
 

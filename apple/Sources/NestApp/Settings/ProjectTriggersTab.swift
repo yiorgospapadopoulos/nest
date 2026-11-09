@@ -119,6 +119,15 @@ struct TriggerFormSheet: View {
                     selection: draft.authors
                 ) { draft.authors = $0 }
             }
+            if draft.authors != .members {
+                WarningLine(text: TriggerText.outsidersWarning)
+            }
+            FormLine(label: "Runs with") {
+                SegmentPicker(
+                    options: TriggerText.modes.map { ($0, $0.label) },
+                    selection: draft.permissionMode
+                ) { draft.permissionMode = $0 }
+            }
             FormLine(label: "Start a chat with") {
                 TextEditor(text: $draft.prompt)
                     .font(.ui(TypeSize.ui))

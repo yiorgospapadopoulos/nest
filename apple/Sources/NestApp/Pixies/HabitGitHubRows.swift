@@ -58,6 +58,9 @@ struct HabitGitHubRows: View {
                 }
             }
         }
+        if !draft.events.isEmpty, draft.authors != .members {
+            DetailNote(text: TriggerText.outsidersWarning)
+        }
         DetailNote(text: TriggerText.githubNote)
     }
 }

@@ -62,6 +62,12 @@ import Testing
                 == ChatTriggerBody(
                     name: "CI", prompt: "Fix it.", events: [.ciFailed, .ciPassed],
                     branches: ["main", "release/*"]))
+        #expect(draft.body.permissionMode == .default)
+        draft.permissionMode = .bypassPermissions
+        let trigger = ChatTrigger(id: "t1", draft.body)
+        #expect(
+            TriggerText.summary(trigger)
+                == "When CI fails or CI passes · on main, release/* · Bypass")
         draft.events = []
         #expect(draft.problem == "Choose at least one event")
     }

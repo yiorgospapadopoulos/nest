@@ -49,6 +49,10 @@ public enum TriggerText {
         "Each event starts a chat in its own worktree. It works once, then waits for you, and cannot push."
     public static let empty =
         "No triggers yet. A trigger starts a chat here when something happens on GitHub."
+    /// Shown when people without write access count, as their text then drives the agent
+    /// (D179).
+    public static let outsidersWarning =
+        "People without write access can start these too, and their text goes straight to the agent."
     public static let noRemote = "Add the project's GitHub address in General to use triggers."
 
     /// "On GitHub when an issue is opened or CI fails"; nil without known events.
@@ -60,7 +64,12 @@ public enum TriggerText {
             + (rest.isEmpty ? last : rest.joined(separator: ", ") + " or " + last)
     }
 
-    /// "When CI fails · on main · labelled bug · anyone but bots", for a trigger's row.
+    /// The modes a trigger's chats may start in; Auto is left out, as only some models take
+    /// it. A new trigger starts in Ask.
+    public static let modes = PermissionMode.selectable
+
+    /// "When CI fails · on main · labelled bug · anyone but bots · Bypass", for a trigger's
+    /// row.
     public static func summary(_ trigger: ChatTrigger) -> String {
         let when = github(trigger.events).map { "When" + $0.dropFirst("On GitHub when".count) }
         return [
@@ -68,6 +77,7 @@ public enum TriggerText {
             trigger.branches.isEmpty ? nil : "on " + trigger.branches.joined(separator: ", "),
             trigger.labels.isEmpty ? nil : "labelled " + trigger.labels.joined(separator: ", "),
             trigger.authors == .members ? nil : trigger.authors.label.lowercased(),
+            trigger.permissionMode == .default ? nil : trigger.permissionMode.label,
         ]
         .compactMap { $0 }
         .joined(separator: " · ")
@@ -150,6 +160,7 @@ public struct TriggerDraft: Sendable, Hashable {
     public var branches = ""
     public var authors = TriggerAuthors.members
     public var enabled = true
+    public var permissionMode = PermissionMode.default
 
     public init() {}
 
@@ -161,6 +172,7 @@ public struct TriggerDraft: Sendable, Hashable {
         branches = trigger.branches.joined(separator: ", ")
         authors = trigger.authors
         enabled = trigger.enabled
+        permissionMode = trigger.permissionMode
     }
 
     /// Why it cannot be saved yet; an empty name only keeps Save off.
@@ -183,7 +195,7 @@ public struct TriggerDraft: Sendable, Hashable {
             name: trimmedName, prompt: trimmedPrompt, enabled: enabled,
             events: GitHubEventKind.choices.filter(events.contains),
             labels: TriggerText.list(labels), branches: TriggerText.list(branches),
-            authors: authors)
+            authors: authors, permissionMode: permissionMode)
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
