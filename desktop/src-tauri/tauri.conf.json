@@ -21,6 +21,7 @@
     "active": true,
     "targets": ["deb", "appimage"],
     "category": "DeveloperTool",
+    "linux": { "appimage": { "bundleMediaFramework": true } },
     "shortDescription": "Nest, a personal coding-agent manager",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"]
   }

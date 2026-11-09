@@ -3,13 +3,14 @@
 import argparse
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 
 from nestd.outside.client import InsideNestError, NestClient
-from nestd.outside.command import add_commands, execute
+from nestd.outside.command import add_commands, execute, launch
 from nestd.outside.entry import reply_to
 from nestd.outside.mcp_server import Tools, tools_for
 from nestd.outside.models import ClientKind
@@ -144,3 +145,16 @@ def test_inside_nest_nest_mcp_answers_with_no_tools() -> None:
         "instructions": "Inside Nest: use your Nest tools instead.",
     }
     assert tools == {"jsonrpc": "2.0", "id": 2, "result": {"tools": []}}
+
+
+# Regression (B157, Ubuntu 26.04): `nest open` opened the chat in Firefox and still said
+# "could not open it" after 10 s: Firefox, started by xdg-open, held the output pipes the
+# command waited on.
+def test_an_opener_that_leaves_a_browser_running_counts_as_opened(tmp_path: Path) -> None:
+    opener = tmp_path / "xdg-open"
+    opener.write_text("#!/bin/sh\nsleep 30 &\nexit 0\n")
+    opener.chmod(0o755)
+
+    started = time.monotonic()
+    assert launch([str(opener), "http://127.0.0.1:8765/chat/s1"])
+    assert time.monotonic() - started < 5

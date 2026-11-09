@@ -1253,6 +1253,11 @@ html.desk .ewl {
   width: 10px;
   height: 10px;
 }
+/* A team's mark: its members two by two, inside the icon's 16 px. */
+.fr-team {
+  display: inline-grid;
+  grid-template-columns: repeat(2, auto);
+}
 .fr-tname {
   flex: 0 1 auto;
   min-width: 24px;

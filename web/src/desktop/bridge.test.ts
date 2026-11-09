@@ -219,6 +219,19 @@ describe("the Tauri bridge", () => {
     expect(asked).toEqual([{ chat: "s1" }]);
   });
 
+  // Regression (B157, Ubuntu 26.04): the pill's list stayed open over Nest after the pointer
+  // left. The window system's "not over the pill's window" read as "cannot tell", so the
+  // check the open list makes never closed it when a leave event went missing.
+  it("tells a pointer outside the pill's window from one it cannot find", async () => {
+    const { tauri, invoke } = fakeTauri();
+    const bridge = tauriBridge(tauri);
+    expect(await bridge.pillPointer()).toBe("outside");
+    invoke.mockResolvedValueOnce([12, 7]);
+    expect(await bridge.pillPointer()).toEqual({ x: 12, y: 7 });
+    invoke.mockRejectedValueOnce(new Error("no pill window"));
+    expect(await bridge.pillPointer()).toBeNull();
+  });
+
   it("names the chat a notification opens, and no chat when there is none", async () => {
     const { tauri, invoke } = fakeTauri();
     const bridge = tauriBridge(tauri);

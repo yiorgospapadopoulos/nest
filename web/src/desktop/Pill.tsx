@@ -281,6 +281,7 @@ export function Pill() {
     // The same, where the window system finds the pointer.
     const probe = async (): Promise<Zone | null> => {
       const at = await bridge.pillPointer();
+      if (at === "outside") return "out";
       return at === null ? null : zoneAt(at.x, at.y);
     };
     const next = pillHover(setOpen, probe);

@@ -125,7 +125,11 @@ fn dev_url(app: &AppHandle) -> Option<Url> {
 /// Nest's own page. A camera or a screen is never given.
 #[cfg(any(target_os = "linux", test))]
 fn microphone_allowed(uri: &str, dev_url: Option<&Url>, audio: bool, video: bool) -> bool {
-    audio && !video && uri.parse::<Url>().is_ok_and(|url| is_app_url(&url, dev_url))
+    audio
+        && !video
+        && uri
+            .parse::<Url>()
+            .is_ok_and(|url| is_app_url(&url, dev_url))
 }
 
 /// WebKitGTK keeps media streams off and turns down any request no handler answers, so the
@@ -545,13 +549,38 @@ mod tests {
         assert_eq!(pointer_in((960.0, 66.0), (750, 32), (420, 34), 1.0), None);
     }
 
+    // Regression (B157, Ubuntu 26.04): voice input never started in the AppImage. It sends
+    // GStreamer to its own plugin folder, which was empty, so WebKit found no microphone
+    // ("no device was found amongst 0 devices").
+    #[test]
+    fn the_appimage_carries_the_plugins_webkit_records_with() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(
+            config["bundle"]["linux"]["appimage"]["bundleMediaFramework"],
+            serde_json::Value::Bool(true)
+        );
+        let image = include_str!("../../docker/Dockerfile");
+        for plugins in ["gstreamer1.0-plugins-good", "gstreamer1.0-pulseaudio"] {
+            assert!(
+                image.contains(plugins),
+                "{plugins} is not in the build image"
+            );
+        }
+    }
+
     #[test]
     fn only_nest_s_own_page_gets_the_microphone_and_nothing_else() {
         let app = "tauri://localhost/desktop.html";
         assert!(microphone_allowed(app, None, true, false));
         assert!(!microphone_allowed(app, None, true, true));
         assert!(!microphone_allowed(app, None, false, true));
-        assert!(!microphone_allowed("https://example.com/", None, true, false));
+        assert!(!microphone_allowed(
+            "https://example.com/",
+            None,
+            true,
+            false
+        ));
         assert!(!microphone_allowed("", None, true, false));
     }
 
