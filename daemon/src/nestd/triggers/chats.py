@@ -1,6 +1,7 @@
 """Chats a project's GitHub trigger starts (B148, D179): one per event, in its own
-worktree it cannot leave, in Ask mode. It runs its first turn and then waits for the user,
-blocked from pushing and pull requests like a pixie's chat unless the user lets agents push.
+worktree it cannot leave, in the trigger's own permission mode (Ask unless the user chose
+another). It runs its first turn and then waits for the user, blocked from pushing and
+pull requests like a pixie's chat unless the user lets agents push.
 
 They follow the habits' limits: none while habits are paused or the usage is at the
 habits' level, and at most `MAX_PER_HOUR` per trigger.
@@ -89,9 +90,8 @@ class TriggeredChats:
             prompt=chat_message(trigger, event, can_push=self._can_push()),
             title=f"{trigger.name}: {event.title}"[:TITLE_MAX].strip(),
             mode="worktree",
-            # Ask, whatever the user's default: the event's text is untrusted, so the
-            # agent asks before any command or edit (D179).
-            permission_mode="default",
+            # The trigger's own mode: Ask unless the user chose another (D179).
+            permission_mode=trigger.permission_mode,
         )
         ref = TriggerRef(
             id=trigger.id, name=trigger.name, event_title=event.title, event_url=event.url

@@ -225,9 +225,7 @@ async def test_an_access_github_could_not_tell_is_asked_again(
 async def test_a_triggered_chat_cannot_push(
     ctx: AppContext, clock: FakeClock, gh: FakeGitHub, provider: FakeProvider
 ) -> None:
-    agents = ctx.settings.agents.model_copy(update={"permission_mode": "bypassPermissions"})
-    ctx.settings = ctx.settings.model_copy(update={"agents": agents})
-    await chat_trigger(ctx)
+    await chat_trigger(ctx, permission_mode="bypassPermissions")
     await ctx.github_triggers.tick()
     gh.feeds[EVENTS] = [issue_opened("2", at(clock, 0.5))]
     clock.advance(FAST)
@@ -238,9 +236,31 @@ async def test_a_triggered_chat_cannot_push(
     assert provider.runs[-1].spec.guard_git is True
     chat = (await triggered(ctx))[0]
     assert NO_PUSH in chat.prompt
-    # It asks before any command whatever the default, and stays in its worktree.
-    assert chat.permission_mode == "default"
+    # It cannot push or leave its worktree, whatever its mode.
     assert not chat.movable
+
+
+async def test_a_trigger_starts_in_ask_until_the_user_picks_another_mode(
+    ctx: AppContext, clock: FakeClock, gh: FakeGitHub
+) -> None:
+    agents = ctx.settings.agents.model_copy(update={"permission_mode": "bypassPermissions"})
+    ctx.settings = ctx.settings.model_copy(update={"agents": agents})
+    asks = await chat_trigger(ctx)
+    await chat_trigger(ctx, name="Bypass", permission_mode="bypassPermissions")
+    await ctx.github_triggers.tick()
+    gh.feeds[EVENTS] = [issue_opened("2", at(clock, 0.5))]
+    clock.advance(FAST)
+
+    await ctx.github_triggers.tick()
+
+    # Ask, not the user's Bypass default, unless the trigger itself says Bypass.
+    modes = {
+        c.started_by_trigger.name: c.permission_mode
+        for c in await triggered(ctx)
+        if c.started_by_trigger is not None
+    }
+    assert modes == {"Bugs": "default", "Bypass": "bypassPermissions"}
+    assert asks.permission_mode == "default"
 
 
 async def test_an_edited_trigger_starts_its_wait_again(

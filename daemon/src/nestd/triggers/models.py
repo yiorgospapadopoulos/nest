@@ -19,6 +19,10 @@ GITHUB_EVENTS: tuple[GitHubEventKind, ...] = get_args(GitHubEventKind.__value__)
 # stranger's issue on a public repository starts nothing), anyone but bots, or every one.
 type Authors = Literal["members", "humans", "everyone"]
 
+# The permission modes a project trigger's chats may start in (`PermissionMode` of
+# config.models, which imports this module); Auto is left out, as only some models take it.
+type TriggerMode = Literal["default", "acceptEdits", "plan", "bypassPermissions"]
+
 NAME_MAX = 120
 PROMPT_MAX = 4000
 MAX_FILTERS = 20
@@ -78,6 +82,8 @@ class NewChatTrigger(EventFilter):
     name: TriggerName
     prompt: TriggerPrompt
     enabled: bool = True
+    # The mode its chats start in: Ask until the user picks another (D179).
+    permission_mode: TriggerMode = "default"
 
 
 class ChatTrigger(NewChatTrigger):
@@ -98,6 +104,7 @@ class UpdateChatTrigger(_Strict):
     labels: Annotated[list[Label], Field(max_length=MAX_FILTERS)] | None = None
     branches: Annotated[list[Branch], Field(max_length=MAX_FILTERS)] | None = None
     authors: Authors | None = None
+    permission_mode: TriggerMode | None = None
 
 
 class GitHubEvent(BaseModel):
