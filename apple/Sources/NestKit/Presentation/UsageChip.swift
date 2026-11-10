@@ -1,7 +1,6 @@
 import Foundation
 
-/// The usage chip at the top right of the tab strip, as the approved design's footer chip shows a
-/// provider's limits: each window as "30% 2h 5m" (used, then the time to its reset), a
+/// The usage chip at the top right of the tab strip, showing an engine's limits: each window as "30% 2h 5m" (used, then the time to its reset), a
 /// bar for the shortest window reported (Claude's 5-hour one, else its weekly one), and a
 /// tooltip naming each window and its reset. Another engine's windows are its own, by
 /// length (B91): Codex's free plan has one of 30 days.

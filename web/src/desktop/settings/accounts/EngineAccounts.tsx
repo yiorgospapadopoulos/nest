@@ -6,6 +6,7 @@ import {
   bankedTitle,
   creditExpiry,
   creditTitle,
+  finishSignIn,
   LIMIT_RESET,
   limitLine,
   limitResetTitle,
@@ -196,7 +197,7 @@ function AccountControls({
     return (
       <>
         <Fireflies />
-        <span className="dka-meta">Finish in the browser</span>
+        <span className="dka-meta">{finishSignIn(account.provider)}</span>
         <Button
           onClick={() => {
             change("Could not cancel signing in", () => api.cancelAccountSignIn(account.id));

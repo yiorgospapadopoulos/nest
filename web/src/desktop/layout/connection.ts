@@ -45,6 +45,8 @@ export function installCommand(checkout: string | null): string {
 
 export const DEFAULT_RELEASE_URL =
   "https://github.com/yiorgospapadopoulos/nest/releases/latest/download";
+// The latest release's install.sh on the project's GitHub Pages, for a short line (B162).
+export const INSTALL_SCRIPT_URL = "https://yiorgospapadopoulos.github.io/nest/install.sh";
 
 /**
  * What repairs an install and keeps the data (release/install.sh), from the address the
@@ -53,7 +55,7 @@ export const DEFAULT_RELEASE_URL =
 export function installLine(releaseUrl: string): string {
   const url = releaseUrl.replace(/\/+$/, "");
   return url === DEFAULT_RELEASE_URL
-    ? `curl -fsSL ${url}/install.sh | sh`
+    ? `curl -fsSL ${INSTALL_SCRIPT_URL} | sh`
     : `curl -fsSL ${url}/install.sh | NEST_RELEASE_URL=${url} sh`;
 }
 

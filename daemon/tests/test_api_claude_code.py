@@ -3,12 +3,14 @@ installing a standalone Claude Code. Every command is faked."""
 
 import asyncio
 import json
+import shlex
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from nestd.claude_code import account as claude_account
 from nestd.claude_code.cli import INSTALL_COMMAND, ClaudeLocations
 from nestd.events import types
 from nestd.gitops.runner import CommandError
@@ -112,11 +114,13 @@ async def test_a_failing_status_is_a_bad_gateway(api: Api, reply: str | Exceptio
     assert response.json()["detail"]
 
 
-async def test_sign_in_runs_in_the_background_one_at_a_time(api: Api) -> None:
-    login = ("auth", "login", "--claudeai")
+async def test_sign_in_opens_claude_codes_own_login_in_a_terminal(api: Api) -> None:
+    """B162 (D190): Nest never runs a Claude login itself. It opens a terminal running
+    Claude Code's own `claude auth login` and waits for `claude auth status` to say signed
+    in; one sign in at a time.
+    """
     gate = asyncio.Event()
-    api.claude.gates[login] = gate
-    api.claude.script(*login, reply="Login successful.\n")
+    api.claude.gates[STATUS] = gate
     api.claude.script(*STATUS, reply=json.dumps(SIGNED_IN))
 
     started = await api.http.post("/api/accounts/claude/login")
@@ -132,12 +136,20 @@ async def test_sign_in_runs_in_the_background_one_at_a_time(api: Api) -> None:
     await until(announced)
     [event] = await published(api, types.ACCOUNT_CLAUDE)
     assert (event["signed_in"], event["email"], event["error"]) == (True, "me@example.com", None)
-    assert api.claude.args_of(where(api).bundled) == [login, STATUS]
+    assert all(args == STATUS for args in api.claude.args_of(where(api).bundled))
+    [(argv, _)] = api.opener.calls
+    launcher = Path(argv[-1])
+    script = await asyncio.to_thread(launcher.read_text, encoding="utf-8")
+    assert shlex.split(script.splitlines()[-1]) == [
+        "exec",
+        str(where(api).bundled),
+        "auth",
+        "login",
+    ]
 
 
 async def test_a_sign_in_reads_the_engines_models_at_once(api: Api) -> None:
     """Regression: a new install showed only the short model names for up to 30 minutes."""
-    api.claude.script("auth", "login", "--claudeai", reply="Login successful.\n")
     api.claude.script(*STATUS, reply=json.dumps(SIGNED_IN))
     before = len(api.engine.clients)
 
@@ -146,10 +158,26 @@ async def test_a_sign_in_reads_the_engines_models_at_once(api: Api) -> None:
     await until(lambda: len(api.engine.clients) > before)
 
 
-async def test_a_failed_sign_in_is_announced_with_its_error(api: Api) -> None:
-    api.claude.script(
-        "auth", "login", "--claudeai", reply=CommandError(["claude"], 1, "Login cancelled\n")
-    )
+async def test_a_failing_status_while_waiting_means_not_signed_in_yet(api: Api) -> None:
+    """A signed-out `claude auth status` exits with an error, so it is asked again."""
+    api.claude.script(*STATUS, reply=CommandError(["claude"], 1, "not logged in\n"))
+    api.claude.script(*STATUS, reply=json.dumps(SIGNED_OUT))
+    api.claude.script(*STATUS, reply=json.dumps(SIGNED_IN))
+
+    assert (await api.http.post("/api/accounts/claude/login")).status_code == 202
+
+    async def announced() -> bool:
+        return len(await published(api, types.ACCOUNT_CLAUDE)) == 1
+
+    await until(announced)
+    [event] = await published(api, types.ACCOUNT_CLAUDE)
+    assert (event["signed_in"], event["error"]) == (True, None)
+
+
+async def test_a_sign_in_not_finished_in_time_is_announced_with_its_error(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(claude_account, "SIGN_IN_WAIT_SECONDS", 0.05)
     api.claude.script(*STATUS, reply=json.dumps(SIGNED_OUT))
 
     assert (await api.http.post("/api/accounts/claude/login")).status_code == 202
@@ -159,21 +187,18 @@ async def test_a_failed_sign_in_is_announced_with_its_error(api: Api) -> None:
 
     await until(announced)
     [event] = await published(api, types.ACCOUNT_CLAUDE)
-    assert (event["signed_in"], event["error"]) == (False, "Login cancelled")
+    assert (event["signed_in"], event["error"]) == (False, claude_account.NOT_FINISHED)
 
 
-async def test_a_sign_in_whose_status_fails_is_announced_signed_out(api: Api) -> None:
-    api.claude.script("auth", "login", "--claudeai", reply="ok\n")
+async def test_a_terminal_that_cannot_open_starts_no_sign_in(api: Api) -> None:
+    api.opener.failure = CommandError(["open"], 1, "no terminal\n")
 
-    assert (await api.http.post("/api/accounts/claude/login")).status_code == 202
+    response = await api.http.post("/api/accounts/claude/login")
 
-    async def announced() -> bool:
-        return len(await published(api, types.ACCOUNT_CLAUDE)) == 1
-
-    await until(announced)
-    [event] = await published(api, types.ACCOUNT_CLAUDE)
-    assert event["signed_in"] is False
-    assert "unscripted" in event["error"]
+    assert response.status_code >= 400
+    assert "no terminal" in response.json()["detail"]
+    assert api.claude.calls == []
+    assert (await api.ctx.accounts.claude_active()).signing_in is False
 
 
 async def test_sign_out(api: Api) -> None:
@@ -326,7 +351,7 @@ async def test_a_failed_install_is_announced(
 
 
 async def test_a_sign_in_or_install_in_progress_is_stopped_with_the_daemon(api: Api) -> None:
-    api.claude.gates[("auth", "login", "--claudeai")] = asyncio.Event()
+    api.claude.gates[STATUS] = asyncio.Event()
     api.claude.gates[tuple(INSTALL_COMMAND[1:])] = asyncio.Event()
     await api.http.post("/api/accounts/claude/login")
     await api.http.post("/api/claude-code/install")

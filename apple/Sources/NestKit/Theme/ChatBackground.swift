@@ -1,8 +1,8 @@
 import Foundation
 
-/// An image drawn behind the workspace, as the approved design's chat background (B39): its copy in
+/// An image drawn behind the workspace (B39): its copy in
 /// the app's folder, how visible it is while no chat is open and once chats are open, and
-/// its grain, how much of the approved design's dither effect lies over the plain image.
+/// its grain, how much of the dither effect lies over the plain image.
 public struct ChatBackground: Sendable, Hashable {
     public static let minVisibility = 0.05
     public static let maxVisibility = 0.65
@@ -12,7 +12,7 @@ public struct ChatBackground: Sendable, Hashable {
     public var image: String
     public var emptyVisibility: Double
     public var chatsVisibility: Double
-    /// 0 is the plain image, 1 (the default) the approved design's full effect.
+    /// 0 is the plain image, 1 (the default) the full effect.
     public var grain: Double
 
     public init(
@@ -36,7 +36,7 @@ public struct ChatBackground: Sendable, Hashable {
         clampGrain(grain)
     }
 
-    /// A visibility inside the approved design's range; anything not a number is the default.
+    /// A visibility inside the allowed range; anything not a number is the default.
     public static func clamp(_ value: Double) -> Double {
         guard value.isFinite else { return defaultVisibility }
         return min(maxVisibility, max(minVisibility, value))
@@ -50,14 +50,14 @@ public struct ChatBackground: Sendable, Hashable {
     /// panels, bottom bar), which leaves a deep tint of its colors.
     public static let chromeBlur = 36.0
 
-    /// Points of blur of the image behind the workspace: sharp while it is empty, the approved design's
+    /// Points of blur of the image behind the workspace: sharp while it is empty, a
     /// haze once panes are open, so the chats are the focus.
     public static func workspaceBlur(hasChats: Bool) -> Double {
         hasChats ? 12 : 0
     }
 
-    /// Seconds a change of visibility takes: 600 ms once chats are open, the approved design's 120 ms
-    /// feedback otherwise.
+    /// Seconds a change of visibility takes: 600 ms once chats are open, a quick
+    /// 120 ms otherwise.
     public static func transition(hasChats: Bool) -> Double {
         hasChats ? 0.6 : 0.12
     }
@@ -129,7 +129,7 @@ public struct ChatBackgroundLibrary: Sendable {
     }
 }
 
-/// the approved design's Dither effect on RGBA pixels, the look of its reference screenshots: 2 by 2
+/// The dither effect on RGBA pixels: 2 by 2
 /// pixel blocks against a 4 by 4 Bayer matrix; a block whose brightest channel clears its
 /// threshold is raised to full brightness, keeping its hue, and the others keep 8 percent,
 /// so bright areas stay clean with a few dark dots and darker areas fill in with a fine

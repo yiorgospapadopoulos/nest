@@ -40,12 +40,12 @@ def test_an_open_pull_request_without_checks() -> None:
 
 
 def test_the_real_output_of_a_closed_sandbox_pull_request() -> None:
-    # Recorded from `gh pr view 1 -R me/repo --json ...`.
+    # Recorded from `gh pr view 1 -R example/demo-repo --json ...`.
     output = (
         '{"createdAt":"2026-10-06T15:45:25Z","headRefOid":"779f15c948adfad4f0d9a987a30fb1e033a52983",'
         '"mergeStateStatus":"CLEAN","mergeable":"MERGEABLE","number":1,"reviewDecision":"",'
         '"state":"CLOSED","statusCheckRollup":[],"title":"Add hello greeting (Nest live test)",'
-        '"url":"https://github.com/me/repo/pull/1"}'
+        '"url":"https://github.com/example/demo-repo/pull/1"}'
     )
 
     status = parse_status(output, NOW)

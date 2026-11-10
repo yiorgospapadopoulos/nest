@@ -566,8 +566,7 @@ struct BackgroundPreview: View {
     }
 }
 
-/// The visibility sliders and the grain: 0 percent the plain image, 100 the approved design's full
-/// dither.
+/// The visibility sliders and the grain: 0 percent the plain image, 100 the full dither.
 struct BackgroundRows: View {
     let background: ChatBackground
     let change: (ChatBackground) -> Void

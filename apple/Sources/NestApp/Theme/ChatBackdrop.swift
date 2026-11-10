@@ -5,7 +5,7 @@ import NestKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The chat background (B39, the approved design's): the chosen image with the approved design's dither at the
+/// The chat background (B39): the chosen image with its dither at the
 /// chosen grain, laid under the whole window. The window's chrome shows it heavily blurred under a deep
 /// tint (`WindowBackground`); the workspace shows it here, aligned with the window's, over
 /// the base color: sharp at the empty visibility while no pane is open, hazed at the
@@ -39,7 +39,7 @@ struct ChatBackdrop: View {
         }
     }
 
-    /// the approved design's ease-out.
+    /// An ease-out.
     static func easing(_ duration: Double) -> Animation {
         .timingCurve(0.22, 1, 0.36, 1, duration: duration)
     }
@@ -149,7 +149,7 @@ struct BackdropImage: View {
 }
 
 /// Renders each image's dithered and plain copies once per blur, off the main thread, and
-/// keeps the latest few, as the approved design's worker does. Blurred copies are made here rather
+/// keeps the latest few. Blurred copies are made here rather
 /// than with a live blur, which costs every frame and which offscreen snapshots leave out.
 actor BackdropRenderer {
     struct Key: Hashable, Sendable {

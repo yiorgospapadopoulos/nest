@@ -13,10 +13,10 @@ The agents are the real ones (Claude Code, Codex, a few others, or a model on yo
 On a Mac with Apple silicon and macOS 15 or later, or on x86_64 or arm64 Linux with Ubuntu 22.04 or later, paste this in a terminal:
 
 ```sh
-curl -fsSL https://github.com/yiorgospapadopoulos/nest/releases/latest/download/install.sh | sh
+curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh
 ```
 
-It needs no developer tools. Ubuntu doesn't come with `curl`, so on Linux run `sudo apt install curl` first if the line says `curl` is not found. It downloads Nest, checks every file against its sha256, starts the background service and opens the app. You can run the same line again at any time to repair an install; it keeps your chats.
+It needs no developer tools. Ubuntu doesn't come with `curl`, so on Linux run `sudo apt install curl` first if the line says `curl` is not found. It downloads Nest, checks the release's signature and every file against its sha256, starts the background service and opens the app. You can run the same line again at any time to repair an install; it keeps your chats.
 
 Nest goes in `/Applications` on a Mac (run it from an administrator account) and in your app menu on Linux, with no `sudo`. It changes no shell files: if `~/.local/bin` is not on your `PATH`, the script prints the line to add. When the background service is down, Nest first starts it again itself, and only shows this line if that fails. It refuses to run over a Nest that runs from a source checkout.
 
@@ -28,7 +28,7 @@ Downloading the Mac app from the Releases page in a browser also works. It is si
 
 The app opens on a short guide. Each step says whether it is done, and you can skip any of them but the first. Afterwards, Settings > General > Set up Nest shows every step and what is still missing.
 
-1. **Engine.** Sign in to Claude Code or Codex with your own plan, or choose local models only. Nest needs one engine to work.
+1. **Engine.** Sign in to Claude Code or Codex with your own plan, or choose local models only. Nest needs one engine to work. Claude Code signs in with its own login, which Nest opens in a terminal; it opens the sign-in page in your browser.
 2. **git.** On a Mac, Install opens Apple's installer for the command line tools.
 3. **GitHub.** Sign in with the `gh` tool, for pull requests and issues.
 4. **Background service.** Nest's own server on this computer, which the installer already started.

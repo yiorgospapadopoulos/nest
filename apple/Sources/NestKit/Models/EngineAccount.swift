@@ -60,7 +60,7 @@ public struct EngineAccount: Codable, Sendable, Hashable, Identifiable {
     public var active: Bool
     /// The login that was there before Nest; it cannot be removed.
     public var first: Bool
-    /// A sign-in waits on the browser.
+    /// A sign-in waits on the terminal (Claude) or the browser.
     public var signingIn: Bool
     /// Why the last sign-in failed.
     public var error: String?

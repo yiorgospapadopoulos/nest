@@ -1,6 +1,7 @@
 [project]
 name = "nestd"
 version = "0.1.0"
+license = "MIT"
 description = "Daemon for Nest, a personal agent manager."
 authors = [
     { name = "Yiorgos Papadopoulos" }

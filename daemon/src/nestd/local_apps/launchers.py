@@ -33,18 +33,51 @@ def limit_reset_script(cwd: Path, env: Mapping[str, str]) -> str:
     folder it starts in, and trusting this one gives it nothing to read. Claude Code then
     uses the reset itself; Nest sends nothing.
     """
+    return (
+        "#!/bin/sh\n"
+        "# Written by Nest: opens Claude Code to use the account's limit reset.\n"
+        f"cd {shlex.quote(str(cwd))} && exec {_with_env(env, 'claude')} /limit-reset\n"
+    )
+
+
+# In an added account's folder while Nest has the account; the folder goes with it.
+SIGN_IN_MARKER = ".nest-account"
+
+
+def sign_in_script(program: Path, env: Mapping[str, str], marker: Path | None) -> str:
+    """A script that runs Claude Code's own `claude auth login` on the account `env` points
+    at (B162, D190): Claude Code opens its sign-in page and keeps what it gets. Nest only
+    reads `claude auth status` afterwards, so it never offers or sees the login itself.
+
+    With `marker`, an added account's: a login finished after Nest removed the account (its
+    sign in cancelled or not finished in time) is signed out again, as Claude Code would
+    otherwise keep it under a folder Nest no longer shows.
+    """
+    claude = _with_env(env, shlex.quote(str(program)))
+    if marker is None:
+        return (
+            "#!/bin/sh\n"
+            "# Written by Nest: signs in to Claude Code with its own login.\n"
+            f"exec {claude} auth login\n"
+        )
+    return (
+        "#!/bin/sh\n"
+        "# Written by Nest: signs in to Claude Code with its own login, and signs out again\n"
+        "# when Nest removed the account meanwhile.\n"
+        f"{claude} auth login\n"
+        f"[ -e {shlex.quote(str(marker))} ] || exec {claude} auth logout\n"
+    )
+
+
+def _with_env(env: Mapping[str, str], command: str) -> str:
+    """`command` run with `env` set; each name checked, each value quoted."""
     settings = ""
     for name, value in env.items():
         if _NAME.fullmatch(name) is None:
             msg = f"not an environment variable name: {name!r}"
             raise ValueError(msg)
         settings += f"{name}={shlex.quote(value)} "
-    run = f"env {settings}claude" if settings else "claude"
-    return (
-        "#!/bin/sh\n"
-        "# Written by Nest: opens Claude Code to use the account's limit reset.\n"
-        f"cd {shlex.quote(str(cwd))} && exec {run} /limit-reset\n"
-    )
+    return f"env {settings}{command}" if settings else command
 
 
 def write_launcher(path: Path, cwd: Path, resume_id: str) -> None:
@@ -54,6 +87,17 @@ def write_launcher(path: Path, cwd: Path, resume_id: str) -> None:
 def write_limit_reset_launcher(path: Path, cwd: Path, env: Mapping[str, str]) -> None:
     cwd.mkdir(parents=True, exist_ok=True)
     _write(path, limit_reset_script(cwd, env))
+
+
+def write_sign_in_launcher(
+    path: Path, program: Path, env: Mapping[str, str], profile: Path | None
+) -> None:
+    """With `profile`, an added account's folder, which gets the marker first."""
+    marker = None if profile is None else profile / SIGN_IN_MARKER
+    if marker is not None:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+    _write(path, sign_in_script(program, env, marker))
 
 
 def _write(path: Path, script: str) -> None:

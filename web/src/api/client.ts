@@ -421,8 +421,6 @@ export interface Api {
   github(): Promise<GithubAccount>;
   checkGithub(): Promise<GithubAccount>;
   claudeAccount(): Promise<ClaudeAccount>;
-  // 202 at once; the Mac opens the browser and `account.claude` follows.
-  claudeLogin(): Promise<unknown>;
   claudeLogout(): Promise<ClaudeAccount>;
   // Codex's login (B94); signing in happens on the Mac only, its callback being local.
   codexAccount(): Promise<CodexAccount>;
@@ -1358,10 +1356,6 @@ export class HttpApi implements Api {
 
   claudeAccount() {
     return this.json<ClaudeAccount>("GET", "/api/accounts/claude");
-  }
-
-  claudeLogin() {
-    return this.json<unknown>("POST", "/api/accounts/claude/login");
   }
 
   claudeLogout() {

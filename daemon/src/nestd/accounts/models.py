@@ -50,7 +50,7 @@ class AccountList(BaseModel):
 class AccountSignIn(BaseModel):
     account: Account
     # Codex's sign-in page, which the client opens; None for Claude, whose sign in opens
-    # the browser on the Mac itself.
+    # a terminal on this computer running Claude Code's own login (B162).
     auth_url: str | None
     # For an engine signed in in Terminal (B107): the command the user runs there.
     login_command: str | None = None

@@ -1,5 +1,6 @@
 import os
 import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,12 @@ from nestd.gitops.runner import CommandError
 from nestd.local_apps.apps import LIVE_WARNING, LocalApps, RepoApp
 from nestd.local_apps.editors import EDITORS, EditorId
 from nestd.local_apps.errors import AppNotInstalledError, LocalAppError
-from nestd.local_apps.launchers import launcher_script, limit_reset_script
+from nestd.local_apps.launchers import (
+    SIGN_IN_MARKER,
+    launcher_script,
+    limit_reset_script,
+    write_sign_in_launcher,
+)
 from nestd.platform import LINUX, MACOS
 from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.models import Session, SessionState
@@ -329,3 +335,66 @@ def test_the_limit_reset_launcher_quotes_the_profile_and_runs_only_claude_code()
     assert first == "cd /data && exec claude /limit-reset"
     with pytest.raises(ValueError, match="not an environment variable name"):
         limit_reset_script(folder, {"X; rm -rf ~": "1"})
+
+
+def fake_claude(tmp_path: Path) -> tuple[Path, Path]:
+    """A `claude` that writes each run's account folder and arguments to a log."""
+    log = tmp_path / "runs.log"
+    program = tmp_path / "bin dir" / "claude"
+    program.parent.mkdir()
+    program.write_text(
+        f'#!/bin/sh\necho "$CLAUDE_CONFIG_DIR $*" >> {shlex.quote(str(log))}\n', "utf-8"
+    )
+    program.chmod(0o755)
+    return program, log
+
+
+def run_launcher(launcher: Path) -> None:
+    subprocess.run(["/bin/sh", str(launcher)], check=True, timeout=10)  # noqa: S603
+
+
+def test_an_added_accounts_sign_in_runs_claude_codes_login_and_keeps_it(tmp_path: Path) -> None:
+    """B162: the terminal runs Claude Code's own login on the account's folder; while Nest
+    has the account, the login stays.
+    """
+    program, log = fake_claude(tmp_path)
+    profile = tmp_path / "profiles" / "claude" / "abc123def456"
+    launcher = tmp_path / "launchers" / "sign-in-abc123def456.command"
+
+    write_sign_in_launcher(launcher, program, {"CLAUDE_CONFIG_DIR": str(profile)}, profile)
+    run_launcher(launcher)
+
+    assert (profile / SIGN_IN_MARKER).exists()
+    assert log.read_text("utf-8").splitlines() == [f"{profile} auth login"]
+
+
+def test_a_login_finished_after_nest_removed_the_account_is_signed_out_again(
+    tmp_path: Path,
+) -> None:
+    """B162 security re-check: a cancelled or timed-out added account's folder is deleted,
+    but the terminal's login goes on. Finished later, Claude Code would keep a login Nest
+    never shows, so the script signs it out again.
+    """
+    program, log = fake_claude(tmp_path)
+    profile = tmp_path / "profiles" / "claude" / "abc123def456"
+    launcher = tmp_path / "launchers" / "sign-in-abc123def456.command"
+    write_sign_in_launcher(launcher, program, {"CLAUDE_CONFIG_DIR": str(profile)}, profile)
+
+    (profile / SIGN_IN_MARKER).unlink()
+    profile.rmdir()
+    run_launcher(launcher)
+
+    assert log.read_text("utf-8").splitlines() == [
+        f"{profile} auth login",
+        f"{profile} auth logout",
+    ]
+
+
+def test_the_first_accounts_sign_in_is_never_signed_out_by_nest(tmp_path: Path) -> None:
+    program, log = fake_claude(tmp_path)
+    launcher = tmp_path / "launchers" / "sign-in-claude-main.command"
+
+    write_sign_in_launcher(launcher, program, {}, None)
+    run_launcher(launcher)
+
+    assert log.read_text("utf-8").splitlines() == [" auth login"]

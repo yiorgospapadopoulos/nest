@@ -228,8 +228,8 @@ async def test_without_an_engine_name_the_claude_code_profile_name_is_shown(
     assert await engine.account() == ACCOUNT.model_copy(update={"display_name": "Sam"})
 
     # Read again on every request, so a rename shows at the next refresh.
-    _profile(tmp_path, "Sam R.")
-    assert (await engine.account()).display_name == "Sam R."
+    _profile(tmp_path, "Sam P.")
+    assert (await engine.account()).display_name == "Sam P."
     path.unlink()
     assert (await engine.account()).display_name is None
     assert (await h.store.account()) == ACCOUNT

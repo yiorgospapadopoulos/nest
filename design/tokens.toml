@@ -30,9 +30,9 @@ scrim = { light = "rgba(236,238,246,0.34)", dark = "rgba(0,0,0,0.3)" }
 # User message bubble when the "neutral" bubble color is chosen instead of the accent.
 neutral_bubble = { light = "rgba(255,255,255,0.92)", dark = "rgba(255,255,255,0.12)" }
 
-# The Mac app's look (D073), with the approved design's darker, crisper values (B39): a #171717 base
+# The Mac app's look (D073), with darker, crisper values (B39): a #171717 base
 # and #ebebeb content in dark; lines, fills and secondary text are the content color at
-# the approved design's strengths (lines 7 percent, fills 3 to 10, text 55 and 40), drawn here over the
+# set strengths (lines 7 percent, fills 3 to 10, text 55 and 40), drawn here over the
 # base; light mode keeps its own colors at the same strengths. The iPhone app uses them too
 # since B102. CSS: --mac-<name>; Swift: DesignTokens.Colors.Mac.
 [colors.mac]
@@ -40,8 +40,7 @@ neutral_bubble = { light = "rgba(255,255,255,0.92)", dark = "rgba(255,255,255,0.
 # Reduce Transparency and offscreen snapshots.
 window = { light = "rgba(248,248,246,0.36)", dark = "rgba(23,23,23,0.36)" }
 window_opaque = { light = "#f8f8f6", dark = "#171717" }
-# Sidebar and right panel darker than the panes (the approved design: the base mixed 10 percent toward
-# black); the board on the base; chat panes a soft card in light, the base in dark.
+# Sidebar and right panel darker than the panes (the base mixed 10 percent toward black); the board on the base; chat panes a soft card in light, the base in dark.
 side = { light = "rgba(0,0,0,0.02)", dark = "rgba(0,0,0,0.1)" }
 pane = { light = "rgba(255,255,255,0.25)", dark = "rgba(0,0,0,0)" }
 chat_pane = { light = "rgba(255,255,255,0.55)", dark = "rgba(0,0,0,0)" }
@@ -61,7 +60,7 @@ sidebar_text_closed = { light = "rgba(28,28,29,0.8)", dark = "rgba(235,235,235,0
 # leaving a deep tint of its colors.
 backdrop_tint = { light = "rgba(248,248,246,0.82)", dark = "rgba(23,23,23,0.82)" }
 # Sheets, popovers, menus and floating banners, over the window's content: the base with
-# the approved design's 2 percent popover fill.
+# a 2 percent popover fill.
 sheet = { light = "rgba(251,251,250,0.98)", dark = "rgba(27,27,27,0.98)" }
 selection = { light = "rgba(28,28,29,0.06)", dark = "rgba(235,235,235,0.1)" }
 # Selected text in the user's own message: the Mac's classic blue highlight, with its text,

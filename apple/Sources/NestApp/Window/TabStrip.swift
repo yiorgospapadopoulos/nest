@@ -358,7 +358,7 @@ extension ProjectIcon {
     }
 }
 
-/// The usage chip, the approved design's: an engine's mark, a 32 by 4 point bar for the 5-hour
+/// The usage chip: an engine's mark, a 32 by 4 point bar for the 5-hour
 /// window (amber from 80 percent used, red from 90), each window as "30% 2h 5m" (used,
 /// then the time to its reset). With two accounts checked in Settings > Usage (B98), a line
 /// for each of the top two, one above the other in the same chip, the account's title on
@@ -536,7 +536,7 @@ private struct UsageBar: View {
             .clipShape(Capsule())
     }
 
-    /// Tailwind's red-400 and amber-400, as the approved design's bar uses them.
+    /// Tailwind's red-400 and amber-400.
     private var fill: Color {
         switch chip.tone {
         case .neutral: Ink.content(0.45)

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Installs Nest: curl -fsSL <address>/install.sh | sh
+# Installs Nest: curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh
+# A release served elsewhere: curl -fsSL <address>/install.sh | NEST_RELEASE_URL=<address> sh
 # Run it again to repair an install. Everything is checked before anything changes, and the
 # whole script sits in `main`, so a cut-off download runs nothing.
 set -eu

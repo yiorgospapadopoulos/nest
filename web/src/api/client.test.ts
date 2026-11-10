@@ -542,7 +542,6 @@ const calls: Call[] = [
   ["github", (a) => a.github(), "GET", "/api/accounts/github", undefined],
   ["check github", (a) => a.checkGithub(), "POST", "/api/accounts/github/check", undefined],
   ["claude account", (a) => a.claudeAccount(), "GET", "/api/accounts/claude", undefined],
-  ["claude login", (a) => a.claudeLogin(), "POST", "/api/accounts/claude/login", undefined],
   ["claude logout", (a) => a.claudeLogout(), "POST", "/api/accounts/claude/logout", undefined],
   [
     "install claude code",
@@ -612,7 +611,7 @@ const calls: Call[] = [
     "artifacts",
     (a) => a.artifacts({ session_id: "s1", repo: "todo ui" }),
     "GET",
-    "/api/artifacts?session_id=s1&repo=cv+page",
+    "/api/artifacts?session_id=s1&repo=todo+ui",
     undefined,
   ],
   [

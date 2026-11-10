@@ -79,7 +79,7 @@ describe("command palette", () => {
 
   it("filters by every word and selects the first match again", () => {
     let p = move(palette(catalog(input())), 2);
-    p = search(p, "  cv  MODE ");
+    p = search(p, "  todo  MODE ");
     expect(p.selection).toBe(0);
     expect(visible(p).map((i) => i.title)).toEqual(["Dark mode"]);
     p = search(p, "question");

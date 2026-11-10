@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from nestd.claude_code import account as claude_account
 from nestd.sessions.checkpoints import FileCheckpoints
 from nestd.storage.db import Database
 from tests.db_support import migrated_copy
@@ -44,6 +45,12 @@ def isolated_git(monkeypatch: pytest.MonkeyPatch) -> None:
     for role in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
         monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.com")
+
+
+@pytest.fixture(autouse=True)
+def quick_claude_sign_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Claude sign in in the terminal is checked for every few ms instead of seconds."""
+    monkeypatch.setattr(claude_account, "SIGN_IN_POLL_SECONDS", 0.005)
 
 
 @pytest.fixture

@@ -16,8 +16,7 @@ import { PixieSkills } from "./PixieSkills.tsx";
 import { Sprite } from "./Sprite.tsx";
 
 /**
- * Everything that sets a pixie up, in one scrolling panel laid out like the approved design's Details
- * panel. Every change is saved at once; there is no form to submit (D072).
+ * Everything that sets a pixie up, in one scrolling details panel. Every change is saved at once; there is no form to submit (D072).
  */
 export function PixieDetails({
   pixie,

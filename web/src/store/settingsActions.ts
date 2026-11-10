@@ -222,13 +222,6 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
       if (github !== null) set({ github });
     },
 
-    /** The Mac opens the browser; `account.claude` reports how it went. */
-    async claudeLogin(): Promise<void> {
-      if ((await attempt(() => api.claudeLogin().then(() => true))) !== null) {
-        toast("Finish signing in in the browser on your Mac", "info");
-      }
-    },
-
     async claudeLogout(): Promise<void> {
       const claude = await attempt(() => api.claudeLogout());
       if (claude !== null) set({ claude });

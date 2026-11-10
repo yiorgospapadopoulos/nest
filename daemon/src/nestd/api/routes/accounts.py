@@ -1,4 +1,5 @@
-"""Accounts in Settings (D104): Claude through Claude Code's own `claude auth` commands,
+"""Accounts in Settings (D104): Claude through Claude Code's own `claude auth` commands
+(signing in is `claude auth login` in a terminal, B162),
 Codex through its app-server's own sign-in (B94), GitHub through the user's `gh` login.
 Each engine can have several accounts, one active at a time (B98); the routes named after
 an engine act on its active account, as before. No token is ever read or returned."""
@@ -58,8 +59,9 @@ async def claude_status(ctx: Context) -> ClaudeAccountStatus:
 
 @router.post("/claude/login", status_code=status.HTTP_202_ACCEPTED)
 async def claude_login(ctx: Context) -> Response:
-    """Start `claude auth login --claudeai`, which opens the browser on the Mac; 409 while
-    one runs. The outcome comes as `account.claude`.
+    """Open a terminal on this computer running Claude Code's own `claude auth login`,
+    then wait for it to be signed in (B162); 409 while one runs. The outcome comes as
+    `account.claude`.
     """
     await ctx.accounts.login(ctx.accounts.active_id(CLAUDE))
     return Response(status_code=status.HTTP_202_ACCEPTED)
@@ -103,9 +105,10 @@ async def codex_logout(ctx: Context) -> CodexAccountStatus:
 @router.post("/{provider}", status_code=status.HTTP_202_ACCEPTED)
 async def add_account(provider: AccountProvider, ctx: Context) -> AccountSignIn:
     """Add an account after the engine's others and start signing in to it: Claude opens
-    the browser on the Mac, Codex gives `auth_url` to open, OpenCode `login_command` to run
-    in Terminal; Gemini's key is put afterwards (B107). 409 while another sign in of
-    the engine runs. One whose first sign in fails or is cancelled is removed again.
+    a terminal running Claude Code's own login, Codex gives `auth_url` to open, OpenCode
+    `login_command` to run in Terminal; Gemini's key is put afterwards (B107). 409 while
+    another sign in of the engine runs. One whose first sign in fails, is cancelled or is
+    not finished in time is removed again.
     """
     return await ctx.accounts.add(provider)
 

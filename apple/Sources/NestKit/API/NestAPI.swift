@@ -323,8 +323,9 @@ public protocol NestAPI: Sendable {
     func checkGitHubAccount() async throws -> GitHubAccount
     /// Every engine's accounts (B98), Claude's first, each engine's in the user's order.
     func engineAccounts() async throws -> [EngineAccount]
-    /// Adds an account at the end and starts its sign-in: Claude's opens the browser on the
-    /// Mac, Codex's answers the page to open; `accounts.changed` tells the outcome.
+    /// Adds an account at the end and starts its sign-in: Claude's opens a terminal running
+    /// Claude Code's own login, Codex's answers the page to open; `accounts.changed` tells
+    /// the outcome.
     func addAccount(provider: String) async throws -> AccountSignIn
     /// Signs in to the account again.
     func signInAccount(_ id: String) async throws -> AccountSignIn

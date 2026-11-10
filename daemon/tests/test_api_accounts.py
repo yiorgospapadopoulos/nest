@@ -22,6 +22,7 @@ from nestd.accounts.codex import CodexSignInRunningError
 from nestd.accounts.profiles import FirstAccount, Profiles
 from nestd.accounts.store import AccountStore
 from nestd.artifacts.models import Origin
+from nestd.claude_code import account as claude_account
 from nestd.claude_code.account import SignInRunningError
 from nestd.events import types
 from nestd.gitops.runner import CommandError
@@ -34,7 +35,6 @@ from tests.fake_probe import answer
 from tests.fakes import FakeClock, FakeSecretStore
 
 STATUS = ("auth", "status", "--json")
-LOGIN = ("auth", "login", "--claudeai")
 LOGOUT = ("auth", "logout")
 AUTH_URL = "https://auth.openai.com/oauth/authorize?client_id=codex&state=abc"
 STARTED: JsonObject = {"type": "chatgpt", "loginId": "login-1", "authUrl": AUTH_URL}
@@ -96,26 +96,42 @@ async def published(api: Api, kind: str) -> list[dict[str, Any]]:
     return [json.loads(row["payload"]) for row in rows]
 
 
+def bundled(api: Api) -> Path:
+    return api.ctx.claude_code.locations.bundled
+
+
+async def sign_in_commands(api: Api, account_id: str) -> list[list[list[str]]]:
+    """The commands of each terminal opened to sign in to the account (B162)."""
+    found: list[list[list[str]]] = []
+    for argv, _ in api.opener.calls:
+        launcher = Path(argv[-1])
+        if launcher.name.startswith(f"sign-in-{account_id}"):
+            script = await asyncio.to_thread(launcher.read_text, encoding="utf-8")
+            lines = [line for line in script.splitlines() if not line.startswith("#")]
+            found.append([shlex.split(line) for line in lines])
+    return found
+
+
 def profile_of(api: Api, provider: str, account_id: str) -> Path:
     return api.ctx.paths.data_dir / "profiles" / provider / account_id
 
 
 async def add_claude(api: Api, email: str = "work@example.com") -> dict[str, Any]:
-    """An added Claude account, signed in; its probe after the sign in finds no reply."""
-    gate = asyncio.Event()
-    api.claude.gates[LOGIN] = gate
+    """An added Claude account, signed in in the terminal; its probe after the sign in
+    finds no reply. Until its status is scripted, asking it fails: not signed in yet.
+    """
     response = await api.http.post("/api/accounts/claude")
     assert response.status_code == 202
     added = response.json()["account"]
     profile = profile_of(api, "claude", added["id"])
-    api.claude.script(*LOGIN, reply="Login successful.\n", profile=profile)
     api.claude.script(*STATUS, reply=claude_status(email), profile=profile)
     api.claude.script(*LOGOUT, reply="Successfully logged out.\n", profile=profile)
-    gate.set()
-    del api.claude.gates[LOGIN]
 
     async def signed_in() -> bool:
-        return any(a["id"] == added["id"] and a["signed_in"] for a in await accounts(api))
+        return any(
+            a["id"] == added["id"] and a["signed_in"] and not a["signing_in"]
+            for a in await accounts(api)
+        )
 
     await until(signed_in)
     return added
@@ -252,8 +268,12 @@ async def test_an_added_claude_account_signs_in_on_its_own_profile(api: Api) -> 
         "mcpServers": {"fs": {"command": "fs"}}
     }
     env = {"CLAUDE_CONFIG_DIR": str(profile)}
-    assert (env, LOGIN) in api.claude.runs()
-    assert all(args != LOGIN or run_env == env for run_env, args in api.claude.runs())
+    # Signed in through Claude Code's own login in a terminal, on the account's folder.
+    assert all(args[:2] != ("auth", "login") for _, args in api.claude.runs())
+    claude = ["env", f"CLAUDE_CONFIG_DIR={profile}", str(bundled(api))]
+    [lines] = await sign_in_commands(api, added["id"])
+    assert lines[0] == [*claude, "auth", "login"]
+    assert lines[1][-6:] == ["exec", *claude, "auth", "logout"]
     listed = by_id(await accounts(api), added["id"])
     assert (listed["title"], listed["active"], listed["signing_in"]) == (
         "work@example.com",
@@ -274,10 +294,19 @@ async def test_an_added_claude_account_signs_in_on_its_own_profile(api: Api) -> 
     ]
 
 
-async def test_only_one_sign_in_of_an_engine_runs_at_a_time(api: Api) -> None:
-    gate = asyncio.Event()
-    api.claude.gates[LOGIN] = gate
+async def test_two_sign_ins_at_once_open_one_terminal(api: Api) -> None:
+    """B162 security re-check: both got past the check while the terminal opened, so two
+    opened and Cancel stopped only one."""
+    first, second = await asyncio.gather(
+        api.http.post("/api/accounts/claude-main/login"),
+        api.http.post("/api/accounts/claude-main/login"),
+    )
 
+    assert sorted([first.status_code, second.status_code]) == [202, 409]
+    assert len(await sign_in_commands(api, "claude-main")) == 1
+
+
+async def test_only_one_sign_in_of_an_engine_runs_at_a_time(api: Api) -> None:
     first = await api.http.post("/api/accounts/claude")
     second = await api.http.post("/api/accounts/claude")
     again = await api.http.post("/api/accounts/claude-main/login")
@@ -286,17 +315,15 @@ async def test_only_one_sign_in_of_an_engine_runs_at_a_time(api: Api) -> None:
     assert first.status_code == 202
     assert (second.status_code, again.status_code, codex.status_code) == (409, 409, 202)
     assert len(await accounts(api)) == 4
-    gate.set()
 
 
-async def test_a_new_account_whose_first_sign_in_fails_is_removed(api: Api) -> None:
-    gate = asyncio.Event()
-    api.claude.gates[LOGIN] = gate
+async def test_a_new_account_not_signed_in_in_time_is_removed(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(claude_account, "SIGN_IN_WAIT_SECONDS", 0.05)
     added = (await api.http.post("/api/accounts/claude")).json()["account"]
     profile = profile_of(api, "claude", added["id"])
-    api.claude.script(*LOGIN, reply=CommandError(["claude"], 1, "Login failed\n"), profile=profile)
     api.claude.script(*STATUS, reply=claude_status(None), profile=profile)
-    gate.set()
 
     async def gone() -> bool:
         return len(await accounts(api)) == 2
@@ -308,7 +335,6 @@ async def test_a_new_account_whose_first_sign_in_fails_is_removed(api: Api) -> N
 
 
 async def test_cancelling_a_new_accounts_sign_in_removes_it(api: Api) -> None:
-    api.claude.gates[LOGIN] = asyncio.Event()
     added = (await api.http.post("/api/accounts/claude")).json()["account"]
 
     response = await api.http.post(f"/api/accounts/{added['id']}/login/cancel")
@@ -395,8 +421,6 @@ async def test_an_account_is_renamed_trimmed_and_cleared(api: Api) -> None:
 
 
 async def test_only_a_signed_in_account_becomes_active(api: Api) -> None:
-    gate = asyncio.Event()
-    api.claude.gates[LOGIN] = gate
     added = (await api.http.post("/api/accounts/claude")).json()["account"]
 
     response = await api.http.put(f"/api/accounts/{added['id']}/active")
@@ -409,7 +433,6 @@ async def test_only_a_signed_in_account_becomes_active(api: Api) -> None:
         False,
         True,
     ]
-    gate.set()
 
 
 async def test_switching_runs_the_next_turns_and_the_old_routes_on_the_new_account(
@@ -591,7 +614,7 @@ async def test_an_account_whose_folder_is_not_nests_is_never_signed_out_or_delet
     assert (claude_dir / "CLAUDE.md").read_text(encoding="utf-8") == "mine"
 
 
-async def test_signing_in_again_prepares_the_profile_and_runs_its_login(api: Api) -> None:
+async def test_signing_in_again_prepares_the_profile_and_opens_its_login(api: Api) -> None:
     added = await add_claude(api)
     profile = profile_of(api, "claude", added["id"])
     (profile / "CLAUDE.md").unlink()
@@ -601,12 +624,7 @@ async def test_signing_in_again_prepares_the_profile_and_runs_its_login(api: Api
     assert response.status_code == 202
     assert response.json()["auth_url"] is None
     assert (profile / "CLAUDE.md").is_symlink()
-
-    async def done() -> bool:
-        runs = [env for env, args in api.claude.runs() if args == LOGIN]
-        return len(runs) == 2
-
-    await until(done)
+    assert len(await sign_in_commands(api, added["id"])) == 2
 
 
 async def test_refreshing_reads_every_signed_in_account_and_is_spaced(
@@ -752,7 +770,7 @@ async def test_a_signed_out_account_from_before_a_restart_is_removed(api: Api) -
 
 
 async def test_each_account_also_refuses_a_second_sign_in_of_its_own(api: Api) -> None:
-    api.claude.gates[LOGIN] = asyncio.Event()
+    api.claude.gates[STATUS] = asyncio.Event()
     claude = await api.ctx.accounts.claude_active()
     codex = await api.ctx.accounts.codex_active()
     await claude.login()

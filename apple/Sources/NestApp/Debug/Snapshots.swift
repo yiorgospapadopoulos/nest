@@ -2853,9 +2853,9 @@
             try await pair(controller, "b28-init-chat", folder)
         }
 
-        /// B39: the empty project workspace (the approved design's empty session) plain, with text and
+        /// B39: the empty project workspace plain, with text and
         /// an attachment, and in worktree mode; the usage chip in amber and red; the chat
-        /// background (the approved design's dither at a grain) chosen in Settings, with a project's own
+        /// background (its dither at a grain) chosen in Settings, with a project's own
         /// image, behind the empty workspace (also at grain 0) and hazed once chats are open,
         /// in full screen and in the Pixies tab; the Account and Connectors sections of
         /// Settings. With an image the whole window shows it, blurred under the chrome.
@@ -2958,8 +2958,7 @@
         }
 
         /// A busy, photo-like picture for the chat background snapshots: overlapping leaves
-        /// in pinks, deep reds and greys over a gradient, like the wallpaper of the approved design
-        /// reference screenshots; the same every time. Written to a temporary file.
+        /// in pinks, deep reds and greys over a gradient; the same every time. Written to a temporary file.
         private static func sampleBackgroundImage() throws -> URL {
             // 2048 pixels wide, as the effect draws a large photo.
             let size = NSSize(width: 2048, height: 1280)
