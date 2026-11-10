@@ -1,5 +1,5 @@
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -397,9 +397,15 @@ async def test_every_git_command_of_a_diff_is_hardened(
     commands: list[Sequence[str]] = []
     real = runner.run_command
 
-    async def recording(argv: Sequence[str], cwd: Path, time_limit: float = 300.0) -> str:
+    async def recording(
+        argv: Sequence[str],
+        cwd: Path,
+        time_limit: float = 300.0,
+        env: Mapping[str, str] | None = None,
+        own_group: bool = False,
+    ) -> str:
         commands.append(argv)
-        return await real(argv, cwd, time_limit)
+        return await real(argv, cwd, time_limit, env=env, own_group=own_group)
 
     monkeypatch.setattr(runner, "run_command", recording)
 

@@ -205,3 +205,23 @@ class RemoteChangedError(RemoteNotConfirmedError):
             "recorded. Check the repository's remotes, or confirm the new address to push "
             "there."
         )
+
+
+class UnreviewedCommitsError(ConflictError):
+    """A push from a run that may not push itself would send commits the review never
+    showed: the review covers uncommitted changes only (B159 P-2).
+    """
+
+    code = "unreviewed_commits"
+
+    def __init__(self, commits: list[str]) -> None:
+        count = f"{len(commits)} commit" if len(commits) == 1 else f"{len(commits)} commits"
+        super().__init__(
+            f"The branch has {count} that origin does not have and this review did not "
+            "show, so Nest will not push it. Look at them and push the branch from "
+            "Terminal, or ask the chat to undo them, then approve again."
+        )
+        self.commits = commits
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code, "commits": list(self.commits)}
