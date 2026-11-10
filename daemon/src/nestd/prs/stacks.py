@@ -176,6 +176,7 @@ class Stacks:
             refspec = f"+refs/heads/{restack.fetch}:refs/remotes/{REMOTE}/{restack.fetch}"
             await self._git(cwd, "fetch", "--no-tags", "--no-recurse-submodules", REMOTE, refspec)
         old_head = await self._rev(cwd, "HEAD")
+        _require_on_pr(session, old_head)
         onto = await self._rev(cwd, f"{restack.onto}^{{commit}}")
         if not await self._contains(cwd, onto):
             fork = await self._fork_point(cwd, restack.upstream)
@@ -356,6 +357,25 @@ def _restack_of(session: Session) -> Restack:
 def _with(session: Session, restack: Restack | None) -> Stack:
     stack = session.stack or Stack(parent=None, parent_branch=None)
     return stack.model_copy(update={"restack": restack})
+
+
+def _require_on_pr(session: Session, head: str) -> None:
+    """A branch with an open pull request moves only with what that pull request has, as
+    Nest last read it: the click force-pushes the result, so commits made on the Mac since
+    would go out unseen (B159 P-3).
+    """
+    if not _open_pr(session):
+        return
+    pr = session.pr
+    if pr is None or pr.head_sha is None:
+        msg = "Nest has not read what GitHub has on the branch yet; refresh and try again."
+        raise RestackError(msg)
+    if head != pr.head_sha:
+        msg = (
+            "The chat's branch is not where its pull request is on GitHub, so Nest did not "
+            "move it. Push or drop its new commits, or pull the pull request's, then try again."
+        )
+        raise RestackError(msg)
 
 
 def _open_pr(session: Session) -> bool:

@@ -1143,6 +1143,106 @@ async def test_unknown_sessions_are_404(api: Api) -> None:
         assert response.status_code == 404, path
 
 
+async def test_a_write_after_the_review_is_checked_is_never_published(api: Api) -> None:
+    """B159 P-1: a process the agent left running writes between approve's check of the
+    review and the commit; the commit is made of what the review showed, nothing else.
+    """
+    api.provider.script(edit({"fix.txt": "reviewed\n", "README.md": "better\n"}, reply("Done.")))
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "idle")
+    await notified(api, session_id, "review_ready")
+    worktree = Path((await api.http.get(f"/api/sessions/{session_id}")).json()["cwd"])
+
+    def slip_in() -> None:
+        (worktree / "fix.txt").write_text("SLIPPED\n", encoding="utf-8")
+        (worktree / "README.md").write_text("SLIPPED\n", encoding="utf-8")
+        (worktree / ".github").mkdir()
+        (worktree / ".github" / "evil.yml").write_text("on: push\n", encoding="utf-8")
+
+    # The publisher's first command, after every check of the review.
+    api.runner.before["git config"] = slip_in
+    approved = await approve(api, session_id)
+
+    assert approved.status_code == 200, approved.text
+    pushed = approved.json()["commit_sha"]
+    origin = api.ctx.repos.get("repo").path.parent / "origin.git"
+    assert git(origin, "rev-parse", approved.json()["branch"]).strip() == pushed
+    assert git(origin, "show", f"{pushed}:fix.txt") == "reviewed\n"
+    assert git(origin, "show", f"{pushed}:README.md") == "better\n"
+    assert git(origin, "ls-tree", "-r", "--name-only", pushed).split() == ["README.md", "fix.txt"]
+    # What slipped in stays in the worktree, for a review of its own.
+    assert sorted(git(worktree, "status", "--porcelain").splitlines()) == [
+        " M README.md",
+        " M fix.txt",
+        "?? .github/",
+    ]
+
+
+async def guarded_chat(api: Api) -> tuple[str, Path]:
+    """A chat an outside client started, which may not push itself, with work to review."""
+    session_id = await finished_with_changes(api)
+    store = SessionStore(api.ctx.db, api.ctx.clock)
+    await store.update(session_id, started_by_client="claude_code")
+    return session_id, Path((await api.http.get(f"/api/sessions/{session_id}")).json()["cwd"])
+
+
+async def test_a_run_that_may_not_push_never_gets_its_own_commits_pushed(api: Api) -> None:
+    """B159 P-2: the review shows uncommitted changes only, so the agent's own commits
+    would go out with Approve unseen.
+    """
+    session_id, worktree = await guarded_chat(api)
+    (worktree / ".github").mkdir()
+    commit_file(worktree, ".github/deploy.yml", "on: push\n")
+    head = git(worktree, "rev-parse", "HEAD").strip()
+
+    refused = await approve(api, session_id)
+
+    assert refused.status_code == 409
+    assert refused.json() == {
+        "detail": refused.json()["detail"],
+        "code": "unreviewed_commits",
+        "commits": [head],
+    }
+    assert_readable(refused.json()["detail"])
+    origin = api.ctx.repos.get("repo").path.parent / "origin.git"
+    assert git(origin, "for-each-ref", "refs/heads/agent") == ""
+    assert git(worktree, "rev-parse", "HEAD").strip() == head
+    assert api.runner.gh_calls() == []
+
+
+async def test_a_run_that_may_not_push_gets_nests_own_commits_pushed(api: Api) -> None:
+    session_id, worktree = await guarded_chat(api)
+    committed = await approve(api, session_id, {**APPROVE, "push": False, "open_pr": False})
+    (worktree / "more.txt").write_text("more\n", encoding="utf-8")
+
+    pushed = await approve(api, session_id)
+
+    assert committed.status_code == 200, committed.text
+    assert pushed.status_code == 200, pushed.text
+    origin = api.ctx.repos.get("repo").path.parent / "origin.git"
+    history = git(origin, "rev-list", pushed.json()["branch"]).split()
+    assert committed.json()["commit_sha"] in history
+
+
+async def test_an_in_place_push_goes_only_to_the_reviewed_branch(api: Api) -> None:
+    """B159 P-4: the checkout switches to main, at the same commit, after the review."""
+    repo = api.ctx.repos.get("repo").path
+    git(repo, "checkout", "-q", "-b", "feature")
+    session_id, _ = await in_place_review(api)
+    main = git(repo, "rev-parse", "main").strip()
+    origin = repo.parent / "origin.git"
+    on_origin = git(origin, "for-each-ref")
+    api.runner.before["git config"] = lambda: git(repo, "symbolic-ref", "HEAD", "refs/heads/main")
+
+    refused = await approve(api, session_id, {**APPROVE, "open_pr": False, "files": ["agent.txt"]})
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "review_changed"
+    assert git(origin, "for-each-ref") == on_origin
+    assert git(repo, "rev-parse", "main").strip() == main
+    assert git(repo, "rev-parse", "feature").strip() == main
+
+
 def exists(path: str) -> bool:
     return Path(path).exists()
 

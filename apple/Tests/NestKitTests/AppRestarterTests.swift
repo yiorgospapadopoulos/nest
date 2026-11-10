@@ -39,12 +39,106 @@ final class FakeSpawner: ProcessSpawner {
     ]
 
     func restarter(
-        _ runner: any CommandRunner, _ spawner: FakeSpawner, plistExists: Bool = true
+        _ runner: any CommandRunner, _ spawner: FakeSpawner, plistExists: Bool = true,
+        daemon: DaemonRestart? = nil
     ) -> AppRestarter {
         let service = ServiceStarter(
             runner: runner, uid: 501, home: ServiceStarterTests.home, repoPath: "/r",
             fileExists: { [plist = ServiceStarterTests.plist] in $0 == plist && plistExists })
-        return AppRestarter(service: service, spawner: spawner, appPath: Self.app, pid: 4242)
+        return AppRestarter(
+            service: service, daemon: daemon, spawner: spawner, appPath: Self.app, pid: 4242)
+    }
+
+    struct Down: Error {}
+
+    /// A daemon that takes the restart, or is down, or answers only after `delay`, and how
+    /// often it was asked.
+    final class FakeDaemon: Sendable {
+        private let count = Mutex(0)
+        let answers: Bool
+        let url: URL
+        let delay: Duration?
+
+        init(answers: Bool, url: URL = APIClient.defaultBaseURL, delay: Duration? = nil) {
+            self.answers = answers
+            self.url = url
+            self.delay = delay
+        }
+
+        var asked: Int { count.withLock { $0 } }
+
+        func restart() async throws {
+            count.withLock { $0 += 1 }
+            if let delay { try await Task.sleep(for: delay) }
+            if !answers { throw Down() }
+        }
+
+        var restarting: DaemonRestart {
+            DaemonRestart(
+                daemon: url, environment: [:], timeLimit: .milliseconds(100),
+                request: { try await self.restart() })
+        }
+    }
+
+    /// B159 recheck 3 problem 2: `kickstart -k` skips the daemon's clean stop, so a few
+    /// restarts soon after an update rolled a healthy update back.
+    @Test func aDaemonThatAnswersRestartsItselfWithoutKickstart() async throws {
+        let runner = FakeRunner([])
+        let spawner = FakeSpawner()
+        let daemon = FakeDaemon(answers: true)
+        let restarter = restarter(runner, spawner, daemon: daemon.restarting)
+
+        #expect(await restarter.restart() == .relaunching)
+
+        #expect(daemon.asked == 1)
+        #expect(runner.calls.isEmpty)
+        let script = try #require(spawner.spawned.first?.last)
+        #expect(script.contains("api/health"))
+        #expect(restarter.restarting)
+    }
+
+    @Test func aDaemonThatIsDownIsRestartedWithKickstart() async {
+        let runner = FakeRunner([CommandOutput(status: 0, output: "")])
+        let spawner = FakeSpawner()
+        let daemon = FakeDaemon(answers: false)
+        let restarter = restarter(runner, spawner, daemon: daemon.restarting)
+
+        #expect(await restarter.restart() == .relaunching)
+
+        #expect(daemon.asked == 1)
+        #expect(runner.calls == [Self.kickstart])
+        #expect(spawner.spawned == [Self.relaunch])
+    }
+
+    /// B159 recheck 4 problem 3: a stuck daemon kept the spinner up for the request's
+    /// default 60 seconds before the fallback.
+    @Test func aDaemonThatDoesNotAnswerInTimeIsRestartedWithKickstart() async {
+        let runner = FakeRunner([CommandOutput(status: 0, output: "")])
+        let spawner = FakeSpawner()
+        let daemon = FakeDaemon(answers: true, delay: .seconds(3))
+        let restarter = restarter(runner, spawner, daemon: daemon.restarting)
+
+        #expect(await restarter.restart() == .relaunching)
+
+        #expect(runner.calls == [Self.kickstart])
+        #expect(spawner.spawned == [Self.relaunch])
+    }
+
+    /// B159 recheck 4 problem 4: a test build whose test daemon is down must not restart
+    /// the live service.
+    @Test func aTestDaemonThatIsDownNeverRestartsTheService() async {
+        let runner = FakeRunner([CommandOutput(status: 0, output: "")])
+        let spawner = FakeSpawner()
+        let daemon = FakeDaemon(answers: false, url: URL(string: "http://127.0.0.1:41010")!)
+        let restarter = restarter(runner, spawner, daemon: daemon.restarting)
+
+        guard case .failed = await restarter.restart() else {
+            Issue.record("a test daemon's restart went on")
+            return
+        }
+        #expect(runner.calls.isEmpty)
+        #expect(spawner.spawned.isEmpty)
+        #expect(!restarter.restarting)
     }
 
     @Test func restartsTheServiceThenReopensTheAppOnceItQuits() async {

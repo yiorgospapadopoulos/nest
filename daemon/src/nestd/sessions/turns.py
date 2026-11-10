@@ -409,7 +409,13 @@ class TurnRunner:
         live.turn_active = True
         live.agent_started = True
         live.cancel_idle_close()
-        await self._start_turn(live)
+        session = await self._start_turn(live)
+        if session.pixie_id is None:
+            await isolated(
+                "the turn's file mark",
+                live.session_id,
+                self._checkpoints.turn_started(live.session_id, require_cwd(session)),
+            )
 
     def stop_sent(self, live: LiveSession) -> None:
         """A Stop went to the engine. A turn the agent started on its own may be only a
@@ -511,6 +517,10 @@ class TurnRunner:
                 )
                 # Until the turn has ended, a message sent waits for it, as before.
                 live.concluding = True
+        if not going_on:
+            await isolated(
+                "the turn's changed files", session_id, self._checkpoints.turn_ended(session_id)
+            )
         if paused:
             assert hit is not None  # noqa: S101 (set whenever the turn pauses)
             # Before the turn ends, so its end leaves the queue waiting (B78).
@@ -536,6 +546,7 @@ class TurnRunner:
         queued = await self._queue.take(live.session_id, message_id)
         if queued is None:
             return  # taken back meanwhile, or from before a restart
+        in_turn = live.turn_active
         new_turn = live.engine_next or not live.turn_active
         if new_turn:
             live.engine_next = False
@@ -547,7 +558,7 @@ class TurnRunner:
         assert event.id is not None  # noqa: S101 (a stored event)
         await self._store.save_checkpoint(live.session_id, event.id, checkpoint_id)
         session = await self._store.get(live.session_id)
-        await self._checkpoint_files(session, event.id, require_cwd(session))
+        await self._checkpoint_files(session, event.id, require_cwd(session), in_turn=in_turn)
         if new_turn:
             session = await self._start_turn(live)
             await isolated(
@@ -564,14 +575,19 @@ class TurnRunner:
         kept = kept_history([e for e in events if before is None or (e.id or 0) < before])
         return text if kept is None else f"{kept}\n\n{text}"
 
-    async def _checkpoint_files(self, session: Session, event_id: int | None, cwd: Path) -> None:
-        """Snapshot the chat's files before the agent has the message (B145). A pixie's
-        chat is never rewound, so it keeps none.
+    async def _checkpoint_files(
+        self, session: Session, event_id: int | None, cwd: Path, *, in_turn: bool = False
+    ) -> None:
+        """Snapshot the chat's files before the agent has the message (B145); `in_turn`
+        when it was written into a running turn. A pixie's chat is never rewound, so it
+        keeps none.
         """
         if event_id is None or session.pixie_id is not None:
             return
         await isolated(
-            "the file checkpoint", session.id, self._checkpoints.take(session.id, event_id, cwd)
+            "the file checkpoint",
+            session.id,
+            self._checkpoints.take(session.id, event_id, cwd, in_turn=in_turn),
         )
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
@@ -588,6 +604,11 @@ class TurnRunner:
             self._queue.unsend_all(live.session_id),
         )
         if live.turn_active:
+            await isolated(
+                "the turn's changed files",
+                live.session_id,
+                self._checkpoints.turn_ended(live.session_id),
+            )
             await self._end_turn(live, SessionState.FAILED, error)
 
     async def background_tasks(self, live: LiveSession, running: int) -> None:
@@ -1120,8 +1141,12 @@ def _fits(
     # (D160) or to the Nest tools it gets, as computer use going on or off (B150), or
     # bypass for a run that did not open in it needs a new run (D046), but waits while
     # background tasks run: closing would stop them. Until then the agent asks before
-    # reading a new folder's files.
+    # reading a new folder's files. A run without the git guard the chat now needs
+    # (Autopilot on, or pushing switched off) never waits: its tasks stop (B159 R17).
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
+    weaker = (session.autopilot is not None and not live.run_autopilot) or (
+        live.run_can_push and not can_push
+    )
     same = (
         not crosses_local(live.run_model, session.model)
         and live.run_cwd == session.cwd
@@ -1134,7 +1159,9 @@ def _fits(
         and live.run_can_push == can_push
         and live.run_nest_tools == nest_tools
     )
-    return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
+    return (same and not needs_bypass and not live.rotate) or (
+        live.background_tasks > 0 and not weaker
+    )
 
 
 def _account(engine: Engine, session: Session) -> str | None:

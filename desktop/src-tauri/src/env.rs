@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::process::Command;
+use std::sync::OnceLock;
 
 /// Reads an environment variable; tests pass their own instead of the process's.
 pub type Env<'a> = &'a dyn Fn(&str) -> Option<String>;
@@ -74,6 +76,51 @@ pub fn outside_app(vars: &[(String, String)]) -> Vec<(String, Option<String>)> {
         .collect()
 }
 
+/// The variables Nest set for itself before GTK started (lib.rs, `prepare`).
+static OWN: OnceLock<Vec<String>> = OnceLock::new();
+
+/// Remembers the variables Nest set for itself, which no program it starts gets.
+pub fn set_own(names: Vec<String>) {
+    let _ = OWN.set(names);
+}
+
+/// What every program Nest starts gets changed in its environment (B159 R18): Nest's own
+/// variables (`own`) removed, and the AppImage's paths taken out (`outside_app`), each with
+/// None to remove it. Without this a newer system's tools load the app's older libraries.
+pub fn for_programs(own: &[String], vars: &[(String, String)]) -> Vec<(String, Option<String>)> {
+    let mut changes: Vec<(String, Option<String>)> =
+        own.iter().map(|name| (name.clone(), None)).collect();
+    for (name, value) in outside_app(vars) {
+        if !own.contains(&name) {
+            changes.push((name, value));
+        }
+    }
+    changes
+}
+
+/// `for_programs` for this process as it is now.
+pub fn program_changes() -> Vec<(String, Option<String>)> {
+    let vars: Vec<(String, String)> = std::env::vars_os()
+        .filter_map(|(name, value)| Some((name.into_string().ok()?, value.into_string().ok()?)))
+        .collect();
+    for_programs(OWN.get().map_or(&[], Vec::as_slice), &vars)
+}
+
+/// `command` with the user's own environment rather than the app's (`program_changes`).
+pub fn outside(command: &mut Command) -> &mut Command {
+    apply(command, &program_changes())
+}
+
+fn apply<'a>(command: &'a mut Command, changes: &[(String, Option<String>)]) -> &'a mut Command {
+    for (name, value) in changes {
+        match value {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        };
+    }
+    command
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +162,50 @@ mod tests {
         assert!(!changes
             .iter()
             .any(|(name, _)| name == "PATH" || name == "HOME"));
+    }
+
+    // Regression (B159 R18): only the terminal got this; xdg-open, systemctl, the text
+    // editor and `nest uninstall` ran with the AppImage's LD_LIBRARY_PATH and Nest's GDK_*.
+    #[test]
+    fn a_program_nest_starts_gets_neither_nest_s_variables_nor_the_app_s_libraries() {
+        let app = "/tmp/.mount_NestAb";
+        let own = vec!["GDK_BACKEND".to_owned(), "GDK_SCALE".to_owned()];
+        let changes = for_programs(
+            &own,
+            &vars(&[
+                ("APPDIR", app),
+                ("APPIMAGE", "/home/u/Nest.AppImage"),
+                ("LD_LIBRARY_PATH", &format!("{app}/usr/lib")),
+                ("XDG_DATA_DIRS", &format!("{app}/usr/share:/usr/share")),
+                ("GDK_BACKEND", "x11"),
+                ("GDK_SCALE", "2"),
+                ("PATH", "/usr/bin:/bin"),
+            ]),
+        );
+        let mut command = Command::new("true");
+        apply(&mut command, &changes);
+        let mut got: Vec<(String, Option<String>)> = command
+            .get_envs()
+            .map(|(name, value)| {
+                (
+                    name.to_string_lossy().into_owned(),
+                    value.map(|value| value.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        got.sort();
+
+        assert_eq!(
+            got,
+            [
+                ("APPDIR".to_owned(), None),
+                ("APPIMAGE".to_owned(), None),
+                ("GDK_BACKEND".to_owned(), None),
+                ("GDK_SCALE".to_owned(), None),
+                ("LD_LIBRARY_PATH".to_owned(), None),
+                ("XDG_DATA_DIRS".to_owned(), Some("/usr/share".to_owned())),
+            ]
+        );
     }
 
     #[test]

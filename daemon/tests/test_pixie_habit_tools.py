@@ -198,6 +198,25 @@ async def test_habit_tools_refuse_bad_input(ctx: AppContext, provider: FakeProvi
     assert await activity(ctx, pixie.id) == []
 
 
+async def test_a_pixie_cannot_put_its_habits_on_autopilot(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    # B159 R06: Autopilot runs in Bypass, so only the user's habit editor may set it.
+    pixie = await make_pixie(ctx, permission_mode="plan")
+    habit = await make_habit(ctx, pixie.id)
+    _chat_id, chat = await chat_tools(ctx, provider, pixie)
+
+    created = await refused(
+        chat["habit_create"], name="N", prompt="P", triggers=["stuck"], autopilot=True
+    )
+    updated = await refused(chat["habit_update"], id=habit.id, autopilot=True)
+
+    assert "autopilot" in created
+    assert "autopilot" in updated
+    [kept] = await ctx.habits.list_habits(pixie.id)
+    assert (kept.id, kept.autopilot) == (habit.id, False)
+
+
 async def test_habit_list_shows_the_last_run(ctx: AppContext, provider: FakeProvider) -> None:
     pixie = await make_pixie(ctx)
     _chat_id, chat = await chat_tools(ctx, provider, pixie)

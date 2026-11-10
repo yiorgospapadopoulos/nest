@@ -198,6 +198,22 @@ async def test_a_chat_on_autopilot_never_uses_the_computer(scene: Scene) -> None
     assert scene.cards.asked == []
 
 
+async def test_a_pixie_called_from_a_chat_on_autopilot_never_uses_the_computer(
+    scene: Scene,
+) -> None:
+    # B159 R05: the called pixie's card went to the caller, whose Autopilot allowed it.
+    scene.settings[0] = ComputerUseSettings(enabled=True, pixies=True)
+    autopilot = Autopilot(started_at=datetime(2026, 11, 9, tzinfo=UTC), mode="default")
+    caller = await scene.chat()
+    await scene.store.update(caller.id, autopilot=autopilot)
+    called = await scene.chat(called_by=caller.id)
+    scene.cards.answers = ["allow"]
+
+    with pytest.raises(RefusedError, match="Autopilot"):
+        await scene.service.view(called.id, KEY, None, True)
+    assert scene.cards.asked == []
+
+
 async def test_the_first_use_of_an_app_asks_and_a_no_stops_it(scene: Scene) -> None:
     chat = await scene.chat()
 

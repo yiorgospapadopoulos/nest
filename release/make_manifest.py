@@ -4,8 +4,10 @@ latest.json.sig, its signature by the release key in the Keychain (`release_key.
 Every file sits on one line, because `install.sh` reads this with `sed` on machines that
 have neither `jq` nor Python. Names are relative to the release address, which the script
 and the daemon take from NEST_RELEASE_URL. `uv` comes from Astral, so it has a full address.
+The commit it was built from is recorded, and `"dirty": true` when it held uncommitted
+changes (`check_clean.sh`), which only a test build may.
 
-    make_manifest.py <release folder> <version> <notes file> <uv version>
+    make_manifest.py <release folder> <version> <notes file> <uv version> <commit> <clean|dirty>
 """
 
 import hashlib
@@ -62,13 +64,17 @@ def uv_entry(platform: str, target: str, version: str) -> dict[str, str]:
 
 def main() -> int:
     folder, version, notes, uv_version = Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
+    commit, tree = sys.argv[5], sys.argv[6]
     entries = [
         {"platform": found[1], "kind": found[0], "name": path.name, "sha256": sha256(path)}
         for path in sorted(folder.iterdir())
         if (found := kind_of(path.name)) is not None
     ]
     entries += [uv_entry(p, t, uv_version) for p, t in UV_TARGETS.items()]
-    head = {"version": version, "notes": Path(notes).read_text(encoding="utf-8").strip()}
+    notes_text = Path(notes).read_text(encoding="utf-8").strip()
+    head: dict[str, str | bool] = {"version": version, "notes": notes_text, "commit": commit}
+    if tree != "clean":
+        head["dirty"] = True
     lines = ",\n".join("    " + json.dumps(entry) for entry in entries)
     body = json.dumps(head, indent=2)[:-2]
     manifest = f'{body},\n  "files": [\n{lines}\n  ]\n}}\n'.encode()

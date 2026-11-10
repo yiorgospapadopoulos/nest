@@ -19,10 +19,9 @@ struct Session {
 
 pub struct Ptys {
     sessions: Shared<HashMap<String, Session>>,
-    /// Variables Nest set for itself (such as GDK_BACKEND), kept out of the shell.
-    scrub: Vec<String>,
-    /// What the AppImage pointed into the app's folder, put back for the shell.
-    outside_app: Vec<(String, Option<String>)>,
+    /// The shell's environment changes: without Nest's own variables (such as GDK_BACKEND)
+    /// and the AppImage's paths (env::program_changes).
+    environment: Vec<(String, Option<String>)>,
 }
 
 /// Ids name events (`pty://<id>`), so they keep to the characters event names allow.
@@ -43,12 +42,10 @@ fn size(cols: u16, rows: u16) -> PtySize {
 }
 
 impl Ptys {
-    pub fn new(scrub: Vec<String>) -> Self {
-        let vars: Vec<(String, String)> = std::env::vars().collect();
+    pub fn new(environment: Vec<(String, Option<String>)>) -> Self {
         Self {
             sessions: Arc::default(),
-            scrub,
-            outside_app: crate::env::outside_app(&vars),
+            environment,
         }
     }
 
@@ -81,10 +78,7 @@ impl Ptys {
         if sessions.contains_key(id) {
             return Err(format!("Terminal {id} is already open"));
         }
-        for name in &self.scrub {
-            command.env_remove(name);
-        }
-        for (name, value) in &self.outside_app {
+        for (name, value) in &self.environment {
             match value {
                 Some(value) => command.env(name, value),
                 None => command.env_remove(name),
@@ -310,7 +304,7 @@ mod tests {
     #[test]
     fn nest_variables_stay_out_of_the_shell() {
         std::env::set_var("NEST_TEST_SCRUBBED", "leaked");
-        let ptys = Ptys::new(vec!["NEST_TEST_SCRUBBED".to_owned()]);
+        let ptys = Ptys::new(vec![("NEST_TEST_SCRUBBED".to_owned(), None)]);
         let mut terminal = open_sh(&ptys, "t3");
 
         ptys.write("t3", b"echo \"[${NEST_TEST_SCRUBBED:-clean}]\"\n")

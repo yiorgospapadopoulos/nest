@@ -1,9 +1,11 @@
 """Hands this Mac's device token to the Mac app over a private Unix socket (D075).
 
 The socket sits in the daemon's data folder (folder 0700, socket 0600). For each
-connection the daemon checks that the peer runs as its own user, writes the token and a
+connection the daemon checks that the peer runs as its own user and not under the daemon
+itself (Nest's own agents and the commands they run, B159 R02), writes the token and a
 newline, and closes once the client has. It never uses what a client sends, and never
-logs the token.
+logs the token. As with `outside.sock`, this stops Nest's chats from reaching the token by
+accident; it is no wall against a program that tries hard (D180).
 """
 
 import asyncio
@@ -13,7 +15,7 @@ import os
 import socket
 import struct
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Protocol
 
@@ -75,6 +77,76 @@ def read_peer_pid(sock: PeerSocket, platform: str = sys.platform) -> int:
         raise OSError(f"peer process ids are not supported on {platform}") from None
     (pid,) = struct.unpack_from("=i", sock.getsockopt(level, option, size), offset)
     return pid
+
+
+type PeerPid = Callable[[PeerSocket], int]
+PS_TIMEOUT_SECONDS = 3.0
+# Every running process's parent: pid to parent pid.
+type ProcessParents = Callable[[], Awaitable[Mapping[int, int]]]
+# A process's session id.
+type SessionOf = Callable[[int], int]
+
+
+async def process_parents(
+    ps: str = "/bin/ps", seconds: float = PS_TIMEOUT_SECONDS
+) -> Mapping[int, int]:
+    """Read from `ps`, which macOS and Linux both have; TimeoutError when it takes longer
+    than `seconds`."""
+    process = await asyncio.create_subprocess_exec(
+        ps,
+        "-A",
+        "-o",
+        "pid=,ppid=",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        async with asyncio.timeout(seconds):
+            output, _ = await process.communicate()
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        raise
+    parents: dict[int, int] = {}
+    for line in output.decode(errors="replace").splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0].isdigit() and fields[1].isdigit():
+            parents[int(fields[0])] = int(fields[1])
+    return parents
+
+
+def session_of(pid: int) -> int:
+    """The process's session id; its own pid when it cannot be read."""
+    try:
+        return os.getsid(pid)
+    except OSError:
+        return pid
+
+
+def runs_under(pid: int, ancestor: int, parents: Mapping[int, int]) -> bool:
+    """Whether `ancestor` is `pid` or one of its parents."""
+    seen: set[int] = set()
+    current: int | None = pid
+    while current is not None and current > 1 and current not in seen:
+        if current == ancestor:
+            return True
+        seen.add(current)
+        current = parents.get(current)
+    return False
+
+
+def runs_under_daemon(
+    pid: int, daemon_pid: int, parents: Mapping[int, int], session: SessionOf
+) -> bool:
+    """Runs under the daemon, or is in a session whose leader runs under the daemon or is
+    gone (a terminal's or an app's session keeps its leader; an app launchd starts leads
+    its own)."""
+    if runs_under(pid, daemon_pid, parents):
+        return True
+    leader = session(pid)
+    if leader == pid:
+        return False
+    return leader not in parents or runs_under(leader, daemon_pid, parents)
 
 
 class PrivateSocket:
@@ -159,26 +231,50 @@ class TokenSocket(PrivateSocket):
         tokens: TokenSource,
         *,
         uid: int | None = None,
+        daemon_pid: int | None = None,
         peer_uid: PeerUid = read_peer_uid,
+        peer_pid: PeerPid = read_peer_pid,
+        parents: ProcessParents = process_parents,
+        session: SessionOf = session_of,
         close_wait: float = CLOSE_WAIT,
     ) -> None:
         """`tokens` gives the current token for each connection; `uid` is who may ask
-        (default: the daemon's own user)."""
+        (default: the daemon's own user), and nothing under `daemon_pid` may (default:
+        this process)."""
         super().__init__(path, what="this computer's device token", close_wait=close_wait)
         self._tokens = tokens
         self._uid = os.geteuid() if uid is None else uid
+        self._daemon_pid = os.getpid() if daemon_pid is None else daemon_pid
         self._peer_uid = peer_uid
+        self._peer_pid = peer_pid
+        self._parents = parents
+        self._session = session
         # One token read at a time: a token that needs rotating is rotated once.
         self._reading = asyncio.Lock()
 
     async def respond(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        sock = writer.get_extra_info("socket")
         try:
-            uid = self._peer_uid(writer.get_extra_info("socket"))
+            uid = self._peer_uid(sock)
+            pid = self._peer_pid(sock)
         except (OSError, struct.error):
             logger.warning("refused a token request: could not read the peer's credentials")
             return
         if uid != self._uid:
             logger.warning("refused a token request from uid %d", uid)
+            return
+        try:
+            parents = await self._parents()
+        except (OSError, TimeoutError):
+            logger.warning("refused a token request: could not list the running processes")
+            return
+        if pid not in parents:
+            # Gone already, so its session cannot be checked; a child it forked may read.
+            logger.warning("refused a token request from process %d, which has exited", pid)
+            return
+        # Unlike outside.sock, a process left to launchd may ask: the Mac app is one.
+        if runs_under_daemon(pid, self._daemon_pid, parents, self._session):
+            logger.warning("refused a token request from process %d, inside Nest", pid)
             return
         async with self._reading:
             try:

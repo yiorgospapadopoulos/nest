@@ -166,8 +166,8 @@ private struct BugReportSheet: View {
         NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: report.path)])
     }
 
-    /// The issue opens in the browser for the user to read and submit; too long a report is
-    /// attached by hand, so its file shows too.
+    /// The issue opens in the browser without the report, which the user attaches or pastes,
+    /// so its file shows too.
     private func reportOnGitHub() {
         guard let url = SafeLink.githubIssue(report.issueURL) else { return }
         NSWorkspace.shared.open(url)

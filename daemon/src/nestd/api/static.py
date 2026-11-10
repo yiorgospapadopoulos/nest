@@ -14,6 +14,9 @@ ASSETS_PREFIX = "assets/"
 NO_CACHE = "no-cache"
 # Vite names everything under assets/ by content hash, so it never changes.
 IMMUTABLE = "public, max-age=31536000, immutable"
+# B159 R07: no other page (another tailnet host) may frame the app. Not a script policy:
+# artifact frames inherit the app's CSP.
+NO_FRAMING = {"Content-Security-Policy": "frame-ancestors 'none'", "X-Frame-Options": "DENY"}
 _MEDIA_TYPES = {".webmanifest": "application/manifest+json", ".js": "text/javascript"}
 
 
@@ -40,7 +43,9 @@ def serve(root: Path, path: str) -> Response:
 def _file(target: Path, path: str) -> FileResponse:
     cache = IMMUTABLE if path.startswith(ASSETS_PREFIX) else NO_CACHE
     return FileResponse(
-        target, media_type=_MEDIA_TYPES.get(target.suffix), headers={"Cache-Control": cache}
+        target,
+        media_type=_MEDIA_TYPES.get(target.suffix),
+        headers={"Cache-Control": cache, **NO_FRAMING},
     )
 
 

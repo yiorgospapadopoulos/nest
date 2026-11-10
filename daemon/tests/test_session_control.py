@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
+from nestd.autopilot.models import SetAutopilot
 from nestd.config.models import WorktreeConfig
 from nestd.events import types
 from nestd.providers.base import (
@@ -17,6 +18,7 @@ from nestd.providers.base import (
 )
 from nestd.sessions.errors import (
     NoTurnInProgressError,
+    SessionBusyError,
     SessionClosedError,
     SessionNotFoundError,
     UnsupportedFeatureError,
@@ -328,6 +330,38 @@ async def test_a_new_effort_waits_while_background_tasks_run(env: Env) -> None:
 
     assert len(env.provider.runs) == 1
     assert env.provider.runs[0].closed is False
+
+
+async def test_pushing_switched_off_does_not_wait_for_background_tasks(env: Env) -> None:
+    """B159 R17: a run kept for its background tasks must not keep the push it opened with."""
+    env.can_push = True
+    env.provider.script(background(1, reply("started a dev server")), reply("two"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    env.can_push = False
+    await env.manager.send(created.id, "how is it going?", [])
+    await until_results(env, created.id, 2)
+
+    first, second = env.provider.runs
+    assert first.closed
+    assert not first.spec.guard_subagents
+    assert second.spec.guard_subagents
+
+
+async def test_autopilot_waits_for_background_tasks_to_be_stopped(env: Env) -> None:
+    """B159 R17: the run they keep has no Autopilot guard, so Autopilot does not start."""
+    env.provider.script(background(1, reply("started a dev server")))
+    created = await env.create(mode="in_place")
+    await env.reach(created.id, SessionState.IDLE)
+
+    with pytest.raises(SessionBusyError, match="background tasks"):
+        await env.manager.set_autopilot(created.id, SetAutopilot(on=True))
+
+    session = await env.manager.get(created.id)
+    assert session.autopilot is None
+    assert session.permission_mode != "bypassPermissions"
+    assert not env.provider.runs[0].closed
 
 
 async def test_update_without_a_live_run_only_persists(env: Env) -> None:

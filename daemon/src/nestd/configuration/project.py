@@ -8,7 +8,7 @@ import asyncio
 from pathlib import Path
 
 from nestd.configuration.backups import Backups
-from nestd.configuration.errors import UnknownItemError
+from nestd.configuration.errors import PathNotAllowedError, UnknownItemError
 from nestd.configuration.locations import REPO_SKILLS
 from nestd.configuration.mcp import McpServer, McpServerSummary, ServersFile
 from nestd.configuration.models import ProjectConfiguration, ProjectFile, SkillItem
@@ -18,7 +18,25 @@ from nestd.errors import InvalidInputError
 MCP_FILE = ".mcp.json"
 
 
+def _inside(repo: Path, relative: Path | str) -> bool:
+    """Whether `repo / relative` really is in the repo (B159 R23): a repo can ship a link
+    to `~/.claude.json` or another folder, and Nest must not read or write through it.
+    """
+    return (repo / relative).resolve().is_relative_to(repo.resolve())
+
+
+def _own(repo: Path, relative: Path | str) -> Path:
+    """`repo / relative`; 403 when it links outside the repo."""
+    if not _inside(repo, relative):
+        msg = f"Nest does not read or change {repo / relative}: it links outside the repository"
+        raise PathNotAllowedError(msg)
+    return repo / relative
+
+
 def read_project(repo: Path) -> ProjectConfiguration:
+    """A skills folder or `.mcp.json` linking outside the repo shows as absent."""
+    skills = find_skills(repo / REPO_SKILLS) if _inside(repo, REPO_SKILLS) else []
+    servers = ServersFile(repo / MCP_FILE).servers() if _inside(repo, MCP_FILE) else {}
     return ProjectConfiguration(
         instructions=[
             ProjectFile(path=str(repo / name), exists=(repo / name).is_file())
@@ -32,11 +50,11 @@ def read_project(repo: Path) -> ProjectConfiguration:
                 source="project",
                 read_only=False,
             )
-            for skill in find_skills(repo / REPO_SKILLS)
+            for skill in skills
         ],
         mcp_servers=[
             McpServerSummary(name=name, summary=server.summary(), transport=server.transport)
-            for name, server in sorted(ServersFile(repo / MCP_FILE).servers().items())
+            for name, server in sorted(servers.items())
         ],
     )
 
@@ -65,18 +83,21 @@ class ProjectSetup:
         if not valid_name(name):
             msg = f"{name!r} is not a skill name: lowercase letters, digits and dashes"
             raise InvalidInputError(msg)
+        root = _own(repo, REPO_SKILLS)
         async with self._lock:
-            self._backups.start("project-skill").save(repo / REPO_SKILLS / name)
-            await asyncio.to_thread(create_skill, repo / REPO_SKILLS, name, description)
+            self._backups.start("project-skill").save(root / name)
+            await asyncio.to_thread(create_skill, root, name, description)
         return await self.read(repo)
 
     def _put(self, repo: Path, name: str, server: McpServer) -> None:
-        self._backups.start("project-mcp").save(repo / MCP_FILE)
-        ServersFile(repo / MCP_FILE).put(name, server)
+        path = _own(repo, MCP_FILE)
+        self._backups.start("project-mcp").save(path)
+        ServersFile(path).put(name, server)
 
     def _delete(self, repo: Path, name: str) -> None:
-        file = ServersFile(repo / MCP_FILE)
+        path = _own(repo, MCP_FILE)
+        file = ServersFile(path)
         if name not in file.servers():
             raise UnknownItemError(f"{MCP_FILE} has no server {name!r}")
-        self._backups.start("project-mcp").save(repo / MCP_FILE)
+        self._backups.start("project-mcp").save(path)
         file.remove(name)

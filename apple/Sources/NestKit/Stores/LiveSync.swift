@@ -368,8 +368,8 @@ public final class AppModel {
         link.seen(machine: machine, at: now())
     }
 
-    /// Restarts the daemon over its API, as the PWA does: for a remote, whose service
-    /// this Mac cannot start.
+    /// Restarts the daemon over its API, as the PWA does: a remote's, whose service this
+    /// Mac cannot start, and This Mac's, so it stops cleanly.
     public func restartDaemon() async throws {
         try await api.restartService()
     }

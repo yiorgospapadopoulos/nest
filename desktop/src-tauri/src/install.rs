@@ -85,7 +85,7 @@ pub fn nest_command(data_dir: &Path) -> Result<PathBuf, String> {
 
 /// Starts `nest uninstall` in a session of its own, so it outlives the app and the service
 /// it removes; the caller quits next.
-pub fn uninstall(data_dir: &Path, delete_data: bool, scrub: &[String]) -> Result<(), String> {
+pub fn uninstall(data_dir: &Path, delete_data: bool) -> Result<(), String> {
     let mut command = Command::new(nest_command(data_dir)?);
     command.arg("uninstall");
     if delete_data {
@@ -95,9 +95,7 @@ pub fn uninstall(data_dir: &Path, delete_data: bool, scrub: &[String]) -> Result
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    for name in scrub {
-        command.env_remove(name);
-    }
+    crate::env::outside(&mut command);
     detach(&mut command);
     command
         .spawn()
@@ -213,7 +211,7 @@ mod tests {
 
         let run = |delete_data: bool| {
             let before = std::fs::read_to_string(&asked).unwrap_or_default().len();
-            uninstall(dir.path(), delete_data, &[]).unwrap();
+            uninstall(dir.path(), delete_data).unwrap();
             for _ in 0..50 {
                 if std::fs::read_to_string(&asked).unwrap_or_default().len() > before {
                     break;

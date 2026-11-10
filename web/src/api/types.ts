@@ -2339,8 +2339,8 @@ export interface SetupCheck {
 export interface SetupReport {
   path: string;
   text: string;
-  // A new GitHub issue with the report filled in, for the user to read and submit.
+  // A new GitHub issue that asks for the report, never with it in the address.
   issue_url: string;
-  // The report was too long for the address: the issue asks for the file instead.
+  // The issue asks for the file, so the apps show it (always true now).
   attach_file: boolean;
 }

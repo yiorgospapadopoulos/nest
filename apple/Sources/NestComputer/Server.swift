@@ -3,8 +3,8 @@ import Foundation
 import NestComputerCore
 import os
 
-/// The Unix socket the daemon talks to. Only the controller (the daemon's pid, from the
-/// launch arguments) may connect: every other peer is closed at once. Requests are JSON
+/// The Unix socket the daemon talks to. Only the controller (the daemon service's pid,
+/// checked against launchd at launch) may connect: every other peer is closed at once. Requests are JSON
 /// lines, answered one at a time in arrival order.
 @MainActor
 final class Server {

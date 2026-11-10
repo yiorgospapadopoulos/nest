@@ -12,7 +12,7 @@ from tests.api_client import Api
 from tests.async_support import until
 from tests.fake_provider import edit, reply
 from tests.fake_runner import pr_json
-from tests.git_support import git
+from tests.git_support import commit_file, git
 from tests.test_api_review import api, approvals, approve, notified
 from tests.test_api_sessions import create, reach
 
@@ -185,6 +185,37 @@ async def test_a_rebase_that_conflicts_waits_with_the_reason(api: Api) -> None:
 
     assert clicked.status_code == 409
     assert clicked.json()["code"] == "restack_failed"
+
+
+async def test_commits_the_pull_request_does_not_have_are_never_force_pushed(api: Api) -> None:
+    """B159 P-3: the agent commits on the Mac after the pull request was opened; moving the
+    branch would rebase that commit too, and the click would force-push it unseen.
+    """
+    a, b = await stacked(api)
+    b = await opened(api, b, base=a["branch"])
+    worktree = Path(b["worktree_path"])
+    commit_file(worktree, "unseen.txt", "never reviewed\n")
+    head = git(worktree, "rev-parse", "HEAD").strip()
+    pushed_before = origin_branch(api, b["branch"])
+    squash_into_main(api, a["branch"])
+
+    await set_pr(api, a["id"], state="MERGED", headRefOid=a["pr"]["head_sha"])
+
+    async def asked() -> bool:
+        return len(await restacks(api)) == 1
+
+    await until(asked)
+    (ask,) = await restacks(api)
+    assert ask["payload"]["rebased"] is False
+    assert "not where its pull request is" in ask["payload"]["error"]
+    assert git(worktree, "rev-parse", "HEAD").strip() == head
+
+    clicked = await api.http.post(f"/api/sessions/{b['id']}/restack")
+
+    assert clicked.status_code == 409
+    assert clicked.json()["code"] == "restack_failed"
+    assert origin_branch(api, b["branch"]) == pushed_before
+    assert api.runner.gh_calls("edit") == []
 
 
 async def test_uncommitted_changes_keep_the_branch_where_it_is(api: Api) -> None:

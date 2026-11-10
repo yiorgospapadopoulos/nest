@@ -54,6 +54,10 @@ class ApprovalQueue:
         items = await self._store.pending((kind,), session_id)
         return items[-1] if items else None
 
+    async def pending_all(self, session_id: str, kind: ApprovalKind) -> list[Approval]:
+        """Every pending item of the kind for the session, oldest first."""
+        return await self._store.pending((kind,), session_id)
+
     def waiting(self, session_id: str) -> bool:
         """Whether an agent run of the session, or of a pixie it called, waits on an item."""
         return any(session_id in (owner, run) for owner, run, _ in self._waiters.values())

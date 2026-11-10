@@ -49,6 +49,17 @@ class Sender:
 USER = Sender()
 
 
+class TurnMark(BaseModel):
+    """Where a running turn's work is measured from, and the file checkpoint it counts for;
+    `first` while that checkpoint has no paths recorded yet (B159 R10).
+    """
+
+    event_id: int
+    commit: str
+    folder: Path
+    first: bool
+
+
 class LimitPause(BaseModel):
     """A chat paused at the subscription's usage limit (B78): messages wait in its queue
     until `resume_at`, when the daemon goes on with them.

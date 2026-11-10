@@ -51,7 +51,8 @@ describe("saveFile", () => {
     expect(clicked[0]?.download).toBe("Report Q4.html");
     expect(clicked[0]?.href).toBe("blob:x");
     expect(clicked[0]?.isConnected).toBe(false);
-    expect(blobs[0]?.type).toBe("text/html;charset=utf-8");
+    // Never text/html: a blob on Nest's origin shown as a page would run its script as Nest.
+    expect(blobs[0]?.type).toBe("application/octet-stream");
     expect(await blobs[0]?.text()).toBe("<p>Hi</p>");
     expect(revoke).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1000);

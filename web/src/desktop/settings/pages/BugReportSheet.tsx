@@ -11,8 +11,8 @@ export function BugReportSheet({ report, onClose }: { report: SetupReport; onClo
   const open = useOpenPath();
   const bridge = useBridge();
   const { copied, copy } = useCopy(report.text);
-  // The issue opens in the browser for the user to read and submit; too long a report is
-  // attached by hand, so its file shows too.
+  // The issue opens in the browser without the report, which the user attaches or pastes,
+  // so its file shows too.
   const reportOnGitHub = () => {
     if (!isGitHubIssue(report.issue_url)) return;
     void bridge.openExternal(report.issue_url);

@@ -26,6 +26,9 @@ class ApprovalStatus(StrEnum):
 # Kinds an agent run waits on; they cannot outlive the run.
 BLOCKING = (ApprovalKind.PERMISSION, ApprovalKind.QUESTION, ApprovalKind.PLAN)
 
+# Payload key of a card only the user answers: no rule, mode, Autopilot or pixie does.
+USER_ONLY = "user_only"
+
 
 class Approval(BaseModel):
     id: str

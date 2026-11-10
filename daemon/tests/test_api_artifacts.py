@@ -207,4 +207,7 @@ async def test_a_pages_files_are_listed_and_downloaded_never_shown(api: Api) -> 
     assert script.headers["content-disposition"] == 'attachment; filename="app.js"'
     assert script.headers["x-content-type-options"] == "nosniff"
     assert logo.headers["content-disposition"] == 'attachment; filename="logo.svg"'
+    # B159 R31: opened by its URL, a file still cannot run as a page on Nest's origin.
+    for served in (script, logo):
+        assert served.headers["content-security-policy"] == "sandbox; default-src 'none'"
     assert (missing.status_code, other_version.status_code) == (404, 404)

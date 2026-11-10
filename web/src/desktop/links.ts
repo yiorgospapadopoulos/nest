@@ -1,7 +1,7 @@
 // Links in the desktop window open in the system's browser or mail app, as the Mac's
 // NSWorkspace.open, and never replace Nest's own page. A page on this computer (a dev
-// server) opens in a Nest browser window next to the work, as the Tauri side's own
-// navigation rule does (desktop/src-tauri/src/external.rs).
+// server) opens in a Nest browser window next to the work. The Tauri side's navigation
+// rule only blocks pages outside the app and opens nothing itself, so links open here.
 import { loopbackOrigin, safeLink, type Bridge } from "./bridge.ts";
 
 /** Opens a link from a button: web and mail links only (`safeLink`). */

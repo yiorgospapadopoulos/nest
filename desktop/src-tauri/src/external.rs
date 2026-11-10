@@ -20,13 +20,6 @@ pub fn external_url(text: &str) -> Result<Url, String> {
     }
 }
 
-/// A page on this machine, such as a dev server: it opens in a Nest browser window, next
-/// to the work, rather than in the system browser.
-pub fn is_local_page(url: &Url) -> bool {
-    matches!(url.scheme(), "http" | "https")
-        && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
-}
-
 /// `path` when it is in the user's home folder, with links resolved, so a link inside home
 /// cannot lead elsewhere.
 pub fn path_in_home(path: &str, home: &Path) -> Result<PathBuf, String> {
@@ -130,17 +123,6 @@ mod tests {
         ] {
             assert!(external_url(refused).is_err(), "{refused}");
         }
-    }
-
-    #[test]
-    fn dev_servers_on_this_machine_stay_in_nest() {
-        let url = |text: &str| text.parse::<Url>().unwrap();
-        assert!(is_local_page(&url("http://localhost:5173/")));
-        assert!(is_local_page(&url("http://127.0.0.1:3000/x")));
-        assert!(is_local_page(&url("http://[::1]:8080/")));
-        assert!(!is_local_page(&url("https://example.com/")));
-        assert!(!is_local_page(&url("http://localhost.example.com/")));
-        assert!(!is_local_page(&url("mailto:me@localhost")));
     }
 
     #[cfg(unix)]

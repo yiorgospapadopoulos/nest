@@ -13,12 +13,14 @@ since the files are matched to their patch sections by path and the repository's
 may change the prefixes (BUG-52).
 
 The fingerprint covers everything approving would publish, so an approval is tied to the
-review the user saw.
+review the user saw. The tracked changes are shown from an index of the review's own, the
+untracked files from one read each, and approving commits those same objects (B159 P-1).
 """
 
 import asyncio
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
@@ -27,7 +29,8 @@ from nestd.gitops.safety import GIT_CONFIG_LIST, HARDENED, filter_overrides, rep
 from nestd.review.diff_parser import PatchFile, RawEntry, by_path, parse_patch, parse_raw
 from nestd.review.head import read_head
 from nestd.review.models import DiffStats, FileDiff, ReviewHead, SessionDiff
-from nestd.review.untracked import is_text, untracked_diff
+from nestd.review.snapshot import IndexEntry, WorkIndex, batches, parse_entries, work_index
+from nestd.review.untracked import REGULAR, SYMLINK, is_text, untracked_diff
 
 MAX_LINES_PER_FILE = 2000
 # Git's empty tree, the base of a repository without commits.
@@ -36,46 +39,101 @@ GITLINK = "160000"
 GITMODULES = ".gitmodules"
 
 
+@dataclass(frozen=True)
+class ReviewedWork:
+    diff: SessionDiff
+    # Every path the work changes, as approving commits it, its objects written.
+    entries: list[IndexEntry]
+
+
 async def session_diff(cwd: Path) -> SessionDiff:
     """The changes in `cwd` that are not committed: staged, unstaged and untracked."""
+    return (await _review(cwd, keep=False)).diff
+
+
+async def reviewed_work(cwd: Path) -> ReviewedWork:
+    """The review as `session_diff` makes it, with each change as the object approving
+    commits: the tracked ones staged for the review, the untracked ones written from the
+    very bytes the review read (B159 P-1).
+    """
+    return await _review(cwd, keep=True)
+
+
+async def _review(cwd: Path, *, keep: bool) -> ReviewedWork:
     safe = await _safe_options(cwd)
     # HEAD's commit, read once, so both diffs and the review name the same one.
     head = await read_head(cwd, safe)
     ref = head.commit or EMPTY_TREE
-    # The same rename detection for both, so git lists the files in the same order.
-    diff = [*safe, "diff", "--no-color", "--no-ext-diff", "--no-textconv"]
-    diff += ["--ignore-submodules=dirty", "-M"]
-    statuses = await run_git([*diff, "-z", "--raw", "--no-abbrev", ref, "--"], cwd)
-    patch_args = [*diff, "--full-index", "--src-prefix=a/", "--dst-prefix=b/", ref]
-    patch = await run_git([*patch_args, "--"], cwd)
-    untracked = await run_git([*safe, "ls-files", "--others", "--exclude-standard", "-z"], cwd)
-    entries = parse_raw(statuses)
-    # By path, not position: a typechange is one status but two patch sections, and the
-    # agent may still change the tree between the two commands.
-    parts = by_path(parse_patch(patch, MAX_LINES_PER_FILE))
-    text_patch = await _patch_as_text(cwd, patch_args, entries, parts)
-    parts.update(by_path(parse_patch(text_patch, MAX_LINES_PER_FILE)))
-    declared = await _declared_submodules(cwd, safe, entries)
-    files = [
-        _file(entry, parts.get(entry.path) or PatchFile(entry.path), declared) for entry in entries
-    ]
-    digests: list[tuple[str, str]] = []
-    for path in filter(None, untracked.split("\0")):
-        file, digest = await untracked_diff(cwd, path, MAX_LINES_PER_FILE)
-        files.append(file)
-        digests.append((path, digest))
+    async with work_index(cwd, head.commit) as index:
+        await _stage_tracked(index, safe, ref)
+        # The same rename detection for both, so git lists the files in the same order.
+        diff = [*safe, "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv"]
+        diff += ["--ignore-submodules=dirty", "-M"]
+        statuses = await index.git([*diff, "-z", "--raw", "--no-abbrev", ref, "--"])
+        patch_args = [*diff, "--full-index", "--src-prefix=a/", "--dst-prefix=b/", ref]
+        patch = await index.git([*patch_args, "--"])
+        untracked = await run_git([*safe, "ls-files", "--others", "--exclude-standard", "-z"], cwd)
+        entries = parse_raw(statuses)
+        # By path, not position: a typechange is one status but two patch sections.
+        parts = by_path(parse_patch(patch, MAX_LINES_PER_FILE))
+        text_patch = await _patch_as_text(index, patch_args, entries, parts)
+        parts.update(by_path(parse_patch(text_patch, MAX_LINES_PER_FILE)))
+        declared = await _declared_submodules(cwd, safe, entries)
+        files = [
+            _file(entry, parts.get(entry.path) or PatchFile(entry.path), declared)
+            for entry in entries
+        ]
+        committed: list[IndexEntry] = []
+        if keep:
+            changes = [*safe, "diff", "--cached", "--raw", "-z", "--no-abbrev", "--no-renames"]
+            committed = parse_entries(await index.git([*changes, ref, "--"]))
+        trusts_mode = keep and await _trusts_executable_bit(cwd, safe)
+        digests: list[tuple[str, str]] = []
+        for number, path in enumerate(filter(None, untracked.split("\0"))):
+            copy = index.folder / f"untracked-{number}" if keep and not path.endswith("/") else None
+            found = await untracked_diff(cwd, path, MAX_LINES_PER_FILE, copy)
+            files.append(found.diff)
+            digests.append((path, found.digest))
+            if copy is not None:
+                mode = found.mode if trusts_mode or found.mode == SYMLINK else REGULAR
+                committed.append(IndexEntry(mode, await _blob(cwd, safe, path, mode, copy), path))
     files.sort(key=lambda f: f.path)
-    return SessionDiff(
-        base=head.commit,
-        head=head,
-        files=files,
-        stats=DiffStats(
-            files=len(files),
-            additions=sum(f.additions for f in files),
-            deletions=sum(f.deletions for f in files),
+    return ReviewedWork(
+        diff=SessionDiff(
+            base=head.commit,
+            head=head,
+            files=files,
+            stats=DiffStats(
+                files=len(files),
+                additions=sum(f.additions for f in files),
+                deletions=sum(f.deletions for f in files),
+            ),
+            fingerprint=_fingerprint(head, files, statuses, patch, text_patch, digests),
         ),
-        fingerprint=_fingerprint(head, files, statuses, patch, text_patch, digests),
+        entries=committed,
     )
+
+
+async def _stage_tracked(index: WorkIndex, safe: Sequence[str], ref: str) -> None:
+    """Stage into the review's own index every tracked path whose file differs from `ref`,
+    as `git add` would; the checkout's index only tells which paths these are.
+    """
+    names = [*safe, "diff", "--name-only", "-z", "--no-renames", "--ignore-submodules=dirty"]
+    listing = await run_git([*names, ref, "--"], index.cwd)
+    for paths in batches([path for path in listing.split("\0") if path]):
+        await index.git([*safe, "update-index", "--add", "--remove", "--", *paths])
+
+
+async def _trusts_executable_bit(cwd: Path, safe: Sequence[str]) -> bool:
+    """Whether git records a new file's executable bit (`core.fileMode`)."""
+    setting = [*safe, "config", "--type=bool", "--default=true", "core.fileMode"]
+    return (await run_git(setting, cwd)).strip() == "true"
+
+
+async def _blob(cwd: Path, safe: Sequence[str], path: str, mode: str, copy: Path) -> str:
+    """Write `copy`, read from the untracked file at `path`, as `git add` would store it."""
+    how = "--no-filters" if mode == SYMLINK else f"--path={path}"
+    return (await run_git([*safe, "hash-object", "-w", how, "--", str(copy)], cwd)).strip()
 
 
 def _file(entry: RawEntry, part: PatchFile, declared: set[str]) -> FileDiff:
@@ -97,7 +155,10 @@ def _new_gitlink(entry: RawEntry) -> bool:
 
 
 async def _patch_as_text(
-    cwd: Path, patch_args: Sequence[str], entries: list[RawEntry], parts: dict[str, PatchFile]
+    index: WorkIndex,
+    patch_args: Sequence[str],
+    entries: list[RawEntry],
+    parts: dict[str, PatchFile],
 ) -> str:
     """The patch, as text, of the files git called binary that git's own content test finds
     text: attributes and settings the agent can write make git call any file binary, while
@@ -107,11 +168,15 @@ async def _patch_as_text(
     paths: list[str] = []
     for entry in entries:
         part = parts.get(entry.path)
-        if part is not None and part.binary and await asyncio.to_thread(is_text, cwd / entry.path):
+        if (
+            part is not None
+            and part.binary
+            and await asyncio.to_thread(is_text, index.cwd / entry.path)
+        ):
             paths += [entry.path] if entry.old_path is None else [entry.path, entry.old_path]
     if not paths:
         return ""
-    return await run_git([*patch_args, "--text", "--", *paths], cwd)
+    return await index.git([*patch_args, "--text", "--", *paths])
 
 
 async def _declared_submodules(cwd: Path, safe: Sequence[str], entries: list[RawEntry]) -> set[str]:

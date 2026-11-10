@@ -5,10 +5,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::{
     AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
 };
-use tauri_plugin_opener::OpenerExt;
 
+use crate::artifact;
 use crate::commands::AppState;
-use crate::{artifact, external};
 
 pub const MAIN: &str = "main";
 /// The main window's smallest inside, in the page's px.
@@ -69,33 +68,19 @@ fn is_app_url(url: &Url, dev_url: Option<&Url>) -> bool {
     local || dev_url.is_some_and(|dev| dev.origin() == url.origin())
 }
 
-/// Keeps an app window on the bundled UI; links open elsewhere (see below).
+/// Whether an app window, or a frame in it, may go to `url`: only the bundled UI and
+/// artifact frames. Anything else is stopped and opens nothing (B159 R09): an artifact's
+/// script could otherwise open pages without a click. Links the user clicks reach the
+/// system through Nest's own commands (web/src/desktop/links.ts, and the artifact bridge's
+/// "Open link?" question).
+fn navigation_allowed(url: &Url, dev_url: Option<&Url>) -> bool {
+    is_app_url(url, dev_url) || url.scheme() == "about" || url.scheme() == artifact::SCHEME
+}
+
+/// Keeps an app window on the bundled UI.
 fn app_navigation(app: &AppHandle) -> impl Fn(&Url) -> bool + Send + 'static {
-    let app = app.clone();
-    let dev_url = dev_url(&app);
-    move |url| {
-        // Frames pass this check too: artifact frames load from their own scheme.
-        let artifact_frame = url.scheme() == artifact::SCHEME;
-        if is_app_url(url, dev_url.as_ref()) || url.scheme() == "about" || artifact_frame {
-            return true;
-        }
-        // Links leave for the system browser or mail app, as on the Mac; pages on this
-        // machine (dev servers) open in a Nest browser window, next to the work.
-        let app = app.clone();
-        let url = url.clone();
-        if external::is_local_page(&url) {
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = open_browser(&app, url.as_str(), "") {
-                    eprintln!("nest: could not open {url}: {error}");
-                }
-            });
-        } else if external::external_url(url.as_str()).is_ok() {
-            if let Err(error) = app.opener().open_url(url.as_str(), None::<&str>) {
-                eprintln!("nest: could not open {url}: {error}");
-            }
-        }
-        false
-    }
+    let dev_url = dev_url(app);
+    move |url| navigation_allowed(url, dev_url.as_ref())
 }
 
 pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -582,6 +567,30 @@ mod tests {
             false
         ));
         assert!(!microphone_allowed("", None, true, false));
+    }
+
+    // Regression (B159 R09): an artifact's script set location.href to a web page or a
+    // local server, and each try opened the system browser or a Nest window, with no click
+    // and no "Open link?" question.
+    #[test]
+    fn a_frame_going_outside_the_app_is_stopped_and_opens_nothing() {
+        let url = |text: &str| text.parse::<Url>().unwrap();
+        for outside in [
+            "https://evil.example/?d=1",
+            "mailto:me@example.com",
+            "http://127.0.0.1:8765/",
+            "http://localhost:5173/",
+            "file:///etc/passwd",
+        ] {
+            assert!(!navigation_allowed(&url(outside), None), "{outside}");
+        }
+        for inside in [
+            "tauri://localhost/desktop.html",
+            "about:blank",
+            &format!("{}://localhost/a/page.html", artifact::SCHEME),
+        ] {
+            assert!(navigation_allowed(&url(inside), None), "{inside}");
+        }
     }
 
     #[test]

@@ -4,6 +4,7 @@ import asyncio
 from datetime import timedelta
 
 import pytest
+from pydantic import JsonValue
 
 from nestd.approvals.models import ApprovalKind, ApprovalStatus
 from nestd.context import AppContext
@@ -368,6 +369,28 @@ async def test_answers_reach_the_chats_it_started(ctx: AppContext, provider: Fak
         "answer_permission",
         "answer_permission",
     ]
+
+
+async def test_a_pixie_cannot_answer_a_worktree_removal_card_in_its_own_chat(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    """B159: removing a worktree that holds work is the user's own yes, never a pixie's."""
+    boss = await make_boss(ctx, provider, autonomy="answer")
+    chat = await started_chat(boss, reply("done"))
+    await idle(ctx, chat.id)
+    payload: dict[str, JsonValue] = {
+        "tool": "worktree",
+        "input": {"action": "remove", "worktree": str(chat.cwd)},
+        "always": False,
+    }
+    asked = asyncio.create_task(ctx.sessions.choose(chat.id, payload, "Remove the worktree?"))
+    card = await pending(ctx, chat.id, ApprovalKind.PERMISSION)
+
+    refused = await boss.refused("answer_permission", approval_id=card, allow=True)
+
+    assert refused == "Only the user answers this card."
+    assert (await ctx.approvals.get(card)).status is ApprovalStatus.PENDING
+    asked.cancel()
 
 
 async def test_keep_planning_and_a_strict_pixie_approves_into_default(

@@ -4,10 +4,12 @@ Approving commits, pushes and opens a pull request with the daemon's credentials
 pending review is resolved only when every step succeeded, so a failure can be retried.
 
 The review covers the changes not committed yet (B58): the agent may commit when the user
-asks, and a push sends its commits with Nest's. Approving waits for the agent's background
-tasks (BUG-57), and refuses a HEAD other than the one the review showed and work that
-differs from the review (its fingerprint, which covers HEAD and its branch too). A
-refusal's text is shown to the user as it is, so it names no API field.
+asks, and a push sends its commits with Nest's, except for a run that may not push itself
+(B159 P-2). Approving waits for the agent's background tasks (BUG-57), and refuses a HEAD
+other than the one the review showed and work that differs from the review (its
+fingerprint, which covers HEAD and its branch too); the commit is then made of the very
+objects that fingerprint was taken of (B159 P-1). A refusal's text is shown to the user as
+it is, so it names no API field.
 """
 
 import asyncio
@@ -26,7 +28,7 @@ from nestd.prs.monitor import PrMonitor
 from nestd.prs.summary import pr_summary
 from nestd.repos.service import FALLBACK_BRANCH, RepoService
 from nestd.review.checks import index_flagged, uses_lfs
-from nestd.review.diffs import session_diff
+from nestd.review.diffs import ReviewedWork, reviewed_work, session_diff
 from nestd.review.errors import (
     BackgroundRunningError,
     HeadChangedError,
@@ -83,14 +85,15 @@ class ReviewActions:
             session = await self._idle(session_id)
             cwd = require_workspace(session)
             await self._repos.require_git(session.repo)
-            diff = await session_diff(cwd)
+            work = await reviewed_work(cwd)
+            diff = work.diff
             if request.expected_head is not None and diff.head.commit != request.expected_head:
                 raise HeadChangedError
             if diff.fingerprint != request.expected_fingerprint:
                 raise ReviewChangedError
             if await uses_lfs(cwd):
                 raise LfsUnsupportedError
-            plan = await self._plan(session, request, diff)
+            plan = await self._plan(session, request, work)
             await self._require_committable(cwd, diff, plan)
             if plan.push:
                 plan = replace(plan, remote_url=await self._remote_url(session, request))
@@ -131,8 +134,9 @@ class ReviewActions:
         return session
 
     async def _plan(
-        self, session: Session, request: ApproveRequest, diff: SessionDiff
+        self, session: Session, request: ApproveRequest, work: ReviewedWork
     ) -> PublishPlan:
+        diff = work.diff
         if request.open_pr and not request.push:
             msg = "opening a pull request needs push"
             raise InvalidInputError(msg)
@@ -147,6 +151,8 @@ class ReviewActions:
             return PublishPlan(
                 message=request.commit_message,
                 head=diff.head.commit,
+                branch=diff.head.branch,
+                entries=tuple(work.entries),
                 paths=paths,
                 push=request.push,
                 pull_request=None,
@@ -169,6 +175,8 @@ class ReviewActions:
         return PublishPlan(
             message=request.commit_message,
             head=diff.head.commit,
+            branch=diff.head.branch,
+            entries=tuple(work.entries),
             paths=None,
             push=request.push,
             pull_request=pull_request,

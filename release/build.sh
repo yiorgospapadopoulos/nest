@@ -18,8 +18,11 @@ out="release/out/$version"
 parts="${NEST_RELEASE_PARTS:-daemon macos linux/arm64 linux/amd64}"
 wants() { [[ " $parts " == *" $1 "* ]]; }
 
-(cd daemon && uv run python ../release/set_version.py --check) || {
-  echo "release: versions differ, run make version" >&2
+tree="$(release/check_clean.sh)"
+commit="$(git rev-parse HEAD)"
+
+(cd daemon && uv run --locked python ../release/set_version.py --check) || {
+  echo "release: versions differ (run make version) or daemon/uv.lock is stale" >&2
   exit 1
 }
 [[ -f "$notes" ]] || { echo "release: write $notes first" >&2; exit 1; }
@@ -36,7 +39,7 @@ if wants macos; then
   }
 fi
 # latest.json is signed at the end with the release key, only ever in this Keychain (D184).
-(cd daemon && uv run python ../release/release_key.py check)
+(cd daemon && uv run --locked python ../release/release_key.py check)
 
 # Apple checks the app and returns a ticket, stapled to it so it opens offline too. A
 # ticket cannot be stapled to a zip, so the stapled app is zipped after (B156).
@@ -103,7 +106,13 @@ for platform in linux/arm64 linux/amd64; do
 done
 
 cp release/install.sh "$out/install.sh"
-(cd daemon && uv run python ../release/make_manifest.py "$root/$out" "$version" "$root/$notes" \
-  "$(tr -d '[:space:]' < "$root/release/uv-version")")
+# The build can take hours (notarization), so the tree is checked again: an edit or commit
+# made meanwhile would ship under the start commit's manifest (B159 R54).
+[[ "$(release/check_clean.sh)" == "$tree" && "$(git rev-parse HEAD)" == "$commit" ]] || {
+  echo "release: the code changed during the build (HEAD was $commit), build again" >&2
+  exit 1
+}
+(cd daemon && uv run --locked python ../release/make_manifest.py "$root/$out" "$version" "$root/$notes" \
+  "$(tr -d '[:space:]' < "$root/release/uv-version")" "$commit" "$tree")
 echo "release: $out"
 ls -la "$out"

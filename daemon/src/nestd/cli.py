@@ -11,6 +11,7 @@ import os
 import tempfile
 import time
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import httpx
@@ -52,8 +53,9 @@ from nestd.runtime import Runtime, default_runtime
 from nestd.service.base import ServiceError, ServiceManager
 from nestd.service.launchd import LEGACY_LABEL
 from nestd.service.manager import service_manager
+from nestd.service.restart import Restarter
 from nestd.storage.errors import DatabaseError
-from nestd.updates.app import note_start
+from nestd.updates.app import note_start, note_stop
 from nestd.updates.boot import SWITCHED_ENV, Boot, TrialWatch, switch_environment
 from nestd.updates.selfcheck import run_selfcheck_here
 from nestd.updates.service import answers_health
@@ -237,10 +239,20 @@ async def _run_server(
     ctx.port_flag = port
     ctx.updates.watch = watch
     try:
-        app = create_app(ctx, restart=rt.restart)
+        app = create_app(ctx, restart=partial(_restart, paths, rt.restart))
         await rt.serve(app, ctx.serving_port())
     finally:
         await ctx.close()
+
+
+def _restart(paths: AppPaths, end: Restarter) -> None:
+    """Every restart Nest asks for itself (Restart, Relaunch, Undo) is marked a clean stop
+    first, so the update watcher does not count the start after it as a crash. Only here:
+    uvicorn re-raises SIGTERM, so nothing after the server runs (B159 recheck 2 D).
+    """
+    if is_packaged():
+        note_stop(paths.daemon_dir, __version__)
+    end()
 
 
 def _service(paths: AppPaths, rt: Runtime) -> ServiceManager:

@@ -18,11 +18,16 @@ from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 
 from nestd.auth.token_socket import (
-    PeerSocket,
+    PeerPid,
     PeerUid,
     PrivateSocket,
+    ProcessParents,
+    SessionOf,
+    process_parents,
     read_peer_pid,
     read_peer_uid,
+    runs_under_daemon,
+    session_of,
 )
 from nestd.outside.models import ClientKind, TokenAnswer, client_kind
 
@@ -32,52 +37,8 @@ logger = logging.getLogger(__name__)
 REQUEST_MAX = 64
 REQUEST_SECONDS = 2.0
 
-type PeerPid = Callable[[PeerSocket], int]
-# Every running process's parent: pid to parent pid.
-type ProcessParents = Callable[[], Awaitable[Mapping[int, int]]]
-# A process's session id.
-type SessionOf = Callable[[int], int]
 # The token for a kind that is on, or None when it is off.
 type IssueToken = Callable[[ClientKind], Awaitable[str | None]]
-
-
-async def process_parents() -> Mapping[int, int]:
-    """Read from `ps`, which macOS and Linux both have."""
-    process = await asyncio.create_subprocess_exec(
-        "/bin/ps",
-        "-A",
-        "-o",
-        "pid=,ppid=",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    output, _ = await process.communicate()
-    parents: dict[int, int] = {}
-    for line in output.decode(errors="replace").splitlines():
-        fields = line.split()
-        if len(fields) == 2 and fields[0].isdigit() and fields[1].isdigit():
-            parents[int(fields[0])] = int(fields[1])
-    return parents
-
-
-def session_of(pid: int) -> int:
-    """The process's session id; its own pid when it cannot be read."""
-    try:
-        return os.getsid(pid)
-    except OSError:
-        return pid
-
-
-def runs_under(pid: int, ancestor: int, parents: Mapping[int, int]) -> bool:
-    """Whether `ancestor` is `pid` or one of its parents."""
-    seen: set[int] = set()
-    current: int | None = pid
-    while current is not None and current > 1 and current not in seen:
-        if current == ancestor:
-            return True
-        seen.add(current)
-        current = parents.get(current)
-    return False
 
 
 class ClientSocket(PrivateSocket):
@@ -136,12 +97,8 @@ class ClientSocket(PrivateSocket):
         return TokenAnswer(error="off") if token is None else TokenAnswer(token=token)
 
     def _inside_nest(self, pid: int, parents: Mapping[int, int]) -> bool:
-        """Runs under the daemon, was left to launchd (a client is always a shell's or an
-        app's child), or is in a session whose leader runs under the daemon or is gone (a
-        terminal's or an app's session keeps its leader)."""
-        if runs_under(pid, self._daemon_pid, parents) or parents.get(pid, 1) <= 1:
+        """Was left to launchd (a client is always a shell's or an app's child), or runs
+        under the daemon (`runs_under_daemon`)."""
+        if parents.get(pid, 1) <= 1:
             return True
-        leader = self._session(pid)
-        if leader == pid:
-            return False
-        return leader not in parents or runs_under(leader, self._daemon_pid, parents)
+        return runs_under_daemon(pid, self._daemon_pid, parents, self._session)

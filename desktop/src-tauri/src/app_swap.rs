@@ -128,7 +128,7 @@ fn unpack(image: &Path, app_dir: &Path) -> Result<PathBuf, String> {
     let folder = app_dir.parent().ok_or("The app has no folder")?;
     let extracted = folder.join(EXTRACTED);
     let _ = std::fs::remove_dir_all(&extracted);
-    let status = Command::new(image)
+    let status = crate::env::outside(&mut Command::new(image))
         .arg("--appimage-extract")
         .current_dir(folder)
         .stdin(Stdio::null())
@@ -143,24 +143,16 @@ fn unpack(image: &Path, app_dir: &Path) -> Result<PathBuf, String> {
     Ok(extracted)
 }
 
-/// Leaves out what the old app set for itself (`own`) and its AppImage's variables, which a
-/// new app works out again.
-pub fn scrub(command: &mut Command, own: &[String]) {
-    for name in own
-        .iter()
-        .map(String::as_str)
-        .chain(APPIMAGE_VARS.iter().copied())
-    {
+/// Leaves out what the old app set for itself and its AppImage's variables, which a new
+/// app works out again.
+pub fn scrub(command: &mut Command) {
+    crate::env::outside(command);
+    for name in APPIMAGE_VARS {
         command.env_remove(name);
     }
 }
 
-fn relaunch(
-    install: &Install,
-    old: Option<&Path>,
-    waiting_for: u32,
-    scrub: &[String],
-) -> Result<(), String> {
+fn relaunch(install: &Install, old: Option<&Path>, waiting_for: u32) -> Result<(), String> {
     let mut command = Command::new("sh");
     command
         .args(["-c", RELAUNCH, "nest-swap"])
@@ -173,7 +165,7 @@ fn relaunch(
     if let Some(folder) = install.image.parent() {
         command.current_dir(folder);
     }
-    self::scrub(&mut command, scrub);
+    scrub(&mut command);
     command
         .spawn()
         .map(drop)
@@ -181,8 +173,8 @@ fn relaunch(
 }
 
 /// Leaves a waiting process to start the app as it is, once this process has ended.
-pub fn reopen(install: &Install, scrub: &[String]) -> Result<(), String> {
-    relaunch(install, None, std::process::id(), scrub)
+pub fn reopen(install: &Install) -> Result<(), String> {
+    relaunch(install, None, std::process::id())
 }
 
 /// Whether a Nest of this install runs besides this process, as one the user opened by hand
@@ -261,10 +253,9 @@ pub fn note_swap(data_dir: &Path, file: &Path, own_version: &str) -> Result<(), 
 }
 
 /// Swaps to `file` and leaves a waiting process to start it; the caller then exits.
-/// `scrub`: the variables Nest set for itself, which the new app must work out again.
-pub fn swap(file: &Path, install: &Install, scrub: &[String]) -> Result<(), String> {
+pub fn swap(file: &Path, install: &Install) -> Result<(), String> {
     let old = replace(file, install)?;
-    relaunch(install, old.as_deref(), std::process::id(), scrub)
+    relaunch(install, old.as_deref(), std::process::id())
 }
 
 #[cfg(test)]
@@ -447,7 +438,7 @@ mod tests {
         let pid = ended.id();
         ended.wait().unwrap();
 
-        relaunch(&install, Some(&old), pid, &[]).unwrap();
+        relaunch(&install, Some(&old), pid).unwrap();
 
         for _ in 0..50 {
             if started.exists() {

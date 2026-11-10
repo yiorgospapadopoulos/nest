@@ -381,6 +381,36 @@ async def test_a_projects_own_setup(api: Api, tmp_path: Path) -> None:
     assert (await api.http.get("/api/repos/nothing/configuration")).status_code == 404
 
 
+async def test_a_projects_links_to_outside_files_are_never_followed(
+    api: Api, tmp_path: Path
+) -> None:
+    """B159 R23: a repo's `.mcp.json` linked to `~/.claude.json`, or its skills folder
+    linked elsewhere, is neither read nor written through the link."""
+    repo = init_repo(tmp_path / "repo")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+    outside = tmp_path / "outside"
+    account = '{"oauthAccount": {"email": "me"}, "mcpServers": {"secret": {"command": "x"}}}'
+    (outside / "skills").mkdir(parents=True)
+    (outside / "claude.json").write_text(account, encoding="utf-8")
+    skill(outside / "skills", "private")
+    (repo / ".mcp.json").symlink_to(outside / "claude.json")
+    (repo / ".claude").mkdir()
+    (repo / ".claude" / "skills").symlink_to(outside / "skills")
+
+    shown = (await api.http.get("/api/repos/repo/configuration")).json()
+    put = await api.http.put("/api/repos/repo/configuration/mcp-servers/ctx", json=STDIO)
+    deleted = await api.http.delete("/api/repos/repo/configuration/mcp-servers/secret")
+    created = await api.http.post(
+        "/api/repos/repo/configuration/skills", json={"name": "lint", "description": "Lints"}
+    )
+
+    assert (shown["mcp_servers"], shown["skills"]) == ([], [])
+    assert (put.status_code, deleted.status_code, created.status_code) == (403, 403, 403)
+    assert (repo / ".mcp.json").is_symlink()
+    assert (outside / "claude.json").read_text(encoding="utf-8") == account
+    assert not (outside / "skills" / "lint").exists()
+
+
 async def test_without_engine_folders_there_is_nothing_to_configure(
     tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
 ) -> None:

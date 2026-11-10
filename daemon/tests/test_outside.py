@@ -13,12 +13,13 @@ from typing import cast
 import httpx
 import pytest
 
+from nestd.auth.token_socket import runs_under
 from nestd.claude_code.cli import ClaudeCli
 from nestd.events import types
 from nestd.gitops.runner import CommandError
 from nestd.outside.config import CHECKOUT_PROGRAM, McpConfig, nest_program
 from nestd.outside.models import ClientKind
-from nestd.outside.socket import ClientSocket, IssueToken, runs_under
+from nestd.outside.socket import ClientSocket, IssueToken
 from nestd.pixies.models import CreatePixie
 from nestd.sessions.models import IN_FLIGHT, CreateSession
 from tests.api_client import Api, running_api

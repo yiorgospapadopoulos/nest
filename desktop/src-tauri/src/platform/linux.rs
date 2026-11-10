@@ -3,7 +3,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::env::{var, Env};
+use crate::env::{outside, program_changes, var, Env};
 use crate::settings::Settings;
 use crate::IDENTIFIER;
 
@@ -619,7 +619,7 @@ pub struct LocalServer {
 /// daemon's `skip_port` and Nest's own processes. From lsof when it is installed, else from
 /// /proc (Ubuntu does not install lsof by default).
 pub fn local_servers(skip_port: u16) -> Vec<LocalServer> {
-    let lsof = std::process::Command::new("lsof")
+    let lsof = outside(&mut std::process::Command::new("lsof"))
         .args(["-nP", "-iTCP", "-sTCP:LISTEN"])
         .output();
     let mut servers = match lsof {
@@ -755,7 +755,7 @@ pub struct Ran {
 }
 
 fn systemctl(args: &[&str]) -> Result<Ran, String> {
-    let output = std::process::Command::new("systemctl")
+    let output = outside(&mut std::process::Command::new("systemctl"))
         .arg("--user")
         .args(args)
         .output()
@@ -805,8 +805,8 @@ fn failure(doing: &str, ran: &Ran) -> String {
 /// `file` in the default app for plain text, named by `xdg-mime`, whatever kind of file it
 /// is, so nothing runs: false when there is no such app.
 pub fn open_in_text_editor(file: &Path) -> Result<bool, String> {
-    use gtk::gio::prelude::AppInfoExt;
-    let Ok(query) = std::process::Command::new("xdg-mime")
+    use gtk::gio::prelude::{AppInfoExt, AppLaunchContextExt};
+    let Ok(query) = outside(&mut std::process::Command::new("xdg-mime"))
         .args(["query", "default", "text/plain"])
         .output()
     else {
@@ -816,13 +816,66 @@ pub fn open_in_text_editor(file: &Path) -> Result<bool, String> {
     let Some(editor) = gtk::gio::DesktopAppInfo::new(&app) else {
         return Ok(false);
     };
+    let context = gtk::gio::AppLaunchContext::new();
+    for (name, value) in program_changes() {
+        match value {
+            Some(value) => context.setenv(name, value),
+            None => context.unsetenv(name),
+        }
+    }
     editor
-        .launch(
-            &[gtk::gio::File::for_path(file)],
-            None::<&gtk::gio::AppLaunchContext>,
-        )
+        .launch(&[gtk::gio::File::for_path(file)], Some(&context))
         .map(|()| true)
         .map_err(|error| format!("Could not open {}: {error}", file.display()))
+}
+
+/// A web or mail link, or a folder, in the system's default app, as the `open` crate does
+/// but with the user's own environment (B159 R18): the crate leaves the AppImage's
+/// LD_LIBRARY_PATH to xdg-open and the browser it starts. The next launcher is tried when
+/// one is missing or fails at once.
+pub fn open_in_system(target: &std::ffi::OsStr) -> Result<(), String> {
+    let mut last = format!("Nothing could open {}", target.to_string_lossy());
+    for mut command in open::commands(target) {
+        outside(&mut command)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                last = format!("Could not run {:?}: {error}", command.get_program());
+                continue;
+            }
+        };
+        match wait_briefly(&mut child) {
+            Some(status) if !status.success() => {
+                last = format!("{:?} failed with {status}", command.get_program());
+            }
+            Some(_) => return Ok(()),
+            // Still running (xdg-open can wait for the app it started): reaped when it ends.
+            None => {
+                std::thread::spawn(move || child.wait());
+                return Ok(());
+            }
+        }
+    }
+    Err(last)
+}
+
+/// How long a launcher gets to fail before it counts as started.
+const LAUNCHER_FAILS_WITHIN: Duration = Duration::from_millis(500);
+
+fn wait_briefly(child: &mut std::process::Child) -> Option<std::process::ExitStatus> {
+    let poll = Duration::from_millis(20);
+    let mut waited = Duration::ZERO;
+    while waited < LAUNCHER_FAILS_WITHIN {
+        if let Ok(Some(status)) = child.try_wait() {
+            return Some(status);
+        }
+        std::thread::sleep(poll);
+        waited += poll;
+    }
+    child.try_wait().ok().flatten()
 }
 
 /// The address of `path` on one of the app's own schemes (Windows serves them as
@@ -1001,7 +1054,7 @@ fn mutter_scale() -> Result<DisplayScale, String> {
 }
 
 fn gsettings_scale() -> Option<DisplayScale> {
-    let output = std::process::Command::new("gsettings")
+    let output = outside(&mut std::process::Command::new("gsettings"))
         .args(["get", "org.gnome.desktop.interface", "scaling-factor"])
         .output()
         .ok()?;

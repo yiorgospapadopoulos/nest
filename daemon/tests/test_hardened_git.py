@@ -12,8 +12,8 @@ import pytest
 
 from nestd.config.models import RepoConfig
 from nestd.gitops import runner
-from nestd.gitops.hardened import nested_filter_overrides, run_fetch_git
-from nestd.gitops.runner import GitError, run_command
+from nestd.gitops.hardened import run_fetch_git
+from nestd.gitops.runner import GitError
 from nestd.gitops.safety import HARDENED
 from nestd.paths import AppPaths
 from nestd.repos.service import RepoService
@@ -21,7 +21,6 @@ from nestd.sessions.files import FileIndex
 from nestd.worktrees.manager import WorktreeManager
 from tests.fakes import FakeClock
 from tests.git_support import git, init_repo
-from tests.nested_support import add_nested_repo
 
 
 def marker_script(path: Path, marker: Path, body: str = "") -> Path:
@@ -113,32 +112,3 @@ async def test_a_filter_driver_that_cannot_be_switched_off_stops_the_checkout(
 
     with pytest.raises(GitError, match="cannot be switched off"):
         await WorktreeManager(paths).create(RepoConfig(name="repo", path=repo), "0123456789", "x")
-
-
-async def test_nested_filters_are_found_once_and_only_in_populated_repositories(
-    tmp_path: Path,
-) -> None:
-    """SEC-08: a gitlink path can be missing, or a symlink back to a folder already read."""
-    repo = init_repo(tmp_path / "repo")
-    nested = add_nested_repo(repo)
-    git(nested, "config", "filter.inner.clean", "evil")
-    sha = git(nested, "rev-parse", "HEAD").strip()
-    for name in ("missing", "loop"):
-        git(repo, "update-index", "--add", "--cacheinfo", f"160000,{sha},{name}")
-    (repo / "loop").symlink_to(".")
-    looked_in: list[Path] = []
-
-    async def recording(argv: Sequence[str], cwd: Path) -> str:
-        looked_in.append(cwd)
-        return await run_command(argv, cwd)
-
-    overrides = await nested_filter_overrides(repo, recording)
-
-    # The index of each repository and the config of the nested one, each read once.
-    assert looked_in == [repo, nested, nested]
-    assert overrides == [
-        *("-c", "filter.inner.clean="),
-        *("-c", "filter.inner.smudge="),
-        *("-c", "filter.inner.process="),
-        *("-c", "filter.inner.required=false"),
-    ]
