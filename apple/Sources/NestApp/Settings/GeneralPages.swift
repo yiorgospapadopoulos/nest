@@ -247,8 +247,8 @@ private struct AttachmentList: View {
     }
 }
 
-/// Restart Nest (B60): after a confirmation, restarts the Nest service, then quits and
-/// reopens the app. When the service cannot restart, the app stays open and says why.
+/// Restart Nest (B60): after a confirmation, restarts the Nest service (through the
+/// daemon's own restart while it answers), then quits and reopens the app. When the service cannot restart, the app stays open and says why.
 /// On a remote daemon (B105) it asks the daemon to restart, as the PWA does, and the app
 /// stays open and reconnects.
 private struct RestartRow: View {
@@ -285,8 +285,14 @@ private struct RestartRow: View {
             restartRemote()
             return
         }
+        let model = shell.model
+        let daemon = DaemonRestart(
+            daemon: controller.daemons.local.baseURL,
+            environment: ProcessInfo.processInfo.environment,
+            request: { try await model.restartDaemon() })
         Task {
-            let result = await AppRestarter.local(service: controller.service).restart()
+            let result = await AppRestarter.local(service: controller.service, daemon: daemon)
+                .restart()
             switch result {
             case .relaunching:
                 NSApp.terminate(nil)

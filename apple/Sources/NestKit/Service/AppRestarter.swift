@@ -210,33 +210,75 @@ public enum AppRestartResult: Sendable, Equatable {
     case failed(String)
 }
 
-/// Settings' Restart Nest (B60): restarts the daemon's service with `ServiceStarter`
-/// (`kickstart -k`), then starts the relaunch, after which the app quits.
+/// The running daemon restarting itself through its API, as the web Restart does.
+public struct DaemonRestart: Sendable {
+    /// Where the daemon answers, for the relaunch to wait on.
+    public let daemon: URL
+    /// The app's environment, so a test build reopens on its own daemon.
+    public let environment: [String: String]
+    /// `POST /api/service/restart`; throws when the daemon does not take it.
+    public let request: @Sendable () async throws -> Void
+    /// How long `request` may take before a stuck daemon counts as down (B159 recheck 4
+    /// problem 3), far below a request's default 60 seconds.
+    public let timeLimit: Duration
+
+    public init(
+        daemon: URL, environment: [String: String], timeLimit: Duration = .seconds(5),
+        request: @escaping @Sendable () async throws -> Void
+    ) {
+        self.daemon = daemon
+        self.environment = environment
+        self.timeLimit = timeLimit
+        self.request = request
+    }
+}
+
+/// Settings' Restart Nest (B60): asks the daemon to restart itself, so it stops cleanly
+/// and the start after it is not counted as a crash that rolls an update back (B159
+/// recheck 3 problem 2). Only when the daemon does not take that in time does it restart
+/// the service with `ServiceStarter` (`kickstart -k`), and never for a test daemon. Then it
+/// starts the relaunch, after which the app quits.
 @MainActor @Observable
 public final class AppRestarter {
     /// The service restarted and the relaunch is waiting for the app to quit.
     public private(set) var restarting = false
 
     let service: ServiceStarter
+    let daemon: DaemonRestart?
     let spawner: any ProcessSpawner
     let appPath: String
     let pid: Int32
 
-    public init(service: ServiceStarter, spawner: any ProcessSpawner, appPath: String, pid: Int32) {
+    public init(
+        service: ServiceStarter, daemon: DaemonRestart? = nil, spawner: any ProcessSpawner,
+        appPath: String, pid: Int32
+    ) {
         self.service = service
+        self.daemon = daemon
         self.spawner = spawner
         self.appPath = appPath
         self.pid = pid
     }
 
     /// For this running app.
-    public static func local(service: ServiceStarter) -> AppRestarter {
+    public static func local(service: ServiceStarter, daemon: DaemonRestart) -> AppRestarter {
         AppRestarter(
-            service: service, spawner: DetachedSpawner(), appPath: Bundle.main.bundleURL.path,
-            pid: getpid())
+            service: service, daemon: daemon, spawner: DetachedSpawner(),
+            appPath: Bundle.main.bundleURL.path, pid: getpid())
     }
 
     public func restart() async -> AppRestartResult {
+        if let daemon, await Self.takes(daemon) {
+            return relaunch(
+                AppRelaunch.afterDaemonRestart(
+                    appPath: appPath, pid: pid, daemon: daemon.daemon,
+                    environment: daemon.environment))
+        }
+        // A test daemon is not the service: launchd would restart the real one (B159
+        // recheck 4 problem 4).
+        if let daemon, daemon.daemon != APIClient.defaultBaseURL {
+            return .failed("The test daemon at \(daemon.daemon.absoluteString) did not restart.")
+        }
         guard await service.start() else {
             switch service.state {
             case .notInstalled(let command):
@@ -247,8 +289,26 @@ public final class AppRestarter {
                 return .failed("The Nest service is already starting. Try again in a moment.")
             }
         }
+        return relaunch(AppRelaunch.arguments(appPath: appPath, pid: pid))
+    }
+
+    /// Whether the daemon took the restart within its time limit.
+    private static func takes(_ daemon: DaemonRestart) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask { (try? await daemon.request()) != nil }
+            group.addTask {
+                try? await Task.sleep(for: daemon.timeLimit)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private func relaunch(_ arguments: [String]) -> AppRestartResult {
         do {
-            try spawner.spawn(AppRelaunch.shell, AppRelaunch.arguments(appPath: appPath, pid: pid))
+            try spawner.spawn(AppRelaunch.shell, arguments)
         } catch {
             return .failed("Could not reopen Nest: \(error.localizedDescription)")
         }
