@@ -73,8 +73,9 @@ public enum ArtifactAvailability: Sendable, Hashable {
 /// the Artifacts view shows (B79). Events keep it current; a reconnect reads it again.
 @MainActor @Observable
 public final class ArtifactsStore {
-    /// Artifacts whose latest version the user has not opened, in every project.
-    public private(set) var unseen = 0
+    /// How many artifacts whose latest version the user has not opened each project made;
+    /// a badge counts only the open project's (B160).
+    public private(set) var unseenByRepo: [String: Int] = [:]
     /// What the view lists; nil until a view shows.
     public private(set) var scope: ArtifactScope?
     /// The view lists the wide query, by choice or since nothing is focused.
@@ -151,7 +152,18 @@ public final class ArtifactsStore {
     // MARK: Loading
 
     public func loadUnseen() async throws {
-        unseen = try await api.unseenArtifacts()
+        unseenByRepo = try await api.unseenArtifacts()
+    }
+
+    /// The unseen artifacts `repo`'s chats made; none without a project.
+    public func unseen(in repo: String?) -> Int {
+        repo.flatMap { unseenByRepo[$0] } ?? 0
+    }
+
+    /// One unseen artifact fewer in its project.
+    private func countSeen(_ id: String) {
+        guard let repo = known[id]?.repo, let count = unseenByRepo[repo] else { return }
+        unseenByRepo[repo] = count > 1 ? count - 1 : nil
     }
 
     public func load(_ query: ArtifactQuery) async throws {
@@ -290,8 +302,8 @@ public final class ArtifactsStore {
         guard (try? await api.markArtifactSeen(id)) != nil, known[id]?.seen == false else {
             return
         }
+        countSeen(id)
         known[id]?.seen = true
-        unseen = max(0, unseen - 1)
     }
 
     /// A page asked to save a document it is not, or not the latest version of.
@@ -486,7 +498,7 @@ public final class ArtifactsStore {
     public func delete(_ id: String) async throws {
         try await api.deleteArtifact(id)
         if known[id]?.seen == false {
-            unseen = max(0, unseen - 1)
+            countSeen(id)
         }
         forget(id)
         try await selectNewestIfNone()
@@ -497,17 +509,17 @@ public final class ArtifactsStore {
     public func apply(_ event: Event) {
         switch event.body {
         case .artifactSaved(let saved):
-            unseen = saved.unseen
+            unseenByRepo = saved.unseenByRepo
             let artifact = saved.artifact
             known[artifact.id] = artifact
             for (query, ids) in lists where query.matches(artifact) {
                 lists[query] = [artifact.id] + ids.filter { $0 != artifact.id }
             }
-        case .artifactSeen(let id, let count):
-            unseen = count
+        case .artifactSeen(let id, let counts):
+            unseenByRepo = counts
             known[id]?.seen = true
-        case .artifactDeleted(let id, let count):
-            unseen = count
+        case .artifactDeleted(let id, let counts):
+            unseenByRepo = counts
             forget(id)
         case .artifactStorage(let change):
             storageChanged(change)

@@ -105,6 +105,7 @@ import type {
   SetAutopilot,
   SessionDetail,
   SessionDiff,
+  UnseenArtifacts,
   UpdateHabitBody,
   UpdatePixieBody,
   UpdateSessionBody,
@@ -487,8 +488,8 @@ export interface Api {
   setPluginEnabled(id: string, enabled: boolean): Promise<null>;
   // Newest first, at most 500 (B79).
   artifacts(filter: ArtifactFilter): Promise<Artifact[]>;
-  // Artifacts of every project whose latest version is not opened yet.
-  artifactsUnseen(): Promise<{ unseen: number }>;
+  // Artifacts whose latest version is not opened yet, in all and by project (B160).
+  artifactsUnseen(): Promise<UnseenArtifacts>;
   artifact(id: string): Promise<ArtifactDetail>;
   artifactVersion(id: string, version: number): Promise<ArtifactContent>;
   markArtifactSeen(id: string): Promise<Artifact>;
@@ -1429,7 +1430,7 @@ export class HttpApi implements Api {
   }
 
   artifactsUnseen() {
-    return this.json<{ unseen: number }>("GET", "/api/artifacts/unseen");
+    return this.json<UnseenArtifacts>("GET", "/api/artifacts/unseen");
   }
 
   artifact(id: string) {

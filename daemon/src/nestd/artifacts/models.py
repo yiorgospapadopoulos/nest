@@ -124,7 +124,12 @@ class EditDocument(BaseModel):
 
 
 class UnseenCount(BaseModel):
+    """Unseen artifacts in all, and of each project that has any (B160): a badge counts only
+    the open project's.
+    """
+
     unseen: int
+    unseen_by_repo: dict[str, int]
 
 
 @dataclass(frozen=True)

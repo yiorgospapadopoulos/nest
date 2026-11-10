@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useStore } from "../../store/context.ts";
+import { unseenArtifacts } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ArtifactsSheet } from "./ArtifactsSheet.tsx";
 import type { Scopes } from "./view.ts";
 
-/** The header button to the artifact history, with how many are new in every project. */
-export function ArtifactsButton({ scopes }: { scopes: Scopes }) {
+/** The header button to the artifact history, with how many are new in `repo`'s project. */
+export function ArtifactsButton({ scopes, repo }: { scopes: Scopes; repo: string | null }) {
   const { state } = useStore();
   const [open, setOpen] = useState(false);
-  const unseen = state.unseenArtifacts;
+  const unseen = unseenArtifacts(state, repo);
   return (
     <>
       <button

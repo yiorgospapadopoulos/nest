@@ -2320,8 +2320,10 @@
             }
         }
 
-        func unseenArtifacts() async throws -> Int {
-            lock.withLock { artifactList.count { !$0.seen } }
+        func unseenArtifacts() async throws -> [String: Int] {
+            lock.withLock {
+                artifactList.filter { !$0.seen }.reduce(into: [:]) { $0[$1.repo, default: 0] += 1 }
+            }
         }
 
         func artifact(_ id: String) async throws -> ArtifactDetail {

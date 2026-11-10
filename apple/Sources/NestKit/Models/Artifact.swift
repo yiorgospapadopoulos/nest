@@ -210,15 +210,24 @@ public struct ArtifactCard: Decodable, Sendable, Hashable {
     }
 }
 
-/// `artifact.saved`: a version was saved somewhere; `unseen` is the new badge count.
+/// `artifact.saved`: a version was saved somewhere, with each project's new unseen count.
 public struct ArtifactSaved: Decodable, Sendable, Hashable {
     public let artifact: Artifact
     public let action: ArtifactCard.Action
     public let version: Int
-    public let unseen: Int
+    public let unseenByRepo: [String: Int]
+
+    enum CodingKeys: String, CodingKey {
+        case artifact, action, version
+        case unseenByRepo = "unseen_by_repo"
+    }
 }
 
 /// `GET /api/artifacts/unseen`.
 struct UnseenArtifacts: Decodable {
-    let unseen: Int
+    let unseenByRepo: [String: Int]
+
+    enum CodingKeys: String, CodingKey {
+        case unseenByRepo = "unseen_by_repo"
+    }
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useStore } from "../../store/context.ts";
-import { pixieList } from "../../store/selectors.ts";
+import { pixieList, unseenArtifacts } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { viewChoices, type ProjectView } from "../layout/project.ts";
 import { useKeysText } from "../layout/useShortcuts.ts";
@@ -28,6 +28,7 @@ export function StatusBar() {
   const pixies = !inProject;
   const hasViews = inProject || pixieList(state).length > 0;
   const view = shell.state.view;
+  const unseen = unseenArtifacts(state, shell.project);
   const left = shell.state.leftCollapsed;
   const right = shell.state.rightCollapsed;
   return (
@@ -63,10 +64,8 @@ export function StatusBar() {
               }}
             >
               {TITLES[choice]}
-              {choice === "artifacts" && state.unseenArtifacts > 0 && (
-                <span className="fr-unseen">
-                  {state.unseenArtifacts > 99 ? "99+" : state.unseenArtifacts}
-                </span>
+              {choice === "artifacts" && unseen > 0 && (
+                <span className="fr-unseen">{unseen > 99 ? "99+" : unseen}</span>
               )}
             </button>
           ))}

@@ -372,7 +372,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
   async function loadUnseenArtifacts(): Promise<void> {
     const found = await quietly(() => api.artifactsUnseen());
-    if (found !== null) dispatch({ type: "unseenArtifacts", unseen: found.unseen });
+    if (found !== null) dispatch({ type: "unseenArtifacts", unseen: found.unseen_by_repo });
   }
 
   /** A list of artifacts, kept live from then on; false when the Mac cannot answer. */

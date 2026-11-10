@@ -554,10 +554,11 @@ block = "B133"
 id = "artifacts"
 group = "artifacts"
 name = "Artifacts"
-text = "Reports, plans, slides and mockups saved as pages with versions, kept out of your repo."
+text = "Reports, plans, slides and mockups saved as pages with versions, kept out of your repo. Each project counts only the new ones its own chats made."
 where = "Artifacts view"
 added = 2026-10-17
-block = "B82"
+changed = 2026-11-10
+block = "B160"
 
 [[features]]
 id = "living-pages"

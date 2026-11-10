@@ -258,8 +258,8 @@ export interface State {
   artifactLists: Record<string, { filter: ArtifactFilter; ids: string[] }>;
   // Artifacts known to be deleted, so the transcript's cards show them so.
   artifactsGone: Record<string, true>;
-  // Artifacts of every project whose latest version is not opened yet.
-  unseenArtifacts: number;
+  // How many artifacts whose latest version is not opened yet each project made (B160).
+  unseenArtifacts: Record<string, number>;
   // The dev server of each chat opened (B108), by session id; kept current by folder.
   runs: Record<string, RunStatus>;
   // The output of the runs whose sheet is open, by folder, raw; live from `run.output`.
@@ -315,7 +315,7 @@ export const initialState: State = {
   artifacts: {},
   artifactLists: {},
   artifactsGone: {},
-  unseenArtifacts: 0,
+  unseenArtifacts: {},
   runs: {},
   runOutput: {},
   computerFrames: {},
@@ -398,7 +398,7 @@ export type Action =
   | { type: "artifacts"; filter: ArtifactFilter; artifacts: Artifact[] }
   | { type: "artifact"; artifact: Artifact }
   | { type: "artifactRemoved"; id: string }
-  | { type: "unseenArtifacts"; unseen: number }
+  | { type: "unseenArtifacts"; unseen: Record<string, number> }
   | { type: "run"; id: string; status: RunStatus }
   // The output of a folder's run as the sheet opened (or it started again), or closed (null).
   | { type: "runOutput"; folder: string; text: string | null }

@@ -390,7 +390,9 @@ export function fakeApi(): FakeApi {
     uninstallPlugin: vi.fn<Api["uninstallPlugin"]>().mockResolvedValue(null),
     setPluginEnabled: vi.fn<Api["setPluginEnabled"]>().mockResolvedValue(null),
     artifacts: vi.fn<Api["artifacts"]>().mockResolvedValue([]),
-    artifactsUnseen: vi.fn<Api["artifactsUnseen"]>().mockResolvedValue({ unseen: 0 }),
+    artifactsUnseen: vi
+      .fn<Api["artifactsUnseen"]>()
+      .mockResolvedValue({ unseen: 0, unseen_by_repo: {} }),
     artifact: vi
       .fn<Api["artifact"]>()
       .mockImplementation((id) => Promise.resolve(artifactDetail({ id }))),

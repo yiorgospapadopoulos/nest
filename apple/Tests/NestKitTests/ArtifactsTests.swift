@@ -11,7 +11,7 @@ import Testing
     func store(_ artifacts: [Artifact] = [], unseen: Int = 0) -> ArtifactsStore {
         api.set {
             $0.artifacts = artifacts
-            $0.unseenArtifacts = unseen
+            $0.unseenArtifacts = unseen > 0 ? ["todo-ui": unseen] : [:]
         }
         return ArtifactsStore(api: api)
     }
@@ -19,7 +19,7 @@ import Testing
     static func savedEvent(_ artifact: String, version: Int = 1, unseen: Int = 1) -> Event {
         Fixture.event(
             EventType.artifactSaved,
-            #"{"artifact": \#(artifact), "action": "updated", "version": \#(version), "unseen": \#(unseen)}"#,
+            #"{"artifact": \#(artifact), "action": "updated", "version": \#(version), "unseen": \#(unseen), "unseen_by_repo": {"todo-ui": \#(unseen)}}"#,
             session: nil)
     }
 
@@ -130,14 +130,16 @@ import Testing
         #expect(saved.artifact == Fixture.artifact())
         #expect(saved.action == .updated)
         #expect(saved.version == 1)
-        #expect(saved.unseen == 1)
+        #expect(saved.unseenByRepo == ["todo-ui": 1])
 
         let seen = Fixture.event(
-            EventType.artifactSeen, #"{"artifact_id": "a1", "unseen": 2}"#, session: nil)
-        #expect(seen.body == .artifactSeen(id: "a1", unseen: 2))
+            EventType.artifactSeen, #"{"artifact_id": "a1", "unseen_by_repo": {"todo-ui": 2}}"#,
+            session: nil)
+        #expect(seen.body == .artifactSeen(id: "a1", unseen: ["todo-ui": 2]))
         let gone = Fixture.event(
-            EventType.artifactDeleted, #"{"artifact_id": "a1", "unseen": 0}"#, session: nil)
-        #expect(gone.body == .artifactDeleted(id: "a1", unseen: 0))
+            EventType.artifactDeleted, #"{"artifact_id": "a1", "unseen_by_repo": {"todo-ui": 0}}"#,
+            session: nil)
+        #expect(gone.body == .artifactDeleted(id: "a1", unseen: ["todo-ui": 0]))
     }
 
     // MARK: How they read
@@ -354,7 +356,10 @@ import Testing
         #expect(store.list(.pixie("p1"))?.map(\.id) == ["p"])
         // The daemon lists every artifact without a filter; only pixies' are kept.
         #expect(store.list(.pixies)?.map(\.id) == ["p"])
-        #expect(store.unseen == 3)
+        #expect(store.unseen(in: "todo-ui") == 3)
+        // Only the project that made them counts them (B160).
+        #expect(store.unseen(in: "web") == 0)
+        #expect(store.unseen(in: nil) == 0)
         #expect(store.artifact("a1")?.sessionID == "s2")
         #expect(store.availability(of: "a1") == .available)
         #expect(store.availability(of: "zz") == .unknown)
@@ -434,7 +439,7 @@ import Testing
         try await store.step(by: 2)
         #expect(store.selectedContent?.content == "three")
         #expect(store.selected?.seen == true)
-        #expect(store.unseen == 1)
+        #expect(store.unseen(in: "todo-ui") == 1)
         #expect(api.calls.filter { $0.hasPrefix("markArtifactSeen") } == ["markArtifactSeen a1"])
         // Read versions are kept; out of range versions show the nearest. The latest is
         // shown already; moving back to version 1 reads its page again (B88).
@@ -535,7 +540,7 @@ import Testing
         api.fail("markArtifactSeen")
         try await store.select("a1")
         #expect(store.selected?.seen == false)
-        #expect(store.unseen == 1)
+        #expect(store.unseen(in: "todo-ui") == 1)
     }
 
     @Test func aSeenEventFirstIsNotCountedTwice() async throws {
@@ -544,10 +549,11 @@ import Testing
         try await store.load(.project("todo-ui"))
         store.apply(
             Fixture.event(
-                EventType.artifactSeen, #"{"artifact_id": "a1", "unseen": 1}"#, session: nil))
+                EventType.artifactSeen, #"{"artifact_id": "a1", "unseen_by_repo": {"todo-ui": 1}}"#,
+                session: nil))
         api.set { $0.artifactContents = ["a1/1": Fixture.content("a1", 1)] }
         try await store.select("a1")
-        #expect(store.unseen == 1)
+        #expect(store.unseen(in: "todo-ui") == 1)
         #expect(api.calls.contains("markArtifactSeen a1") == false)
     }
 
@@ -581,7 +587,7 @@ import Testing
         try await store.open()
         try await store.load(.chat("s1"))
         #expect(store.selection?.id == "a2")
-        api.set { $0.unseenArtifacts = 4 }
+        api.set { $0.unseenArtifacts = ["todo-ui": 4] }
         try await store.loadUnseen()
 
         api.set { $0.artifactContents["a1/3"] = Fixture.content("a1", 3) }
@@ -593,7 +599,7 @@ import Testing
         #expect(store.content(ArtifactSelection(id: "a2", version: 3)) == nil)
         // The next one opens; it was seen, so the count only lost the deleted one.
         #expect(store.selection?.id == "a1")
-        #expect(store.unseen == 4)
+        #expect(store.unseen(in: "todo-ui") == 4)
 
         api.fail("deleteArtifact")
         await #expect(throws: APIError.self) { try await store.delete("a1") }
@@ -605,7 +611,7 @@ import Testing
         try await store.loadUnseen()
         try await store.load(.chat("s1"))
         try await store.delete("a1")
-        #expect(store.unseen == 0)
+        #expect(store.unseen(in: "todo-ui") == 0)
         #expect(store.selection == nil)
     }
 
@@ -618,7 +624,7 @@ import Testing
             Self.savedEvent(
                 Fixture.artifactJSON(id: "a1", title: "New title", session: "s2", latest: 4),
                 version: 4, unseen: 5))
-        #expect(store.unseen == 5)
+        #expect(store.unseen(in: "todo-ui") == 5)
         #expect(store.list(.project("todo-ui"))?.map(\.id) == ["a1", "a2"])
         #expect(store.list(.chat("s2"))?.map(\.id) == ["a1"])
         #expect(store.list(.pixie("p1"))?.isEmpty == true)
@@ -640,9 +646,10 @@ import Testing
         try await store.load(.pixies)
         store.apply(
             Fixture.event(
-                EventType.artifactSeen, #"{"artifact_id": "a2", "unseen": 7}"#, session: nil))
+                EventType.artifactSeen, #"{"artifact_id": "a2", "unseen_by_repo": {"todo-ui": 7}}"#,
+                session: nil))
         #expect(store.artifact("a2")?.seen == true)
-        #expect(store.unseen == 7)
+        #expect(store.unseen(in: "todo-ui") == 7)
 
         store.apply(Fixture.event(EventType.sessionDeleted, #"{"session_id": "s1"}"#))
         #expect(store.artifact("a1")?.chatDeleted == true)
@@ -653,15 +660,16 @@ import Testing
         try await store.select("a1")
         store.apply(
             Fixture.event(
-                EventType.artifactDeleted, #"{"artifact_id": "a1", "unseen": 2}"#, session: nil))
-        #expect(store.unseen == 2)
+                EventType.artifactDeleted,
+                #"{"artifact_id": "a1", "unseen_by_repo": {"todo-ui": 2}}"#, session: nil))
+        #expect(store.unseen(in: "todo-ui") == 2)
         #expect(store.selection == nil)
         #expect(store.artifact("a1") == nil)
         #expect(store.list(.project("todo-ui"))?.map(\.id) == ["a2"])
         #expect(store.list(.pixies)?.map(\.id) == ["p"])
 
         store.apply(Fixture.event(EventType.notify, "{}"))
-        #expect(store.unseen == 2)
+        #expect(store.unseen(in: "todo-ui") == 2)
     }
 
     @Test func aReloadReadsTheCountTheListsAndTheOpenOne() async throws {
@@ -671,10 +679,10 @@ import Testing
         try await store.select("a1")
         api.set {
             $0.artifacts = [Fixture.artifact(id: "a3"), Fixture.artifact(id: "a1")]
-            $0.unseenArtifacts = 9
+            $0.unseenArtifacts = ["todo-ui": 9]
         }
         try await store.reload()
-        #expect(store.unseen == 9)
+        #expect(store.unseen(in: "todo-ui") == 9)
         #expect(store.list(.chat("s1"))?.map(\.id) == ["a3", "a1"])
         #expect(api.calls.suffix(3) == ["unseenArtifacts", "artifacts session=s1", "artifact a1"])
 
@@ -687,13 +695,14 @@ import Testing
 
     @Test func liveSyncLoadsAndRoutesArtifacts() async throws {
         let model = AppModel(api: api, events: ManualEventSource(), preferences: MemoryStore())
-        api.set { $0.unseenArtifacts = 4 }
+        api.set { $0.unseenArtifacts = ["todo-ui": 4] }
         await model.live.refresh()
-        #expect(model.artifacts.unseen == 4)
+        #expect(model.artifacts.unseen(in: "todo-ui") == 4)
         model.live.route(
             Fixture.event(
-                EventType.artifactSeen, #"{"artifact_id": "a1", "unseen": 3}"#, session: nil))
-        #expect(model.artifacts.unseen == 3)
+                EventType.artifactSeen, #"{"artifact_id": "a1", "unseen_by_repo": {"todo-ui": 3}}"#,
+                session: nil))
+        #expect(model.artifacts.unseen(in: "todo-ui") == 3)
     }
 
     // MARK: Transcript

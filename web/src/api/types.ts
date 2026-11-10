@@ -1785,6 +1785,12 @@ export interface PageUsage {
   week: { tokens: number; sessions: number };
 }
 
+/** Artifacts whose latest version is not opened yet, in all and by project (B160). */
+export interface UnseenArtifacts {
+  unseen: number;
+  unseen_by_repo: Record<string, number>;
+}
+
 /** Which artifacts a list shows; the filters combine, none means every project. */
 export interface ArtifactFilter {
   repo?: string;
