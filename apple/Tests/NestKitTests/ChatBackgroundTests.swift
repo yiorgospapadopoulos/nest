@@ -4,7 +4,7 @@ import Testing
 @testable import NestKit
 
 @Suite struct ChatBackgroundTests {
-    /// the approved design's range and default for both visibilities.
+    /// The range and default for both visibilities.
     @Test func visibilitiesStartAtTheDefaultAndStayInRange() {
         let background = ChatBackground(image: "/a.png")
         #expect(background.emptyVisibility == 0.24)
@@ -23,7 +23,7 @@ import Testing
         #expect(background.visibility(hasChats: true) == 0.1)
     }
 
-    /// Grain runs from the plain image (0) to the approved design's full effect (1), the default.
+    /// Grain runs from the plain image (0) to the full effect (1), the default.
     @Test func grainIsTheEffectsShareOverThePlainImage() {
         #expect(ChatBackground(image: "/a.png").grain == 1)
         #expect(ChatBackground(image: "/a.png", grain: 0.3).grain == 0.3)
@@ -35,14 +35,14 @@ import Testing
         #expect(ChatBackground.effectOpacity(grain: 2) == 1)
     }
 
-    /// 600 ms once chats are open, the approved design's 120 ms feedback otherwise.
+    /// 600 ms once chats are open, 120 ms otherwise.
     @Test func openingChatsFadesSlowly() {
         #expect(ChatBackground.transition(hasChats: true) == 0.6)
         #expect(ChatBackground.transition(hasChats: false) == 0.12)
     }
 
     /// The window's chrome shows the image heavily blurred; the workspace shows it sharp
-    /// while empty and hazed once panes are open, as the approved design's open sessions.
+    /// while empty and hazed once panes are open.
     @Test func theImageBlursUnderTheChromeAndBehindOpenChats() {
         #expect(ChatBackground.chromeBlur == 36)
         #expect(ChatBackground.workspaceBlur(hasChats: false) == 0)
@@ -73,7 +73,7 @@ import Testing
         #expect(settings.background(for: "todo-ui") == own)
     }
 
-    /// A new project override starts at the global visibilities, as in the approved design.
+    /// A new project override starts at the global visibilities.
     @Test func aNewProjectImageStartsAtTheGlobalVisibilities() {
         var settings = ChatBackgroundSettings()
         settings.emptyVisibility = 0.4
@@ -117,7 +117,7 @@ import Testing
         let flat = image(4, 2) { _, _ in [200, 100, 50, 255] }
         let out = Dither.render(flat, width: 4, height: 2)
         // The first block's threshold is 0: bright, scaled by 255 / 200 and rounded as
-        // the approved design's canvas does (100 * 1.275 is just under 127.5 in floating point).
+        // a canvas does (100 * 1.275 is just under 127.5 in floating point).
         #expect(pixel(out, 4, 0, 0) == [255, 127, 64, 255])
         #expect(pixel(out, 4, 1, 1) == [255, 127, 64, 255])
         // The second block's threshold is 8: 200 / 255 still clears 8.5 / 16.

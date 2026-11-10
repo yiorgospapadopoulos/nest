@@ -615,8 +615,8 @@ enum BranchMapFixture {
         await store.reload()
         #expect(
             api.calls.sorted() == [
-                "repoBranchMap todo-ui", "repoBranchMap todo-ui", "repoBranchMap nest",
-                "repoBranchMap nest",
+                "repoBranchMap nest", "repoBranchMap nest", "repoBranchMap todo-ui",
+                "repoBranchMap todo-ui",
             ])
     }
 

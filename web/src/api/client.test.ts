@@ -611,7 +611,7 @@ const calls: Call[] = [
     "artifacts",
     (a) => a.artifacts({ session_id: "s1", repo: "todo ui" }),
     "GET",
-    "/api/artifacts?session_id=s1&repo=cv+page",
+    "/api/artifacts?session_id=s1&repo=todo+ui",
     undefined,
   ],
   [

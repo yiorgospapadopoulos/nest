@@ -1294,7 +1294,7 @@
                 (
                     "rep-ci", "reviewer", "action", "2 pull requests fail their checks",
                     "Add an RSS feed (#41) fails the build on Node 20, and Dark mode (#38) fails one snapshot test. Both need a look before review.",
-                    "https://github.com/robin/todo-ui/pulls", "h-morning", 178, true
+                    "https://github.com/sam/todo-ui/pulls", "h-morning", 178, true
                 ),
                 (
                     "rep-build", "watcher", "action", "The nightly build broke on main",
