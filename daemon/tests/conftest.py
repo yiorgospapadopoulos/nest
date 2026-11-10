@@ -52,7 +52,7 @@ def engine_checkpoints_only(monkeypatch: pytest.MonkeyPatch) -> None:
     engine's own checkpoints, which only Claude Code keeps (B145).
     """
 
-    async def no_snapshot(*_: object) -> None:
+    async def no_snapshot(*_: object, **__: object) -> None:
         return None
 
     monkeypatch.setattr(FileCheckpoints, "take", no_snapshot)

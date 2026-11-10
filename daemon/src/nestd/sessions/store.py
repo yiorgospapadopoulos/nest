@@ -13,7 +13,14 @@ from pydantic import BaseModel
 from nestd.clock import Clock
 from nestd.prs.models import PrReview, PrStatus
 from nestd.sessions.errors import SessionNotFoundError
-from nestd.sessions.models import IN_FLIGHT, LimitPause, NewSession, Session, SessionState
+from nestd.sessions.models import (
+    IN_FLIGHT,
+    LimitPause,
+    NewSession,
+    Session,
+    SessionState,
+    TurnMark,
+)
 from nestd.storage.db import Database
 from nestd.stuck.models import StuckFlag
 
@@ -377,14 +384,119 @@ class SessionStore:
         return None if row is None else row["checkpoint_id"]
 
     async def save_snapshot(
-        self, session_id: str, event_id: int, commit: str, folder: Path
+        self,
+        session_id: str,
+        event_id: int,
+        commit: str,
+        folder: Path,
+        paths: Collection[str] | None = None,
     ) -> None:
-        """The git snapshot of the files before the user message of event `event_id`."""
+        """The git snapshot of the files before the user message of event `event_id`, and
+        the paths the chat changed after it when they are known (a fork's copy).
+        """
         await self._db.execute(
-            "INSERT OR REPLACE INTO file_snapshots (event_id, session_id, commit_sha, folder)"
-            " VALUES (?, ?, ?, ?)",
-            (event_id, session_id, commit, str(folder)),
+            "INSERT OR REPLACE INTO file_snapshots"
+            " (event_id, session_id, commit_sha, folder, paths) VALUES (?, ?, ?, ?, ?)",
+            (event_id, session_id, commit, str(folder), _paths_json(paths)),
         )
+
+    async def add_snapshot_paths(
+        self, session_id: str, event_id: int, paths: Collection[str], *, first: bool
+    ) -> None:
+        """Add `paths` to what the chat changed after the snapshot of event `event_id`.
+        Only the turn the snapshot began records `first`; later work adds to a known list,
+        never to an unknown one (B159 R10).
+        """
+        row = await self._db.fetch_one(
+            "SELECT paths FROM file_snapshots WHERE session_id = ? AND event_id = ?",
+            (session_id, event_id),
+        )
+        if row is None or (row["paths"] is None and not first):
+            return
+        known = _paths_from(row["paths"]) or set[str]()
+        await self._db.execute(
+            "UPDATE file_snapshots SET paths = ? WHERE session_id = ? AND event_id = ?",
+            (_paths_json(known | set(paths)), session_id, event_id),
+        )
+
+    async def forget_snapshot_paths(self, session_id: str, event_id: int) -> None:
+        """A turn after the snapshot of event `event_id` could not be measured: its paths
+        become unknown, so an undo restores the whole folder (B159 R10).
+        """
+        await self._db.execute(
+            "UPDATE file_snapshots SET paths = NULL WHERE session_id = ? AND event_id = ?",
+            (session_id, event_id),
+        )
+
+    async def snapshot_paths(self, session_id: str, event_id: int) -> set[str] | None:
+        """The paths the chat changed after the snapshot of event `event_id` and every
+        later one; None when one of them is not known.
+        """
+        rows = await self._db.fetch_all(
+            "SELECT paths FROM file_snapshots WHERE session_id = ? AND event_id >= ?",
+            (session_id, event_id),
+        )
+        found: set[str] = set()
+        for row in rows:
+            paths = _paths_from(row["paths"])
+            if paths is None:
+                return None
+            found |= paths
+        return found
+
+    async def snapshot_paths_of(self, session_id: str, event_id: int) -> set[str] | None:
+        """The paths recorded for the snapshot of event `event_id` alone (a fork's copy)."""
+        row = await self._db.fetch_one(
+            "SELECT paths FROM file_snapshots WHERE session_id = ? AND event_id = ?",
+            (session_id, event_id),
+        )
+        return None if row is None else _paths_from(row["paths"])
+
+    async def set_turn_mark(self, session_id: str, mark: TurnMark) -> None:
+        """Keep `mark` on its checkpoint, as the session's one running turn's (B159 R10)."""
+        async with self._db.transaction() as tx:
+            await tx.execute(
+                "UPDATE file_snapshots SET turn_mark = NULL WHERE session_id = ?", (session_id,)
+            )
+            await tx.execute(
+                "UPDATE file_snapshots SET turn_mark = ? WHERE session_id = ? AND event_id = ?",
+                (mark.model_dump_json(), session_id, mark.event_id),
+            )
+
+    async def take_turn_mark(self, session_id: str) -> TurnMark | None:
+        """The session's running turn's mark, which is cleared."""
+        row = await self._db.fetch_one(
+            "SELECT turn_mark FROM file_snapshots WHERE session_id = ? AND turn_mark IS NOT NULL",
+            (session_id,),
+        )
+        if row is None:
+            return None
+        await self._db.execute(
+            "UPDATE file_snapshots SET turn_mark = NULL WHERE session_id = ?", (session_id,)
+        )
+        return TurnMark.model_validate_json(row["turn_mark"])
+
+    async def has_turn_mark(self, session_id: str) -> bool:
+        row = await self._db.fetch_one(
+            "SELECT 1 FROM file_snapshots WHERE session_id = ? AND turn_mark IS NOT NULL",
+            (session_id,),
+        )
+        return row is not None
+
+    async def sessions_with_turn_marks(self) -> list[str]:
+        """The sessions whose turn a previous process left without its paths recorded."""
+        rows = await self._db.fetch_all(
+            "SELECT DISTINCT session_id FROM file_snapshots WHERE turn_mark IS NOT NULL"
+        )
+        return [row["session_id"] for row in rows]
+
+    async def latest_snapshot(self, session_id: str) -> int | None:
+        """The event of the session's latest file snapshot."""
+        row = await self._db.fetch_one(
+            "SELECT MAX(event_id) AS event_id FROM file_snapshots WHERE session_id = ?",
+            (session_id,),
+        )
+        return None if row is None else row["event_id"]
 
     async def snapshot(self, session_id: str, event_id: int) -> tuple[str, Path] | None:
         """The snapshot commit before the session's user message `event_id`, and the folder
@@ -462,3 +574,11 @@ def _session(row: sqlite3.Row) -> Session:
     for column in _JSON_COLUMNS:
         data[column] = None if data[column] is None else json.loads(data[column])
     return Session.model_validate(data)
+
+
+def _paths_json(paths: Collection[str] | None) -> str | None:
+    return None if paths is None else json.dumps(sorted(paths))
+
+
+def _paths_from(value: str | None) -> set[str] | None:
+    return None if value is None else set(json.loads(value))
