@@ -12,8 +12,12 @@ SAME_SHARE = 0.005
 
 
 def compact(value: float) -> str:
-    """1234 as "1.2k", 1_500_000 as "1.5M"; below a thousand at most one decimal."""
+    """1234 as "1.2k", 1_500_000 as "1.5M", 1_500_000_000 as "1.5B"; below a thousand at
+    most one decimal.
+    """
     size = abs(value)
+    if size >= 999_950_000:
+        return f"{_trim(value / 1_000_000_000)}B"
     if size >= 999_950:
         return f"{_trim(value / 1_000_000)}M"
     if size >= 1000:
