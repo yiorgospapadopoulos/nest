@@ -609,6 +609,24 @@ added = 2026-11-08
 block = "B142"
 
 [[features]]
+id = "per-model-limits"
+group = "engines"
+name = "Per-model limits"
+text = "The weekly limits your plan has for one model, such as Fable, show with their percent and reset time next to the 5 hour and weekly ones."
+where = "Settings > Accounts, Settings > Usage and the usage popover"
+added = 2026-11-10
+block = "B161"
+
+[[features]]
+id = "claude-limit-reset"
+group = "engines"
+name = "Claude limit reset in a terminal"
+text = "Reset in Terminal opens Claude Code ready to use your Claude plan's limit reset, after asking you first. Claude Code says there whether you have one."
+where = "Settings > Accounts > Claude > Limit reset"
+added = 2026-11-10
+block = "B161"
+
+[[features]]
 id = "local-models"
 group = "engines"
 name = "Local models"
