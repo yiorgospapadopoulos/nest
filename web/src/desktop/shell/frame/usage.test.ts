@@ -11,6 +11,7 @@ const HOUR = 3_600_000;
 function window(overrides: Partial<AccountWindow>): AccountWindow {
   return {
     label: "5 hour",
+    scope: null,
     minutes: 300,
     utilization: 0.3,
     resets_at: null,
@@ -36,6 +37,7 @@ function account(overrides: Partial<EngineAccount>): EngineAccount {
     limits: [],
     checked_at: null,
     banked_resets: null,
+    limit_reset: false,
     ...overrides,
   };
 }

@@ -8,6 +8,7 @@ app-server the in-memory one; the "first account" folders are stand-ins in `tmp_
 import asyncio
 import copy
 import json
+import shlex
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
@@ -166,6 +167,7 @@ def by_id(listed: list[dict[str, Any]], account_id: str) -> dict[str, Any]:
         ("PUT", "/api/accounts/claude-main/name"),
         ("PUT", "/api/accounts/claude-main/active"),
         ("DELETE", "/api/accounts/claude-main"),
+        ("POST", "/api/accounts/claude-main/limit-reset"),
     ],
 )
 async def test_routes_require_a_device_token(api: Api, method: str, path: str) -> None:
@@ -202,6 +204,7 @@ async def test_the_first_accounts_are_listed_claudes_first_and_asked_once_a_minu
         "error": None,
         "limits": [],
         "banked_resets": None,
+        "limit_reset": True,
     }
     assert (codex["title"], codex["plan"], codex["signed_in"]) == (
         "me@example.com",
@@ -940,3 +943,64 @@ async def test_a_reset_used_still_counts_when_the_limits_cannot_be_read_after(
     )
 
     assert (response.status_code, response.json()["outcome"]) == (200, "reset")
+
+
+async def test_every_signed_in_claude_account_offers_the_limit_reset(
+    api: Api, clock: FakeClock
+) -> None:
+    """B161: only Claude Code in a terminal knows whether the account holds a reset, so
+    every signed-in Claude account offers it and Claude Code says there.
+    """
+    claude, codex = await accounts(api)
+    assert (claude["limit_reset"], codex["limit_reset"]) == (True, False)
+
+    api.claude.replies[None, STATUS] = [claude_status(None)]
+    clock.advance(timedelta(seconds=61))
+    assert by_id(await accounts(api), "claude-main")["limit_reset"] is False
+
+
+async def test_the_limit_reset_opens_claude_code_in_a_terminal_and_sends_nothing(
+    api: Api,
+) -> None:
+    """B161: Nest never uses the reset itself. It only opens a terminal on the account's
+    Claude Code, which asks there before it uses the reset.
+    """
+    added = await add_claude(api)
+    runs = len(api.claude.runs())
+    api.opener.calls.clear()
+
+    response = await api.http.post(f"/api/accounts/{added['id']}/limit-reset")
+
+    assert response.status_code == 204
+    [(argv, _)] = api.opener.calls
+    assert argv[0] == "open"
+    launcher = Path(argv[-1])
+    assert launcher.suffix == ".command"
+    profile = profile_of(api, "claude", added["id"])
+    script = await asyncio.to_thread(launcher.read_text, encoding="utf-8")
+    command = script.splitlines()[-1]
+    # An empty folder of Nest's own, so trusting it gives Claude Code nothing to read.
+    folder = launcher.parent / "limit-reset"
+    assert await asyncio.to_thread(lambda: list(folder.iterdir())) == []
+    assert shlex.split(command) == [
+        "cd",
+        str(folder),
+        "&&",
+        "exec",
+        "env",
+        f"CLAUDE_CONFIG_DIR={profile}",
+        "claude",
+        "/limit-reset",
+    ]
+    # No `claude` command ran for it, and no usage was read.
+    assert len(api.claude.runs()) == runs
+
+
+async def test_only_a_signed_in_claude_account_opens_the_limit_reset(api: Api) -> None:
+    api.claude.replies[None, STATUS] = [claude_status(None)]
+    assert by_id(await accounts(api), "claude-main")["signed_in"] is False
+    signed_out = await api.http.post("/api/accounts/claude-main/limit-reset")
+    codex = await api.http.post("/api/accounts/codex-main/limit-reset")
+
+    assert (signed_out.status_code, codex.status_code) == (409, 409)
+    assert api.opener.calls == []

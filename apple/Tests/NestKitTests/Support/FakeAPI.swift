@@ -1534,6 +1534,10 @@ final class FakeAPI: NestAPI {
         try call("bankedResets", id) { $0.banked[id] ?? BankedResets(available: 0, credits: []) }
     }
 
+    func openLimitReset(_ id: String) async throws {
+        try call("openLimitReset", id) { _ in }
+    }
+
     /// A reset uses the credit: one fewer available, and it leaves the details.
     func useBankedReset(_ id: String, creditID: String) async throws -> BankedResetUse {
         try call("useBankedReset", "\(id) \(creditID)") { state in

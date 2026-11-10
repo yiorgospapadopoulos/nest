@@ -253,6 +253,7 @@ export function fakeApi(): FakeApi {
     removeAccount: vi.fn<Api["removeAccount"]>().mockResolvedValue({ accounts: [] }),
     bankedResets: vi.fn<Api["bankedResets"]>().mockResolvedValue({ available: 0, credits: [] }),
     useBankedReset: vi.fn<Api["useBankedReset"]>(),
+    openLimitReset: vi.fn<Api["openLimitReset"]>().mockResolvedValue(null),
     localModels: vi
       .fn<Api["localModels"]>()
       .mockResolvedValue({ models: [], engine: "claude", local_only: false }),

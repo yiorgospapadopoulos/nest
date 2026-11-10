@@ -45,7 +45,7 @@ from nestd.errors import ConflictError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.providers.acp_engines import ACP_ENGINES
-from nestd.providers.base import BankedResets, EngineWindow, UsageInfo, UsageWindow
+from nestd.providers.base import BankedResets, EngineWindow, RunAccount, UsageInfo, UsageWindow
 from nestd.providers.codex_engine import (
     CodexFetchError,
     CodexHomeMissingError,
@@ -86,6 +86,10 @@ class NotSignedInError(ConflictError):
 
 class NoBankedResetsError(ConflictError):
     pass
+
+
+class NoLimitResetError(ConflictError):
+    """Only a signed-in Claude account opens Claude Code's limit reset (B161)."""
 
 
 class NoKeyError(ConflictError):
@@ -319,6 +323,16 @@ class Accounts:
         except CodexAccountError as error:
             logger.warning("could not read a Codex account's limits again: %s", error)
         return BankedResetUsed(outcome=outcome, accounts=(await self.list(ask=False)).accounts)
+
+    async def limit_reset_account(self, account_id: str) -> RunAccount:
+        """The signed-in Claude account, ready for Claude Code to use its limit reset in a
+        terminal (B161); 409 for any other.
+        """
+        account = await self._store.get(account_id)
+        if account.provider != CLAUDE or account.signed_in is not True:
+            msg = "only a signed-in Claude account can use a limit reset"
+            raise NoLimitResetError(msg)
+        return await run_account(self._profiles, account)
 
     async def _codex_account(self, account_id: str) -> StoredAccount:
         account = await self._store.get(account_id)
@@ -584,6 +598,7 @@ class Accounts:
             banked_resets=None
             if account.provider != CODEX
             else await self._usage.banked(account.id),
+            limit_reset=account.provider == CLAUDE and account.signed_in is True,
         )
 
     async def _limits_changed(self, _account_id: str) -> None:

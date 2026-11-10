@@ -2,8 +2,11 @@ import Foundation
 
 /// One usage window of an account (B98), shortest first in its list.
 public struct AccountLimit: Codable, Sendable, Hashable {
-    /// "5 hour", "Weekly", "30 day".
+    /// "5 hour", "Weekly", "30 day", or a per-model one's "Fable weekly" (B161).
     public var label: String
+    /// The model a per-model window is for, such as "Fable"; nil for the account's own
+    /// windows. The usage chip leaves these out (B161).
+    public var scope: String?
     public var minutes: Int
     /// A fraction from 0 to 1.
     public var utilization: Double
@@ -15,9 +18,10 @@ public struct AccountLimit: Codable, Sendable, Hashable {
 
     public init(
         label: String, minutes: Int, utilization: Double, resetsAt: Date?, updatedAt: Date?,
-        reset: Bool = false
+        reset: Bool = false, scope: String? = nil
     ) {
         self.label = label
+        self.scope = scope
         self.minutes = minutes
         self.utilization = utilization
         self.resetsAt = resetsAt
@@ -26,7 +30,7 @@ public struct AccountLimit: Codable, Sendable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case label, minutes, utilization, reset
+        case label, scope, minutes, utilization, reset
         case resetsAt = "resets_at"
         case updatedAt = "updated_at"
     }
@@ -64,12 +68,15 @@ public struct EngineAccount: Codable, Sendable, Hashable, Identifiable {
     /// Codex's resets kept for later (Round 2 of B98); nil for Claude, which has none.
     public var bankedResets: BankedResets?
     public var checkedAt: Date?
+    /// A signed-in Claude account, which can open Claude Code's limit reset (B161); only
+    /// Claude Code in the terminal knows whether it holds one. Nil from an older daemon.
+    public var limitReset: Bool?
 
     public init(
         id: String, provider: String, name: String? = nil, title: String, email: String? = nil,
         plan: String? = nil, signedIn: Bool?, active: Bool, first: Bool,
         signingIn: Bool = false, error: String? = nil, limits: [AccountLimit] = [],
-        bankedResets: BankedResets? = nil, checkedAt: Date? = nil
+        bankedResets: BankedResets? = nil, checkedAt: Date? = nil, limitReset: Bool? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -85,6 +92,7 @@ public struct EngineAccount: Codable, Sendable, Hashable, Identifiable {
         self.limits = limits
         self.bankedResets = bankedResets
         self.checkedAt = checkedAt
+        self.limitReset = limitReset
     }
 
     enum CodingKeys: String, CodingKey {
@@ -93,12 +101,23 @@ public struct EngineAccount: Codable, Sendable, Hashable, Identifiable {
         case signingIn = "signing_in"
         case bankedResets = "banked_resets"
         case checkedAt = "checked_at"
+        case limitReset = "limit_reset"
     }
 
     /// Its windows for the usage views; nil before any was reported.
     public var usageLimits: UsageLimits? {
         limits.isEmpty ? nil : UsageLimits(windows: limits.map(\.window))
     }
+
+    /// Its own windows for the chip, without the per-model ones, which only the popover
+    /// and Settings show (B161); nil before any was reported.
+    public var chipLimits: UsageLimits? {
+        let own = limits.filter { $0.scope == nil }
+        return own.isEmpty ? nil : UsageLimits(windows: own.map(\.window))
+    }
+
+    /// Settings > Accounts offers Claude Code's limit reset for it (B161).
+    public var offersLimitReset: Bool { limitReset == true }
 }
 
 /// A Codex account's banked resets: how many are available, and each one once its details

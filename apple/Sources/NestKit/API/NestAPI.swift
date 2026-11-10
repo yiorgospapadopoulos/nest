@@ -342,6 +342,9 @@ public protocol NestAPI: Sendable {
     func bankedResets(_ id: String) async throws -> BankedResets
     /// Uses one of a signed-in Codex account's banked resets on its limits now.
     func useBankedReset(_ id: String, creditID: String) async throws -> BankedResetUse
+    /// Opens a terminal on the computer the daemon runs on with Claude Code's
+    /// `/limit-reset` for the Claude account (B161); Claude Code uses the reset there.
+    func openLimitReset(_ id: String) async throws
     /// Stores an engine account's API key in the daemon's Keychain and checks it (B107).
     func saveEngineKey(_ id: String, key: String) async throws
     /// Removes the key, which signs the account out.

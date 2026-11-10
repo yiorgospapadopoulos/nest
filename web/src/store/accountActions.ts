@@ -146,6 +146,12 @@ export function accountActions(
       await loadBanked(id);
     },
 
+    /** Opens Claude Code's limit reset in a terminal (B161); Claude Code uses it there. */
+    async openLimitReset(id: string): Promise<void> {
+      const opened = await attempt(() => api.openLimitReset(id).then(() => true));
+      if (opened !== null) toast("Claude Code opened in a terminal", "ok");
+    },
+
     /** Checks or unchecks an account in "Top bar shows", on this device only. */
     setUsageMeterShown(id: string, shown: boolean, entries: MeterAccount[]): void {
       setMeter(withShown(meter, id, shown, entries));

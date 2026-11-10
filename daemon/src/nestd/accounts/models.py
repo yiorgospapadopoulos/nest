@@ -36,6 +36,9 @@ class Account(BaseModel):
     checked_at: datetime | None
     # Codex's banked resets (B98); None for Claude, which has none, and before Codex said.
     banked_resets: BankedResets | None
+    # A signed-in Claude account, which can open Claude Code's `/limit-reset` (B161). Only
+    # Claude Code in a terminal knows whether the account holds a reset, so it says there.
+    limit_reset: bool = False
 
 
 class AccountList(BaseModel):

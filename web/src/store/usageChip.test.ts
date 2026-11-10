@@ -58,6 +58,24 @@ describe("chipEntries", () => {
     ]);
   });
 
+  it("leaves out the per-model windows, even when they reset sooner (B161)", () => {
+    const account = engineAccount({
+      limits: [
+        accountWindow({ label: "Weekly", minutes: 10080, utilization: 0.25, resets_at: at(5000) }),
+        accountWindow({
+          label: "Fable weekly",
+          scope: "Fable",
+          minutes: 10080,
+          utilization: 0.95,
+          resets_at: at(60),
+        }),
+      ],
+    });
+    expect(chipEntries([account], NO_METER_CHOICE, NOW)).toEqual([
+      { id: "claude-main", provider: "claude", text: "25% 3d", used: 0.25, tone: "ok" },
+    ]);
+  });
+
   it("shows nothing for an account that reported no window yet", () => {
     expect(chipEntries([engineAccount({ limits: [] })], NO_METER_CHOICE, NOW)).toEqual([]);
   });

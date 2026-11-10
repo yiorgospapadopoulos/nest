@@ -9,7 +9,7 @@ from nestd.gitops.runner import CommandError
 from nestd.local_apps.apps import LIVE_WARNING, LocalApps, RepoApp
 from nestd.local_apps.editors import EDITORS, EditorId
 from nestd.local_apps.errors import AppNotInstalledError, LocalAppError
-from nestd.local_apps.launchers import launcher_script
+from nestd.local_apps.launchers import launcher_script, limit_reset_script
 from nestd.platform import LINUX, MACOS
 from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.models import Session, SessionState
@@ -303,3 +303,29 @@ async def test_linux_reports_a_failed_command(opener: FakeOpener, tmp_path: Path
     with pytest.raises(LocalAppError) as caught:
         await linux_apps(opener, tmp_path, "xdg-open").open_repo(tmp_path, "finder", None)
     assert str(caught.value) == "could not open the file manager: cannot open display"
+
+
+def test_the_limit_reset_launcher_quotes_the_profile_and_runs_only_claude_code() -> None:
+    """B161: an added account's profile path reaches the shell quoted, and the script
+    runs nothing but Claude Code's own `/limit-reset`.
+    """
+    profile = "/data/it's here; rm -rf ~"
+    folder = Path("/data/limit reset")
+    script = limit_reset_script(folder, {"CLAUDE_CONFIG_DIR": profile})
+
+    assert script.startswith("#!/bin/sh\n")
+    command = script.splitlines()[-1]
+    assert shlex.split(command) == [
+        "cd",
+        str(folder),
+        "&&",
+        "exec",
+        "env",
+        f"CLAUDE_CONFIG_DIR={profile}",
+        "claude",
+        "/limit-reset",
+    ]
+    first = limit_reset_script(Path("/data"), {}).splitlines()[-1]
+    assert first == "cd /data && exec claude /limit-reset"
+    with pytest.raises(ValueError, match="not an environment variable name"):
+        limit_reset_script(folder, {"X; rm -rf ~": "1"})

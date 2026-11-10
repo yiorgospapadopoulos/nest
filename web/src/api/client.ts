@@ -451,6 +451,10 @@ export interface Api {
   bankedResets(id: string): Promise<BankedResets>;
   // 409 unless a signed-in Codex account, 502 when Codex fails.
   useBankedReset(id: string, creditId: string): Promise<BankedResetUsed>;
+  // Opens a terminal on the computer Nest runs on with Claude Code's `/limit-reset` for
+  // the account (B161); Claude Code asks there before it uses the reset. 409 unless a
+  // signed-in Claude account.
+  openLimitReset(id: string): Promise<null>;
   // Local models (B106, D129); `local_models.changed` says to list them again.
   localModels(): Promise<LocalModelList>;
   // Servers on this Mac's usual ports and the models downloaded on it.
@@ -1533,6 +1537,10 @@ export class HttpApi implements Api {
     return this.json<BankedResetUsed>("POST", `${account(id)}/banked-resets/use`, {
       credit_id: creditId,
     });
+  }
+
+  openLimitReset(id: string) {
+    return this.json<null>("POST", `${account(id)}/limit-reset`);
   }
 
   localModels() {

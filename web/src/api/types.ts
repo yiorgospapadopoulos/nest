@@ -2055,7 +2055,11 @@ export type AccountProvider = "claude" | "codex" | "opencode" | "gemini";
 
 /** One of an account's usage windows. */
 export interface AccountWindow {
+  // "5 hour", "Weekly", or a per-model one's "Fable weekly" (B161).
   label: string;
+  // The model a per-model window is for, such as "Fable"; null for the account's own
+  // windows. The usage chip leaves these out.
+  scope: string | null;
   // Claude's five-hour window is 300, its weekly one 10080; null when not known.
   minutes: number | null;
   // A fraction: 0.3 is 30%.
@@ -2107,6 +2111,9 @@ export interface EngineAccount {
   checked_at: string | null;
   // Codex only; null before Codex said.
   banked_resets: BankedResets | null;
+  // A signed-in Claude account, which can open Claude Code's limit reset (B161); only
+  // Claude Code in the terminal knows whether the account holds one.
+  limit_reset: boolean;
 }
 
 /** `GET /api/accounts` and the `accounts.changed` event: Claude's, then Codex's, and so on. */

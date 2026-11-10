@@ -7,7 +7,7 @@ import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from nestd.providers.base import EngineWindow, UsageInfo, UsageWindow
+from nestd.providers.base import EngineWindow, ScopedWindow, UsageInfo, UsageWindow
 from nestd.storage.db import Database
 from nestd.storage.migrations import PACKAGED
 from nestd.usage.store import UsageStore
@@ -100,6 +100,7 @@ async def test_an_accounts_windows_are_labelled_shortest_first_and_reset_once_pa
     assert [w.model_dump() for w in claude] == [
         {
             "label": "5 hour",
+            "scope": None,
             "minutes": 300,
             "utilization": 0.0,
             "resets_at": None,
@@ -108,6 +109,7 @@ async def test_an_accounts_windows_are_labelled_shortest_first_and_reset_once_pa
         },
         {
             "label": "Weekly",
+            "scope": None,
             "minutes": 10080,
             "utilization": 0.2,
             "resets_at": None,
@@ -146,6 +148,80 @@ async def test_a_window_the_plan_no_longer_has_goes_only_with_a_complete_report(
     windows = await usage.windows("claude-main")
     assert [(w.minutes, w.utilization) for w in windows] == [(10080, 0.35)]
     assert (await usage.limits()).five_hour is None
+
+
+def _fable(utilization: float) -> ScopedWindow:
+    return ScopedWindow(label="Fable", utilization=utilization, resets_at=SOON)
+
+
+async def test_per_model_windows_follow_the_accounts_own_and_are_named_by_model(
+    db: Database, clock: FakeClock
+) -> None:
+    """B161: Fable's and the other per-model weekly windows show after the account's own,
+    named by the model, and never take the place of the five-hour and weekly ones.
+    """
+    usage = UsageStore(db, clock)
+    opus = ScopedWindow(label="Opus", utilization=0.1, resets_at=None)
+    await usage.update_limits(CLAUDE.model_copy(update={"scoped": [opus, _fable(0.42)]}))
+
+    windows = await usage.windows("claude-main")
+
+    assert [(w.label, w.scope, w.minutes, w.utilization) for w in windows] == [
+        ("5 hour", None, 300, 0.64),
+        ("Weekly", None, 10080, 0.2),
+        ("Fable weekly", "Fable", 10080, 0.42),
+        ("Opus weekly", "Opus", 10080, 0.1),
+    ]
+    limits = await usage.limits()
+    assert limits.five_hour is not None
+    assert limits.five_hour.utilization == 0.64
+    assert limits.seven_day is not None
+    assert limits.seven_day.utilization == 0.2
+
+
+async def test_a_turn_report_keeps_the_windows_it_leaves_out(
+    db: Database, clock: FakeClock
+) -> None:
+    """B161: a turn's report names only some windows; per-model ones it does not name stay,
+    and one it names is updated.
+    """
+    usage = UsageStore(db, clock)
+    opus = ScopedWindow(label="Opus", utilization=0.1, resets_at=None)
+    await usage.update_limits(
+        CLAUDE.model_copy(update={"scoped": [opus, _fable(0.42)], "complete": True})
+    )
+
+    await usage.update_limits(UsageInfo(five_hour=None, seven_day=None, scoped=[_fable(0.5)]))
+    await usage.update_limits(CLAUDE)
+
+    windows = {w.label: w.utilization for w in await usage.windows("claude-main")}
+    assert windows == {"5 hour": 0.64, "Weekly": 0.2, "Fable weekly": 0.5, "Opus weekly": 0.1}
+
+
+async def test_a_complete_report_drops_a_model_the_plan_no_longer_has_but_keeps_unread_ones(
+    db: Database, clock: FakeClock
+) -> None:
+    """B161: Claude Code's read of the plan lists every window it has. One it names without
+    a number keeps its last one; one it no longer names is gone.
+    """
+    usage = UsageStore(db, clock)
+    opus = ScopedWindow(label="Opus", utilization=0.1, resets_at=None)
+    await usage.update_limits(
+        CLAUDE.model_copy(update={"scoped": [opus, _fable(0.42)], "complete": True})
+    )
+
+    await usage.update_limits(
+        CLAUDE.model_copy(
+            update={
+                "scoped": [],
+                "unread": frozenset({"five_hour", "scoped:Fable"}),
+                "complete": True,
+            }
+        ).model_copy(update={"five_hour": None})
+    )
+
+    windows = {w.label: w.utilization for w in await usage.windows("claude-main")}
+    assert windows == {"5 hour": 0.64, "Weekly": 0.2, "Fable weekly": 0.42}
 
 
 async def test_a_window_of_unknown_length_comes_last(db: Database, clock: FakeClock) -> None:

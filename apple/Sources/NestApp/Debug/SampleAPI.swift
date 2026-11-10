@@ -1811,6 +1811,9 @@
             }
         }
 
+        /// Opens nothing: the sample has no daemon.
+        func openLimitReset(_ id: String) async throws {}
+
         /// Codex's two banked resets, one with a title and an expiry; using one spends it.
         func bankedResets(_ id: String) async throws -> BankedResets {
             lock.withLock {
