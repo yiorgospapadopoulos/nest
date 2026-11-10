@@ -12,9 +12,10 @@ from nestd.errors import ConflictError
 from nestd.gitops.runner import CommandRunner
 from nestd.local_apps.editors import Editor, EditorId, default_editor
 from nestd.local_apps.errors import AppNotInstalledError
-from nestd.local_apps.launchers import write_launcher
+from nestd.local_apps.launchers import write_launcher, write_limit_reset_launcher
 from nestd.local_apps.openers import RepoApp, Which, opener_for
 from nestd.platform import Platform
+from nestd.providers.base import RunAccount
 from nestd.sessions.models import Session
 from nestd.sessions.rules import require_workspace
 
@@ -58,6 +59,16 @@ class LocalApps:
         await asyncio.to_thread(write_launcher, launcher, cwd, session.provider_session_id)
         await self._opener.open_launcher(launcher)
         return ClaudeCodeLaunch(launcher, LIVE_WARNING if live else None)
+
+    async def open_limit_reset(self, account: RunAccount) -> Path:
+        """Open a terminal running Claude Code's `/limit-reset` on the Claude account
+        (B161). Only Claude Code uses the reset, after asking in the terminal.
+        """
+        launcher = self._launchers_dir / f"limit-reset-{account.id}{self._opener.launcher_suffix}"
+        cwd = self._launchers_dir / "limit-reset"
+        await asyncio.to_thread(write_limit_reset_launcher, launcher, cwd, account.env)
+        await self._opener.open_launcher(launcher)
+        return launcher
 
     async def installed_editors(self) -> list[Editor]:
         return await asyncio.to_thread(self._opener.installed_editors)

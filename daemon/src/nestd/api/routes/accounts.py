@@ -162,6 +162,17 @@ async def remove(account_id: str, ctx: Context) -> AccountList:
     return await ctx.accounts.remove(account_id)
 
 
+@router.post("/{account_id}/limit-reset", status_code=status.HTTP_204_NO_CONTENT)
+async def open_limit_reset(account_id: str, ctx: Context) -> Response:
+    """Open a terminal on this computer running Claude Code's `/limit-reset` on the Claude
+    account (B161); 409 for any other. Nest never uses the reset itself: Claude Code asks
+    there and uses it.
+    """
+    account = await ctx.accounts.limit_reset_account(account_id)
+    await ctx.local_apps.open_limit_reset(account)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{account_id}/banked-resets")
 async def banked_resets(account_id: str, ctx: Context) -> BankedResets:
     """A Codex account's banked resets with each credit, read on its own app-server; 409
