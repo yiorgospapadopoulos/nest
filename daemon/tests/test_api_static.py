@@ -160,3 +160,14 @@ async def test_without_a_build_nothing_is_served(
             assert (await http.get("/inbox")).status_code == 404
     finally:
         await context.close()
+
+
+@pytest.mark.parametrize("path", ["/", "/inbox", "/sw.js", "/assets/index-abc123.js"])
+async def test_the_app_cannot_be_framed_by_another_page(
+    client: httpx.AsyncClient, path: str
+) -> None:
+    """B159 R07: no clickjacking of the paired app from another tailnet host."""
+    response = await client.get(path)
+
+    assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
+    assert response.headers["x-frame-options"] == "DENY"

@@ -7,6 +7,7 @@ from nestd import __version__
 from nestd.api.cors import DesktopCorsMiddleware
 from nestd.api.errors import install_error_handlers
 from nestd.api.hosts import HostCheckMiddleware
+from nestd.api.origins import CookieOriginMiddleware
 from nestd.api.routes import (
     accounts,
     agents,
@@ -158,6 +159,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
     )
     app.state.ctx = ctx
     app.state.restart = restart
+    app.add_middleware(CookieOriginMiddleware)
     # Inside the host check, so a refused host never gets CORS headers.
     app.add_middleware(DesktopCorsMiddleware, allowed=lambda: ctx.settings.server.allowed_origins)
     app.add_middleware(HostCheckMiddleware, allowed=lambda: ctx.settings.server.allowed_hosts)

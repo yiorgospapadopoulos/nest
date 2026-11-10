@@ -12,11 +12,18 @@ from nestd.artifacts.files import FileData
 from nestd.artifacts.inline import inline
 from nestd.artifacts.models import ArtifactKind
 
+# Mermaid from 10.9.4: older ones run script from diagram labels (CVE-2025-54881).
 LIBRARIES = (
     "https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js",
-    "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js",
+    "https://cdn.jsdelivr.net/npm/mermaid@10.9.4/dist/mermaid.min.js",
     "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js",
 )
+# Subresource integrity of each file above: a changed file on the CDN does not run.
+LIBRARY_HASHES = {
+    LIBRARIES[0]: "sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi",
+    LIBRARIES[1]: "sha384-fGOpyux4znQZ+n4tUrYReB2Ulu6K1MtBxIkbHauU09YM1hvCyA5oX9JUc1hRkDEr",
+    LIBRARIES[2]: "sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp",
+}
 
 # Light and dark values of Nest's design tokens (design/tokens.toml; a test keeps them equal).
 PALETTE: dict[str, tuple[str, str]] = {

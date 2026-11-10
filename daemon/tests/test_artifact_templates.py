@@ -14,7 +14,7 @@ import pytest
 
 from nestd.artifacts import templates
 from nestd.artifacts.bridge import SHIM_TAG, init_tag
-from nestd.artifacts.page import FONTS, LIBRARIES, MERMAID, PALETTE
+from nestd.artifacts.page import FONTS, LIBRARIES, LIBRARY_HASHES, MERMAID, PALETTE
 from nestd.artifacts.templates import TEMPLATE_KINDS
 from nestd.artifacts.templates.design_system import contrast
 from nestd.artifacts.templates.shared import BOOT_TAG, EXTRA_PALETTE, LOADING, json_data
@@ -168,6 +168,26 @@ def test_each_page_has_nests_tokens_in_both_themes_and_a_body_background(kind: s
     assert f"--nest-mono: {FONTS['mono']};" in style
     assert re.search(r"body \{[^}]*background: var\(--nest-bg\);", style)
     assert "overflow-wrap: anywhere;" in style
+
+
+def test_mermaid_is_a_version_without_the_label_script_bug() -> None:
+    """B159 R27: mermaid before 10.9.4 runs script from sequence diagram labels."""
+    (mermaid,) = [url for url in LIBRARIES if "/mermaid@" in url]
+    version = tuple(int(part) for part in mermaid.split("@")[1].split("/")[0].split("."))
+
+    assert (10, 9, 4) <= version < (11, 0, 0)
+
+
+def test_every_library_is_checked_against_its_pinned_hash() -> None:
+    """B159 R27: a changed file on the CDN does not run in the page."""
+    page = render("markdown", "T", SAMPLES["markdown"])
+    tags = re.findall(r"<script src=[^>]*>", page)
+
+    assert tags == [
+        f'<script src="{url}" integrity="{LIBRARY_HASHES[url]}" crossorigin="anonymous">'
+        for url in LIBRARIES
+    ]
+    assert all(LIBRARY_HASHES[url].startswith("sha384-") for url in LIBRARIES)
 
 
 @pytest.mark.parametrize("kind", TEMPLATE_KINDS)

@@ -8,13 +8,14 @@ const EXTENSIONS: Record<ArtifactKind, string> = {
   design: "json",
   design_system: "json",
 };
+// HTML as bytes: a text/html blob on Nest's origin, if shown, would run as Nest.
 const TYPES: Record<ArtifactKind, string> = {
-  markdown: "text/markdown",
-  html: "text/html",
-  slides: "text/markdown",
-  document: "text/markdown",
-  design: "application/json",
-  design_system: "application/json",
+  markdown: "text/markdown;charset=utf-8",
+  html: "application/octet-stream",
+  slides: "text/markdown;charset=utf-8",
+  document: "text/markdown;charset=utf-8",
+  design: "application/json;charset=utf-8",
+  design_system: "application/json;charset=utf-8",
 };
 // Characters no file system takes in a name, and control characters.
 // eslint-disable-next-line no-control-regex
@@ -42,7 +43,7 @@ export function fileName(title: string, kind: ArtifactKind): string {
 
 /** Hands the content to the browser as a download, as written (no injected policy). */
 export function saveFile(title: string, kind: ArtifactKind, content: string): void {
-  download(fileName(title, kind), new Blob([content], { type: `${TYPES[kind]};charset=utf-8` }));
+  download(fileName(title, kind), new Blob([content], { type: TYPES[kind] }));
 }
 
 /** Hands the blob to the browser as a download under the name. */

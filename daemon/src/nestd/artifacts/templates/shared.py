@@ -56,6 +56,15 @@ def libraries(count: int) -> tuple[str, ...]:
     return LIBRARIES[:count]
 
 
+def _library_tag(url: str) -> str:
+    """A pinned library's script tag, checked against its hash (page.py)."""
+    from nestd.artifacts.page import LIBRARY_HASHES
+
+    return (
+        f'<script src="{url}" integrity="{LIBRARY_HASHES[url]}" crossorigin="anonymous"></script>\n'
+    )
+
+
 def diagrams() -> str:
     """Mermaid's variables in Nest's colors, light then dark, as page.py gives them."""
     from nestd.artifacts.page import MERMAID
@@ -107,7 +116,7 @@ def page(
     until its script marks it ready (loading.css).
     """
     shim = (init_tag(init) if init is not None else "") + SHIM_TAG
-    scripts = "".join(f'<script src="{url}"></script>\n' for url in libraries)
+    scripts = "".join(_library_tag(url) for url in libraries)
     boot = f"{BOOT_TAG}\n" if loading else ""
     styles = resource("loading.css") if loading else ""
     ring = f"{LOADING}\n" if loading else ""

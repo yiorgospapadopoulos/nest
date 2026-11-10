@@ -8,6 +8,7 @@ from fastapi import APIRouter, Path, Query, Response, status
 from pydantic import BaseModel, Field
 
 from nestd.api.deps import Context, RequireDevice
+from nestd.api.routes.attachments import SAFE_HEADERS
 from nestd.artifacts.ask import PROMPT_MAX, SYSTEM_MAX, AskAnswer, AskStatus
 from nestd.artifacts.models import (
     Artifact,
@@ -101,7 +102,7 @@ async def version_file(
         media_type=file.mime,
         headers={
             "Content-Disposition": f'attachment; filename="{name}"',
-            "X-Content-Type-Options": "nosniff",
+            **SAFE_HEADERS,
         },
     )
 
