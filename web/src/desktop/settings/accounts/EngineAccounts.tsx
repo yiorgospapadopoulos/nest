@@ -6,7 +6,9 @@ import {
   bankedTitle,
   creditExpiry,
   creditTitle,
+  LIMIT_RESET,
   limitLine,
+  limitResetTitle,
   used,
 } from "../../../screens/settings/accountText.ts";
 import { useStore } from "../../../store/context.ts";
@@ -55,6 +57,7 @@ export function EngineAccounts({
           </div>
         ))}
       </div>
+      {provider === "claude" && <LimitResetRows accounts={accounts} />}
       <div className="dka-tools">
         <Button
           onClick={() => {
@@ -319,6 +322,49 @@ function AccountLimits({ account }: { account: EngineAccount }) {
         </span>
       ))}
     </span>
+  );
+}
+
+/**
+ * Claude Code's limit reset (B161), for each signed-in Claude account: Reset in Terminal
+ * asks first, then opens Claude Code there, which uses the reset itself if there is one.
+ */
+function LimitResetRows({ accounts }: { accounts: EngineAccount[] }) {
+  const { actions } = useStore();
+  const [using, setUsing] = useState<EngineAccount | null>(null);
+  const offered = accounts.filter((a) => a.limit_reset);
+  if (offered.length === 0) return null;
+  return (
+    <div className="dka-rows">
+      {offered.map((account) => (
+        <SettingsListRow
+          key={account.id}
+          title={LIMIT_RESET.row}
+          detail={accounts.length > 1 ? account.title : null}
+          trailing={
+            <Button
+              aria-label={`${LIMIT_RESET.action} for ${account.title}`}
+              onClick={() => {
+                setUsing(account);
+              }}
+            >
+              {LIMIT_RESET.action}
+            </Button>
+          }
+        />
+      ))}
+      {using !== null && (
+        <Confirm
+          title={limitResetTitle(using)}
+          message={LIMIT_RESET.message}
+          action={LIMIT_RESET.action}
+          onConfirm={() => void actions.openLimitReset(using.id)}
+          onClose={() => {
+            setUsing(null);
+          }}
+        />
+      )}
+    </div>
   );
 }
 
