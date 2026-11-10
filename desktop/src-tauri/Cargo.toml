@@ -2,6 +2,7 @@
 name = "nest-desktop"
 version = "0.1.0"
 description = "Nest for the Linux desktop"
+license = "MIT"
 edition = "2021"
 rust-version = "1.85"
 publish = false
