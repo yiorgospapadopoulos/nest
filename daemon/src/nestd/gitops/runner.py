@@ -73,13 +73,11 @@ async def run_command(
     argv: Sequence[str],
     cwd: Path,
     time_limit: float = TIMEOUT_SECONDS,
-    kill_on_cancel: bool = False,
     env: Mapping[str, str] | None = None,
     own_group: bool = False,
 ) -> str:
     """Run `argv` in `cwd` and return its stdout; after `time_limit` seconds it is killed.
-    A cancelled caller waits for it to finish, unless `kill_on_cancel` (a sign-in the user
-    cancelled, B98). `env` is added to the daemon's own environment.
+    A cancelled caller waits for it to finish. `env` is added to the daemon's own environment.
 
     With `own_group`, killing it also kills what it started: a helper left running holds
     the output pipes open, so the kill would wait for that helper to give up (B131).
@@ -90,7 +88,7 @@ async def run_command(
         raise CommandError(argv, None, f"the working directory {cwd} {problem}")
     running = asyncio.ensure_future(_run(argv, cwd, time_limit, _tail.get(), env, own_group))
     try:
-        returncode, stdout, stderr = await (running if kill_on_cancel else asyncio.shield(running))
+        returncode, stdout, stderr = await asyncio.shield(running)
     except asyncio.CancelledError:
         # Stopping one midway could leave a lock file behind; the timeout bounds the wait.
         await asyncio.gather(running, return_exceptions=True)

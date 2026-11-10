@@ -1,7 +1,8 @@
 """The Claude account, through Claude Code's own `claude auth` commands (D104).
 
-Nest never reads, stores or returns a token: it reads `claude auth status --json` and
-starts `claude auth login`, which opens the browser on the Mac.
+Nest never reads, stores or returns a token: it reads `claude auth status --json`. Signing
+in is Claude Code's own `claude auth login`, which Nest opens in a terminal for the user
+to run (B162, D190): Nest never starts a login itself.
 """
 
 import asyncio
@@ -45,6 +46,14 @@ class _AuthStatus(BaseModel):
 # Hears each sign in's outcome and each sign out, with the error a sign in ended with.
 type Announce = Callable[[ClaudeAccountStatus, str | None], Awaitable[None]]
 
+# Opens a terminal running `claude auth login` on the account.
+type OpenSignIn = Callable[[], Awaitable[None]]
+
+# How often a sign in in the terminal is checked for, and how long it is waited for.
+SIGN_IN_POLL_SECONDS = 2.0
+SIGN_IN_WAIT_SECONDS = 15 * 60.0
+NOT_FINISHED = "The sign in was not finished in the terminal."
+
 
 class ClaudeAccount:
     """One Claude account (B98): the first one with Claude Code's own environment, an
@@ -56,17 +65,21 @@ class ClaudeAccount:
         cli: ClaudeCli,
         clock: Clock,
         announce: Announce,
+        open_sign_in: OpenSignIn,
         env: Mapping[str, str] | None = None,
     ) -> None:
         self._cli = cli
         self._clock = clock
         self._announce = announce
+        self._open_sign_in = open_sign_in
         self._env = dict(env or {})
         self._login: asyncio.Task[None] | None = None
+        # While the terminal opens, before the wait starts: a second sign in is refused.
+        self._opening = False
 
     @property
     def signing_in(self) -> bool:
-        return self._login is not None
+        return self._opening or self._login is not None
 
     async def status(self) -> ClaudeAccountStatus:
         output = await self._cli.run(["auth", "status", "--json"], env=self._env)
@@ -85,13 +98,19 @@ class ClaudeAccount:
         )
 
     async def login(self) -> None:
-        """Start `claude auth login --claudeai`; 409 while one runs. The outcome is
-        announced.
+        """Open `claude auth login` in a terminal, then wait for Claude Code to say it is
+        signed in; 409 while a sign in runs. A terminal that cannot open raises at once.
+        The outcome is announced.
         """
-        if self._login is not None:
+        if self.signing_in:
             msg = "a sign in is already in progress"
             raise SignInRunningError(msg)
-        self._login = asyncio.create_task(self._signing_in())
+        self._opening = True
+        try:
+            await self._open_sign_in()
+        finally:
+            self._opening = False
+        self._login = asyncio.create_task(self._waiting())
 
     async def cancel(self) -> None:
         """Stop the sign in that runs, if one does; announced without an error."""
@@ -114,18 +133,23 @@ class ClaudeAccount:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
 
-    async def _signing_in(self) -> None:
+    async def _waiting(self) -> None:
+        """Ask Claude Code until it says signed in, up to SIGN_IN_WAIT_SECONDS. A failing
+        ask means not yet: a signed-out `claude auth status` exits with an error.
+        """
         try:
-            error: str | None = None
-            try:
-                await self._cli.sign_in(["auth", "login", "--claudeai"], self._env)
-            except ClaudeCliError as failure:
-                error = str(failure)
-            try:
-                status = await self.status()
-            except ClaudeCliError as failure:
-                error = error or str(failure)
-                status = self._signed_out()
+            error: str | None = NOT_FINISHED
+            status = self._signed_out()
+            deadline = asyncio.get_running_loop().time() + SIGN_IN_WAIT_SECONDS
+            while asyncio.get_running_loop().time() < deadline:
+                await asyncio.sleep(SIGN_IN_POLL_SECONDS)
+                try:
+                    status = await self.status()
+                except ClaudeCliError:
+                    continue
+                if status.signed_in:
+                    error = None
+                    break
         finally:
             self._login = None
         # Once it no longer runs: hearing the outcome may remove the account.

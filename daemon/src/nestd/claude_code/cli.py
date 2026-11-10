@@ -87,15 +87,13 @@ class ClaudeCli:
         run_long: CommandRunner,
         cwd: Path,
         bus: EventBus,
-        run_sign_in: CommandRunner | None = None,
     ) -> None:
-        """`run_long` runs commands that wait on the user or the network for longer, such
-        as installing; `run_sign_in` signing in, which a cancel stops (default: `run_long`).
+        """`run_long` runs commands that wait on the network for longer, such as
+        installing.
         """
         self.locations = locations
         self._run = run
         self._run_long = run_long
-        self._run_sign_in = run_sign_in or run_long
         self._cwd = cwd
         self._bus = bus
         self._install: asyncio.Task[None] | None = None
@@ -111,10 +109,6 @@ class ClaudeCli:
         the CLI's message.
         """
         return await self._call(self._run_long if long else self._run, args, env)
-
-    async def sign_in(self, args: Sequence[str], env: Mapping[str, str] | None = None) -> str:
-        """Run a sign-in command, which waits on the user in the browser."""
-        return await self._call(self._run_sign_in, args, env)
 
     async def _call(
         self, run: CommandRunner, args: Sequence[str], env: Mapping[str, str] | None

@@ -113,13 +113,16 @@ class Accounts:
         codex_launch: CodexLauncher,
         close_idle_runs: Callable[[Collection[str]], Awaitable[None]],
         claude_switched: Callable[[], Awaitable[object]],
+        open_claude_sign_in: Callable[[str, Mapping[str, str], Path | None], Awaitable[None]],
         acp: Mapping[str, AcpEngineService] | None = None,
         new_id: Callable[[], str] = lambda: secrets.token_hex(6),
     ) -> None:
         """`codex` is the engine's view of its active account; `close_idle_runs` closes
         the idle chat runs opened on any of the given accounts, and `claude_switched`
         reads Claude's models and account again once another Claude account is active or
-        the active one has just signed in.
+        the active one has just signed in. `open_claude_sign_in` opens a terminal running
+        Claude Code's own login on a Claude account, by its id, environment and added
+        account's folder (B162).
         `acp` are the ACP engines Nest runs, by name (B107).
         """
         self._store = store
@@ -135,6 +138,7 @@ class Accounts:
         self._codex_launch = codex_launch
         self._close_idle_runs = close_idle_runs
         self._claude_switched = claude_switched
+        self._open_claude_sign_in = open_claude_sign_in
         self._new_id = new_id
         self._acp = dict(acp or {})
         self._handles: dict[str, Handle] = {}
@@ -409,7 +413,13 @@ class Accounts:
             announce = partial(self._outcome, account.id)
             service = self._acp.get(account.provider)
             if account.provider == CLAUDE:
-                handle = ClaudeAccount(self._claude_cli, self._clock, announce, env)
+                handle = ClaudeAccount(
+                    self._claude_cli,
+                    self._clock,
+                    announce,
+                    partial(self._open_claude_sign_in, account.id, env, account.profile),
+                    env,
+                )
             elif service is not None:
                 handle = AcpAccount(
                     service, account.id, partial(run_account, self._profiles, account), announce

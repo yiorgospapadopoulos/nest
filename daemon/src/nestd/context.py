@@ -885,14 +885,12 @@ class AppContext:
         claude_code = ClaudeCli(
             locations=claude_locations or ClaudeLocations.default(Path.home(), os.environ, system),
             run=claude_runner or run_command,
-            # Signing in waits on the user in the browser; installing downloads.
+            # Installing downloads.
             run_long=claude_runner or partial(run_command, time_limit=LONG_COMMAND_SECONDS),
             cwd=paths.data_dir,
             bus=bus,
-            # A cancelled sign in stops (B98).
-            run_sign_in=claude_runner
-            or partial(run_command, time_limit=LONG_COMMAND_SECONDS, kill_on_cancel=True),
         )
+        local_apps = LocalApps(opener, paths.launchers_dir, system)
         usage_refresher = UsageRefresher(
             store=usage,
             bus=bus,
@@ -920,6 +918,9 @@ class AppContext:
             codex_launch=codex_launch,
             close_idle_runs=sessions.close_idle_runs,
             claude_switched=engine.refresh,
+            open_claude_sign_in=lambda account_id, env, profile: local_apps.open_claude_sign_in(
+                account_id, claude_code.program(), env, profile
+            ),
             acp=acp,
         )
         # The shared setup is the first account's: every other one links to it (B98).
@@ -1047,7 +1048,7 @@ class AppContext:
             reviews=reviews,
             usage=usage,
             connectors=connectors,
-            local_apps=LocalApps(opener, paths.launchers_dir, system),
+            local_apps=local_apps,
             notifications=notifications,
             claude_chats=claude_chats,
             branch_watch=BranchWatch(repos=repos, bus=bus),

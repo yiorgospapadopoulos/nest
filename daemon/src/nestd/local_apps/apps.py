@@ -3,7 +3,7 @@ manager or a terminal, the platform's way (`openers`)."""
 
 import asyncio
 import shutil
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -12,7 +12,11 @@ from nestd.errors import ConflictError
 from nestd.gitops.runner import CommandRunner
 from nestd.local_apps.editors import Editor, EditorId, default_editor
 from nestd.local_apps.errors import AppNotInstalledError
-from nestd.local_apps.launchers import write_launcher, write_limit_reset_launcher
+from nestd.local_apps.launchers import (
+    write_launcher,
+    write_limit_reset_launcher,
+    write_sign_in_launcher,
+)
 from nestd.local_apps.openers import RepoApp, Which, opener_for
 from nestd.platform import Platform
 from nestd.providers.base import RunAccount
@@ -69,6 +73,17 @@ class LocalApps:
         await asyncio.to_thread(write_limit_reset_launcher, launcher, cwd, account.env)
         await self._opener.open_launcher(launcher)
         return launcher
+
+    async def open_claude_sign_in(
+        self, account_id: str, program: Path, env: Mapping[str, str], profile: Path | None
+    ) -> None:
+        """Open a terminal running Claude Code's own `claude auth login` on the account
+        (B162): Claude Code opens the browser there and keeps the login. `profile` is an
+        added account's folder, None for the first account.
+        """
+        launcher = self._launchers_dir / f"sign-in-{account_id}{self._opener.launcher_suffix}"
+        await asyncio.to_thread(write_sign_in_launcher, launcher, program, env, profile)
+        await self._opener.open_launcher(launcher)
 
     async def installed_editors(self) -> list[Editor]:
         return await asyncio.to_thread(self._opener.installed_editors)
