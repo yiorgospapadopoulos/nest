@@ -13,6 +13,7 @@ from starlette.requests import Request
 import nestd
 from nestd.api.app import create_app
 from nestd.api.routes.pairing import client_address
+from nestd.auth import token_socket
 from nestd.config.errors import ConfigError
 from nestd.context import AppContext
 from nestd.events import types
@@ -102,9 +103,15 @@ def gone(path: Path) -> bool:
 
 
 async def test_lifespan_serves_the_local_token_on_its_socket(
-    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """D075: the Mac app asks the running daemon; a revoked local device gets a new token."""
+
+    # This test asks from the daemon's own process, which the socket refuses otherwise.
+    def outside(*_: object) -> bool:
+        return False
+
+    monkeypatch.setattr(token_socket, "runs_under_daemon", outside)
     # Unix socket paths are limited to about 104 bytes; pytest's tmp_path can be longer.
     root = Path(tempfile.mkdtemp(prefix="hx-", dir="/tmp"))
     path = root / "data" / "token.sock"
