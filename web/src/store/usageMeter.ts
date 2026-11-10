@@ -133,6 +133,14 @@ function duration(ms: number): string {
   return hours >= 24 ? `${String(Math.floor(hours / 24))}d` : `${String(hours)}h`;
 }
 
+/**
+ * The account's own windows, without the per-model ones (B161), which the chips leave to
+ * the popover and Settings.
+ */
+export function ownWindows(limits: AccountWindow[]): AccountWindow[] {
+  return limits.filter((w) => (w.scope ?? null) === null);
+}
+
 /** The top two checked accounts that reported a window, each as its shortest one. */
 export function chipEntries(
   accounts: EngineAccount[],
@@ -144,7 +152,7 @@ export function chipEntries(
     .flatMap((account): ChipEntry[] => {
       // A window of unknown length sorts last.
       const length = (w: AccountWindow) => w.minutes ?? Number.POSITIVE_INFINITY;
-      const [window] = [...account.limits].sort((a, b) => length(a) - length(b));
+      const [window] = ownWindows(account.limits).sort((a, b) => length(a) - length(b));
       if (window === undefined) return [];
       const used = Math.min(Math.max(window.utilization, 0), 1);
       const percent = `${String(Math.round(used * 100))}%`;
