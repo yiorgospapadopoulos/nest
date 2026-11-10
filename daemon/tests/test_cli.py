@@ -5,12 +5,14 @@ import shutil
 import tempfile
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import FastAPI
 
+from nestd import __version__
 from nestd.accounts.profiles import LEAKED_ENV
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
 from nestd.auth.secrets import SecretStoreUnavailableError
@@ -20,7 +22,9 @@ from nestd.platform import LINUX, MACOS, Platform
 from nestd.runtime import Runtime
 from nestd.service.base import CommandResult
 from nestd.service.launchd import LABEL
+from nestd.service.restart import terminate_self
 from nestd.service.systemd import UNIT_NAME
+from nestd.updates.app import STARTS_NAME, note_start, starts_of
 from nestd.updates.boot import installed_fingerprint
 from nestd.updates.state import BASE, StateFile, UpdateState
 from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
@@ -172,6 +176,52 @@ def test_served_app_restarts_through_the_runtime(cli: Rig) -> None:
     assert cli.run("serve") == 0
 
     assert cli.restart.calls == 1
+
+
+def _packaged(cli: Rig, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr("nestd.cli.is_packaged", lambda: True)
+    folder = cli.paths.daemon_dir / __version__
+    folder.mkdir(parents=True)
+    return folder / STARTS_NAME
+
+
+def test_a_restart_is_marked_clean_before_the_daemon_is_ended(
+    cli: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B159 recheck 2 D: uvicorn re-raises SIGTERM, so a marker written after the server
+    stopped never was, and three Restarts soon after an update rolled it back."""
+    starts = _packaged(cli, monkeypatch)
+    at_kill: list[int] = []
+
+    def kill(_pid: int, _signal: int) -> None:
+        at_kill.append(starts_of(cli.paths.daemon_dir, __version__))
+        note_start(cli.paths.daemon_dir, __version__)
+
+    cli.runtime = replace(cli.runtime, restart=partial(terminate_self, kill=kill))
+
+    async def ask_for_restart(app: FastAPI) -> None:
+        token = cli.secrets.get(LOCAL_DEVICE_ACCOUNT)
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as http:
+            await http.post("/api/service/restart", headers={"Authorization": f"Bearer {token}"})
+
+    cli.recorder.while_serving.append(ask_for_restart)
+
+    assert cli.run("serve") == 0
+
+    assert at_kill == [1]
+    assert starts.read_text(encoding="utf-8").splitlines() == ["start", "stop", "start"]
+    assert starts_of(cli.paths.daemon_dir, __version__) == 1
+
+
+def test_a_daemon_that_exits_on_its_own_still_counts_as_a_crash(
+    cli: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    starts = _packaged(cli, monkeypatch)
+
+    assert cli.run("serve") == 0
+
+    assert starts.read_text(encoding="utf-8").splitlines() == ["start"]
 
 
 def test_serve_port_flag_overrides_settings(cli: Rig) -> None:

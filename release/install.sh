@@ -113,12 +113,36 @@ check_signature() {
     stop "This release isn't signed by Nest's release key, so nothing was installed. It may have been changed after it was published."
 }
 
+# Whether version $1 is older than $2, both digits and dots.
+older_than() {
+    a="$1." b="$2."
+    while [ -n "$a$b" ]; do
+        x="${a%%.*}" y="${b%%.*}"
+        a="${a#*.}" b="${b#*.}"
+        [ "${x:-0}" -lt "${y:-0}" ] && return 0
+        [ "${x:-0}" -gt "${y:-0}" ] && return 1
+    done
+    return 1
+}
+
+# An older Nest refuses a database a newer one has changed, so the service would never start.
+check_not_older() {
+    installed="$(basename "$(readlink "$data/daemon/current" 2>/dev/null || true)")"
+    case "$installed" in "" | *[!0-9.]*) return 0 ;; esac
+    older_than "$version" "$installed" || return 0
+    [ "${NEST_ALLOW_DOWNGRADE:-}" = 1 ] && return 0
+    stop "Nest $installed is installed, and this release is the older $version. It may not read your data, so nothing was changed. To install it anyway, run the line again with NEST_ALLOW_DOWNGRADE=1 in front of sh. Your data from before each update is in $data/backups-update."
+}
+
 fetch_release() {
     curl -fsSL --retry 2 -o "$work/latest.json" "$RELEASE_URL/latest.json" ||
         stop "Could not reach $RELEASE_URL. Check your connection and try again."
     check_signature
     version="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$work/latest.json")"
-    [ -n "$version" ] || stop "The release list could not be read."
+    case "$version" in
+    "" | *[!0-9.]* | .* | *. | *..*) stop "The release list could not be read." ;;
+    esac
+    check_not_older
     say "Installing Nest $version"
     fetch app "$platform" "$work/app"
     fetch wheel any "$work/nestd.whl"
@@ -151,6 +175,33 @@ run_uv() {
     fi
 }
 
+# A whole copy through SQLite, safe while the service runs, before the new code migrates it.
+# One made by an earlier run for this version is kept, as the database may be migrated
+# since, and this one gets the time in its name: a downgrade to a version installed long ago
+# still backs up today's data.
+back_up_database() {
+    database="$data/nest.db"
+    [ -f "$database" ] || return 0
+    backup="$data/backups-update/nest.db.before-install-$version"
+    [ ! -f "$backup" ] || backup="$backup-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$data/backups-update"
+    partial_backup="$backup.partial"
+    rm -f "$partial_backup"
+    "$partial/bin/python" -c '
+import sqlite3, sys
+source = sqlite3.connect(sys.argv[1], timeout=5.0)
+target = sqlite3.connect(sys.argv[2])
+source.backup(target)
+ok = target.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+target.close()
+source.close()
+sys.exit(0 if ok else 1)
+' "$database" "$partial_backup" ||
+        stop "Could not back up your data ($database), so nothing was changed."
+    mv "$partial_backup" "$backup"
+    say "Your data is backed up to $backup"
+}
+
 # The daemon in a folder of its own, made beside the others and renamed once it runs.
 build_daemon() {
     say "Setting up the background service"
@@ -170,6 +221,7 @@ build_daemon() {
     cp "$work/app" "$partial/app-file"
     "$partial/bin/python" -m nestd service --help >/dev/null ||
         stop "The downloaded daemon doesn't run on this computer."
+    back_up_database
     rm -rf "$folder.old"
     [ ! -d "$folder" ] || mv "$folder" "$folder.old"
     mv "$partial" "$folder"

@@ -244,7 +244,7 @@ class UpdateService:
         async with self._lock:
             state = await asyncio.to_thread(self._files.load)
             if await asyncio.to_thread(self._app.can_undo):
-                await self._app.undo()
+                await self._app.undo(self._port())
                 await self._announce()
                 return
             if state.previous is None:

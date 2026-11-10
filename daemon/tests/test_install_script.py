@@ -8,10 +8,12 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import stat
 import subprocess
+import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -253,3 +255,89 @@ def test_a_mac_needs_macos_15_or_later(tmp_path: Path, version: str, refused: bo
     if not refused:
         assert "This release has no app for macos-arm64." in result.stderr
     assert not machine.data.exists()
+
+
+def _installed(machine: Machine, version: str) -> Path:
+    """A released install of `version` with a database, as the install line left it."""
+    folder = machine.data / "daemon" / version
+    folder.mkdir(parents=True)
+    (machine.data / "daemon" / "current").symlink_to(version)
+    database = machine.data / "nest.db"
+    connection = sqlite3.connect(database)
+    connection.execute("CREATE TABLE t (value TEXT)")
+    connection.execute("INSERT INTO t VALUES ('my chats')")
+    connection.execute("PRAGMA user_version = 47")
+    connection.commit()
+    connection.close()
+    return database
+
+
+# A uv whose venv python runs real Python for `-c` (the backup) and answers the rest.
+_BACKING_UP_UV = 'case "$1" in venv) for last; do :; done; mkdir -p "$last/bin"; ' + (
+    'printf \'#!/bin/sh\\n[ "$1" = -c ] && exec "%s" "$@"\\nexit 0\\n\' '
+    f'"{sys.executable}" > "$last/bin/python"; chmod +x "$last/bin/python" ;; esac'
+)
+
+
+def test_an_older_release_is_refused_over_a_newer_install(tmp_path: Path) -> None:
+    # B159 R11: a pulled release put an older Nest over a database it cannot read.
+    machine = _machine(tmp_path, uv=_BACKING_UP_UV, app=_UNPACKING_APP)
+    _installed(machine, "2.0.0")
+
+    result = machine.run()
+
+    assert result.returncode == 1
+    assert "Nest 2.0.0 is installed" in result.stderr
+    assert "NEST_ALLOW_DOWNGRADE=1" in result.stderr
+    assert (machine.data / "daemon" / "current").resolve().name == "2.0.0"
+    assert sorted(entry.name for entry in (machine.data / "daemon").iterdir()) == [
+        "2.0.0",
+        "current",
+    ]
+
+
+@pytest.mark.parametrize(("installed", "forced"), [("0.9.0", False), ("2.0.0", True)])
+def test_the_database_is_backed_up_before_current_moves(
+    tmp_path: Path, installed: str, forced: bool
+) -> None:
+    # B159 R11: installing over another version migrated the database with no backup.
+    machine = _machine(tmp_path, uv=_BACKING_UP_UV, app=_UNPACKING_APP)
+    _installed(machine, installed)
+    env = {**machine.env, **({"NEST_ALLOW_DOWNGRADE": "1"} if forced else {})}
+
+    result = replace(machine, env=env).run()
+
+    assert result.returncode == 0, result.stderr
+    backup = machine.data / "backups-update" / "nest.db.before-install-1.0.0"
+    assert str(backup) in result.stdout
+    connection = sqlite3.connect(backup)
+    assert connection.execute("SELECT value FROM t").fetchone() == ("my chats",)
+    assert connection.execute("PRAGMA user_version").fetchone() == (47,)
+    connection.close()
+    assert (machine.data / "daemon" / "current").resolve().name == "1.0.0"
+
+
+def test_running_the_install_line_again_keeps_the_first_backup_and_makes_another(
+    tmp_path: Path,
+) -> None:
+    # B159 recheck 1: a repair with the same version replaced the backup with the migrated data.
+    # Recheck 2 E: a forced downgrade to a version installed long ago backed up nothing.
+    machine = _machine(tmp_path, uv=_BACKING_UP_UV, app=_UNPACKING_APP)
+    database = _installed(machine, "0.9.0")
+    assert machine.run().returncode == 0
+    connection = sqlite3.connect(database)
+    connection.execute("UPDATE t SET value = 'migrated'")
+    connection.commit()
+    connection.close()
+
+    again = machine.run()
+
+    assert again.returncode == 0, again.stderr
+    backups = machine.data / "backups-update"
+    first = backups / "nest.db.before-install-1.0.0"
+    [later] = sorted(backups.glob("nest.db.before-install-1.0.0-*"))
+    assert str(later) in again.stdout
+    for backup, value in ((first, "my chats"), (later, "migrated")):
+        connection = sqlite3.connect(backup)
+        assert connection.execute("SELECT value FROM t").fetchone() == (value,)
+        connection.close()

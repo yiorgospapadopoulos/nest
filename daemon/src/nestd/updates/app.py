@@ -108,6 +108,8 @@ class AppState(BaseModel):
     # Versions that failed to start, not offered again.
     refused: list[str] = []
     notice: str | None = None
+    # What a watcher goes back to, kept until it is done, also after Undo (B159 R12).
+    fallback: str | None = None
 
 
 def apple_tools_installed() -> bool:
@@ -150,6 +152,7 @@ def save_state(daemon_dir: Path, state: AppState) -> None:
 
 
 STARTS_NAME = "starts"
+_STOP = "stop"
 
 
 def note_start(daemon_dir: Path, version: str) -> None:
@@ -166,11 +169,27 @@ def note_start(daemon_dir: Path, version: str) -> None:
         logger.warning("could not note this start of %s", version)
 
 
-def starts_of(daemon_dir: Path, version: str) -> int:
+def note_stop(daemon_dir: Path, version: str) -> None:
+    """Marks a clean stop, so the start after it (a restart) is not counted as a crash."""
+    folder = daemon_dir / version
+    if not folder.is_dir():
+        return
     try:
-        return len((daemon_dir / version / STARTS_NAME).read_text(encoding="utf-8").splitlines())
+        with (folder / STARTS_NAME).open("a", encoding="utf-8") as file:
+            file.write(f"{_STOP}\n")
+    except OSError:
+        logger.warning("could not note this stop of %s", version)
+
+
+def starts_of(daemon_dir: Path, version: str) -> int:
+    """This version's starts that did not follow a clean stop: a restart is no crash."""
+    try:
+        lines = (daemon_dir / version / STARTS_NAME).read_text(encoding="utf-8").splitlines()
     except OSError:
         return 0
+    return sum(
+        1 for at, line in enumerate(lines) if line != _STOP and (at == 0 or lines[at - 1] != _STOP)
+    )
 
 
 def point_current(daemon_dir: Path, version: str) -> None:
@@ -337,20 +356,30 @@ class AppUpdater:
             "previous": self._running,
             "previous_schema": schema,
             "updating": updating,
+            "fallback": self._running,
         }
         await asyncio.to_thread(save_state, self._daemon_dir, state.model_copy(update=update))
         await asyncio.to_thread(point_current, self._daemon_dir, new)
 
-    async def undo(self) -> None:
+    async def undo(self, port: int) -> None:
         """Back to the previous version, whose code reads this database; the caller then ends
         the daemon. An update that changed the database cannot be undone: `can_undo` says so.
+        Watched like an update, so a previous version that no longer starts is left (B159 R12).
         """
         state = await asyncio.to_thread(self.state)
-        if state.previous is None or not await asyncio.to_thread(self.can_undo):
+        previous = state.previous
+        if previous is None or not await asyncio.to_thread(self.can_undo):
             msg = "There is nothing to go back to"
             raise ConflictError(msg)
-        await asyncio.to_thread(point_current, self._daemon_dir, state.previous)
-        update = {"previous": None, "previous_schema": None}
+        backup = self._paths.data_dir / BACKUPS / f"nest.db.before-undo-{previous}"
+        await asyncio.to_thread(back_up_database, self._paths.db_path, backup)
+        # Its starts from before the update would count against it.
+        (self._daemon_dir / previous / STARTS_NAME).unlink(missing_ok=True)
+        await asyncio.to_thread(
+            self._watcher, self._daemon_dir, port, self._running, previous, backup
+        )
+        await asyncio.to_thread(point_current, self._daemon_dir, previous)
+        update = {"previous": None, "previous_schema": None, "fallback": self._running}
         await asyncio.to_thread(save_state, self._daemon_dir, state.model_copy(update=update))
 
     def clear_unused(self) -> None:
@@ -359,7 +388,8 @@ class AppUpdater:
             return
         state = self.state()
         undo = state.updating.undo if state.updating else None
-        keep = {self._running, state.previous, undo, state.ready.version if state.ready else None}
+        ready = state.ready.version if state.ready else None
+        keep = {self._running, state.previous, undo, ready, state.fallback}
         for entry in self._daemon_dir.iterdir():
             name = entry.name.removesuffix(PARTIAL_SUFFIX)
             removable = entry.is_dir() and not entry.is_symlink() and _VERSION.fullmatch(name)

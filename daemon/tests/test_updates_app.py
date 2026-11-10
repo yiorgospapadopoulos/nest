@@ -11,7 +11,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal
 
 import httpx
 import pytest
@@ -30,6 +30,7 @@ from nestd.updates.app import (
     back_up_database,
     database_version,
     note_start,
+    note_stop,
     platform_key,
     point_current,
     read_state,
@@ -91,7 +92,30 @@ class Service:
         self.calls.append("uninstall")
 
     def status(self) -> ServiceStatus:
-        return ServiceStatus(installed=True, loaded=True, detail="")
+        loaded = not self.calls or self.calls[-1] != "stop"
+        return ServiceStatus(installed=True, loaded=loaded, detail="")
+
+
+class SlowToStop(Service):
+    """`launchctl bootout` returns while the old daemon is still exiting, its database open."""
+
+    def __init__(self, database: Path, polls: int) -> None:
+        super().__init__()
+        self.database = database
+        self.polls = polls
+        self.seen_while_running: list[str] = []
+        self.handle: BinaryIO | None = None
+
+    def stop(self) -> None:
+        super().stop()
+        self.handle = self.database.open("r+b")
+
+    def status(self) -> ServiceStatus:
+        if self.calls[-1] == "stop" and self.polls > 0:
+            self.polls -= 1
+            self.seen_while_running.append(_value(self.database))
+            return ServiceStatus(installed=True, loaded=True, detail="")
+        return super().status()
 
 
 class Rig:
@@ -152,7 +176,7 @@ class Rig:
             )
         return httpx.Response(200, content=b"tampered" if name == self.bad else self.files[name])
 
-    def updater(self, *, packaged: bool = True) -> AppUpdater:
+    def updater(self, *, packaged: bool = True, running: str = "1.0.0") -> AppUpdater:
         async def uv(args: Sequence[str], _cwd: Path, _env: Mapping[str, str]) -> str:
             self.uv_calls.append(list(args))
             if args[0] == "venv":
@@ -178,7 +202,7 @@ class Rig:
             selfcheck=selfcheck,
             env=env,
             transport=httpx.MockTransport(self._answer),
-            running="1.0.0",
+            running=running,
             watcher=watcher,
             release_keys=(_public(self.key),),
         )
@@ -273,7 +297,15 @@ async def test_relaunch_backs_up_starts_the_watcher_then_moves_current(rig: Rig)
     assert (updating.from_version, updating.to_version) == ("1.0.0", "2.0.0")
 
 
-def _trial(rig: Rig, service: Service, answers: list[str | None]) -> Trial:
+def _trial(
+    rig: Rig,
+    service: Service,
+    answers: list[str | None],
+    *,
+    old: str = "1.0.0",
+    new: str = "2.0.0",
+    backup: str = "nest.db.before-2.0.0",
+) -> Trial:
     clock = [0.0]
 
     def now() -> float:
@@ -283,18 +315,18 @@ def _trial(rig: Rig, service: Service, answers: list[str | None]) -> Trial:
     def answer(_port: int) -> str | None:
         return answers.pop(0) if answers else None
 
-    backup = rig.paths.data_dir / "backups-update" / "nest.db.before-2.0.0"
     return Trial(
         rig.paths,
         service,
         8765,
-        "1.0.0",
-        "2.0.0",
-        backup,
+        old,
+        new,
+        rig.paths.data_dir / "backups-update" / backup,
         version_on=answer,
         now=now,
         pause=lambda _: None,
         seconds=10.0,
+        settle_seconds=5.0,
     )
 
 
@@ -373,6 +405,104 @@ async def test_a_new_version_that_keeps_crashing_is_undone_without_waiting(rig: 
     assert "kept crashing when it started" in notice
 
 
+async def test_a_new_version_that_crashes_soon_after_answering_is_undone(rig: Rig) -> None:
+    """B159 R12: one health answer confirmed it, and launchd restarted it forever after."""
+    updater = rig.updater()
+    await updater.check_and_prepare(_nothing)
+    await updater.relaunch(8765)
+    note_start(rig.daemon, "2.0.0")
+    service = Service()
+    trial = _trial(rig, service, ["2.0.0"])
+
+    def crash(_seconds: float) -> None:
+        note_start(rig.daemon, "2.0.0")
+
+    assert not watch(replace(trial, pause=crash, settle_seconds=100.0))
+
+    assert service.calls == ["stop", "install"]
+    assert (rig.daemon / CURRENT).resolve().name == "1.0.0"
+    assert _value(rig.paths.db_path) == "before"
+    assert read_state(rig.daemon).notice == (
+        "Nest 2.0.0 kept crashing, so Nest went back to 1.0.0 and to your chats as they were"
+        " before the update. Anything done since the update is lost."
+    )
+
+
+async def test_restarts_after_clean_stops_are_no_crashes(rig: Rig) -> None:
+    """B159 recheck 1: Settings > Restart three times soon after an update rolled it back."""
+    updater = rig.updater()
+    await updater.check_and_prepare(_nothing)
+    await updater.relaunch(8765)
+    note_start(rig.daemon, "2.0.0")
+    service = Service()
+    trial = _trial(rig, service, ["2.0.0"])
+
+    def restart(_seconds: float) -> None:
+        note_stop(rig.daemon, "2.0.0")
+        note_start(rig.daemon, "2.0.0")
+
+    assert watch(replace(trial, pause=restart, settle_seconds=100.0))
+
+    assert service.calls == []
+    assert (rig.daemon / CURRENT).resolve().name == "2.0.0"
+
+
+async def test_the_database_is_put_back_only_once_the_old_daemon_has_exited(rig: Rig) -> None:
+    """B159 R13: the backup was copied over the database while the failed daemon still ran."""
+    updater = rig.updater()
+    await updater.check_and_prepare(_nothing)
+    await updater.relaunch(8765)
+    _database(rig.paths.db_path, 48, "migrated")
+    service = SlowToStop(rig.paths.db_path, polls=3)
+
+    assert not watch(_trial(rig, service, []))
+
+    assert service.seen_while_running == ["migrated"] * 3
+    assert service.handle is not None
+    # A last write from the exiting daemon lands in the file it had open, not the restored one.
+    service.handle.write(b"x" * 4096)
+    service.handle.close()
+    assert _value(rig.paths.db_path) == "before"
+    assert service.calls == ["stop", "install"]
+
+
+async def test_undo_is_watched_like_an_update(rig: Rig) -> None:
+    """B159 R12: Undo started no watcher, so an old version that failed to start stayed down."""
+    await rig.updater().check_and_prepare(_nothing)
+    await rig.updater().relaunch(8765)
+    # 1.0.0's starts from before the update must not count against it now.
+    for _ in range(3):
+        note_start(rig.daemon, "1.0.0")
+    updater = rig.updater(running="2.0.0")
+
+    await updater.undo(8765)
+
+    assert rig.watchers[-1] == ("2.0.0", "1.0.0")
+    backup = "nest.db.before-undo-1.0.0"
+    assert _value(rig.paths.data_dir / "backups-update" / backup) == "before"
+    service = Service()
+    trial = _trial(rig, service, [None, "1.0.0"], old="2.0.0", new="1.0.0", backup=backup)
+
+    assert watch(trial)
+
+    assert service.calls == []
+    assert (rig.daemon / CURRENT).resolve().name == "1.0.0"
+
+
+async def test_a_failed_undo_goes_back_to_a_version_that_is_still_there(rig: Rig) -> None:
+    await rig.updater().check_and_prepare(_nothing)
+    await rig.updater().relaunch(8765)
+    await rig.updater(running="2.0.0").undo(8765)
+    # 1.0.0 starts and clears what it does not need, then stops answering.
+    rig.updater().clear_unused()
+    trial = _trial(rig, Service(), [], old="2.0.0", new="1.0.0", backup="nest.db.before-undo-1.0.0")
+
+    assert not watch(trial)
+
+    assert (rig.daemon / CURRENT).resolve().name == "2.0.0"
+    assert (rig.daemon / "2.0.0").is_dir()
+
+
 async def test_a_release_that_failed_is_not_offered_again(rig: Rig) -> None:
     save_state(rig.daemon, AppState(refused=["2.0.0"]))
 
@@ -390,7 +520,7 @@ async def test_undo_needs_the_database_to_be_as_it_was(rig: Rig) -> None:
 
     assert not updater.can_undo()
     with pytest.raises(ConflictError):
-        await updater.undo()
+        await updater.undo(8765)
     assert (rig.daemon / CURRENT).resolve().name == "2.0.0"
 
 
@@ -399,7 +529,7 @@ async def test_undo_moves_current_back(rig: Rig) -> None:
     await updater.check_and_prepare(_nothing)
     await updater.relaunch(8765)
 
-    await updater.undo()
+    await updater.undo(8765)
 
     assert (rig.daemon / CURRENT).resolve().name == "1.0.0"
     assert not updater.can_undo()
