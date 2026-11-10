@@ -543,18 +543,37 @@ class _Window(BaseModel):
 class _Windows(BaseModel):
     five_hour: _Window | None = None
     seven_day: _Window | None = None
+    # The weekly window of one model, which Claude Code calls the "Fable limit" (B161).
+    seven_day_overage_included: _Window | None = None
+
+
+# Claude Code's own name for `seven_day_overage_included`.
+OVERAGE_INCLUDED_LABEL = "Fable"
 
 
 def usage_info(raw: dict[str, Any]) -> base.UsageInfo | None:
-    """Five-hour and seven-day windows from the CLI's `unifiedWindows`, when present."""
+    """Five-hour, seven-day and per-model windows from the CLI's `unifiedWindows`, when
+    present. A window it leaves out keeps its last report.
+    """
     try:
         windows = _Windows.model_validate(raw.get("unifiedWindows"))
     except ValidationError:
         return None
-    if windows.five_hour is None and windows.seven_day is None:
+    scoped = windows.seven_day_overage_included
+    if windows.five_hour is None and windows.seven_day is None and scoped is None:
         return None
     return base.UsageInfo(
-        five_hour=_window(windows.five_hour), seven_day=_window(windows.seven_day)
+        five_hour=_window(windows.five_hour),
+        seven_day=_window(windows.seven_day),
+        scoped=[]
+        if scoped is None
+        else [
+            base.ScopedWindow(
+                label=OVERAGE_INCLUDED_LABEL,
+                utilization=scoped.utilization,
+                resets_at=scoped.resets_at,
+            )
+        ],
     )
 
 
