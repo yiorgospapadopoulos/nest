@@ -366,6 +366,7 @@ async def initialize(rpc: AcpRpc) -> AgentCaps:
 
 class AcpRun:
     steers = False
+    sends_now = False
 
     def __init__(
         self,
@@ -511,7 +512,7 @@ class AcpRun:
         self._turns.add(task)
         task.add_done_callback(self._turns.discard)
 
-    async def steer(self, user_input: UserInput, message_id: str) -> None:
+    async def steer(self, user_input: UserInput, message_id: str, *, now: bool = False) -> None:
         msg = f"{self._engine.name} takes no message into a running turn"
         raise RuntimeError(msg)
 

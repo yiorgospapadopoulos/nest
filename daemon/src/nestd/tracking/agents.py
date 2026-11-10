@@ -140,6 +140,13 @@ class AgentBoard:
         """
         return any(a.background and a.status == "running" for a in self._agents.values())
 
+    def subagents_working(self) -> bool:
+        """Whether a subagent or called pixie works, in the foreground or the background
+        (B160): stopping the main turn would stop it too, as Claude Code stops a run's
+        subagents with its turn. Background commands go on after such a stop.
+        """
+        return any(a.id != MAIN and a.status == "running" for a in self._agents.values())
+
     def started(self, at: datetime) -> None:
         self._agents[MAIN].started_at = at
 

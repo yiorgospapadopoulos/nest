@@ -105,6 +105,21 @@ describe("messages sent while Claude works (B59)", () => {
     expect(button()).toBeEnabled();
   });
 
+  it("offers Send now on every pending message, also while subagents work (B160)", async () => {
+    const { push } = await openChat({
+      queued: [queuedMessage(), queuedMessage({ id: "m2", text: "And docs", sent: true })],
+    });
+    push(
+      event({
+        id: 6,
+        type: "session.agents",
+        payload: { agents: [], background: { running: 1, completed: 0, items: [] } },
+      }),
+    );
+
+    expect(within(pending()).getAllByRole("button", { name: "Send now" })).toHaveLength(2);
+  });
+
   it("removes a pending message, unless Claude already read it", async () => {
     const api = fakeApi();
     api.cancelQueued

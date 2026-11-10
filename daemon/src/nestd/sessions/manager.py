@@ -169,6 +169,7 @@ class SessionManager:
         names_dir: Path | None = None,
         name_waits: Sequence[float] = NAME_WAITS,
         can_push: Callable[[], bool] = lambda: False,
+        subagents_working: Callable[[str], Awaitable[bool]] | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
@@ -182,8 +183,10 @@ class SessionManager:
         (`AutopilotRunner`). `names_dir` is the empty folder of the small calls that name
         a chat on an engine with no names of its own, and `name_waits` how long the others
         are given (`ChatNamer`). `can_push` is whether the user lets pixies, subagents and
-        Autopilot push (D160).
+        Autopilot push (D160). `subagents_working` is whether a chat's subagents or called
+        pixies work (B160).
         """
+        self._subagents_working = subagents_working
         self._local = local
         self._issues = issues
         self._engines = Engines(
@@ -841,10 +844,15 @@ class SessionManager:
         await self._turns.steering.remove(self._live.get(session_id), session_id, message_id)
 
     async def send_now(self, session_id: str, message_id: str) -> None:
-        """Send a queued message now, like Claude Code's Send now: it goes first, and a
-        running turn is stopped so it starts right after, as a nudge does (D036). On an
-        idle session it starts at once; while the work is published or a restore holds the
-        session it waits, first in line. One the agent already read stays in its turn (B59).
+        """Send a pending message now, first in line (B160). On an engine that can, the
+        agent reads it at once while the turn's tools and subagents go on in the
+        background, as with Claude Code's own Send now: nothing is stopped, and the agent
+        stops what the message asks it to. Elsewhere a running turn is stopped so it
+        starts right after, as a nudge does (D036), but not while subagents or called
+        pixies work, which that would stop too: the message goes into the running turn
+        instead, read at the agent's next step. On an idle session it starts at once;
+        while the work is published or a restore holds the session it waits, first in
+        line. One the agent already read stays in its turn (B59).
         """
         session = await self._store.get(session_id)
         require_open(session)
@@ -853,11 +861,19 @@ class SessionManager:
         await self._limits.clear(session_id, "resumed")
         live = self._live.setdefault(session_id, LiveSession(session_id))
         if live.nudgeable:
+            if await self._turns.steering.send_now(live, message_id):
+                return
+            if await self._subagents_work(session_id):
+                await self._turns.steering.flush(live)
+                return
             await self._nudge(live, message_id)
         elif not live.busy and not live.publishing and not live.stopped and not self._stopping:
             await self._require_not_open_elsewhere(session)
             require_cwd(session)
             live.start(lambda: self._turns.guard(live, self._turns.deliver_next(live)))
+
+    async def _subagents_work(self, session_id: str) -> bool:
+        return self._subagents_working is not None and await self._subagents_working(session_id)
 
     async def _nudge(self, live: LiveSession, message_id: str | None = None) -> None:
         """Stop the turn so the queue's first message starts right after it. Messages in

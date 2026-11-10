@@ -10,7 +10,15 @@ from nestd.events import types
 from nestd.providers.base import ForkPoint, ToolResultBlock, ToolUseBlock
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import echoed, edit, messages, reply, until_interrupted
+from tests.fake_provider import (
+    RESULT,
+    FakeRun,
+    echoed,
+    edit,
+    messages,
+    reply,
+    until_interrupted,
+)
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_review import approvals
@@ -80,6 +88,55 @@ async def test_a_pending_message_is_shown_sent_and_sent_now(api: Api) -> None:
     ]
     assert response.status_code == 202
     assert [i.text for i in api.provider.runs[0].inputs] == ["Do it", "pending"]
+
+
+async def test_send_now_never_stops_a_working_subagent(api: Api) -> None:
+    """B160: the user's Send now stopped eight background Reviewers, as stopping the turn
+    stops a run's subagents. While they work the message goes into the turn instead.
+    """
+
+    async def turn(run: FakeRun) -> None:
+        call = ToolUseBlock(id="t1", name="Agent", input={"description": "Review", "prompt": "x"})
+        await run.sink.message([call], None)
+        await run.interrupted.wait()
+        await run.sink.result(RESULT.model_copy(update={"subtype": "interrupted"}))
+
+    api.provider.script(turn)
+    session_id = str((await create(api, mode="in_place"))["id"])
+    await reach(api, session_id, "running")
+    await until(lambda: bool(api.provider.runs) and _given(api, session_id))
+
+    async def subagent_running() -> bool:
+        board = (await api.ctx.tracking.sync(session_id)).agents
+        return board.subagents_working()
+
+    await until(subagent_running)
+    sent = await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "later"})
+    message_id = sent.json()["queued_message"]["id"]
+
+    response = await api.http.post(f"/api/sessions/{session_id}/queue/{message_id}/send-now")
+
+    assert response.status_code == 202
+    (run,) = api.provider.runs
+    assert ("interrupt", None) not in run.calls
+    assert ("withdraw", message_id) not in run.calls
+    assert ("steer", message_id) in run.calls
+
+
+async def test_send_now_hands_the_message_over_at_once_and_stops_nothing(api: Api) -> None:
+    """B160: on an engine that can, Send now gives the agent a message already in the turn
+    at once, its subagents and commands going on in the background: the turn is never
+    stopped.
+    """
+    api.provider.sending_now = True
+    session_id, message_id = await running_with_pending(api)
+
+    response = await api.http.post(f"/api/sessions/{session_id}/queue/{message_id}/send-now")
+
+    assert response.status_code == 202
+    (run,) = api.provider.runs
+    assert ("interrupt", None) not in run.calls
+    assert run.calls[-2:] == [("withdraw", message_id), ("steer_now", message_id)]
 
 
 async def test_send_now_of_an_unknown_message_is_404(api: Api) -> None:

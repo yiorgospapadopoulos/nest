@@ -748,6 +748,9 @@ class AgentRun(Protocol):
     # Whether messages can be written into a running turn (`steer`); a provider that
     # cannot gets them after the turn instead (B59).
     steers: bool
+    # Whether `steer(now=True)` hands a message to the main agent at once without
+    # stopping the turn's tools or subagents, as Claude Code's own Send now does (B160).
+    sends_now: bool
 
     @property
     def names_chats(self) -> bool:
@@ -762,10 +765,11 @@ class AgentRun(Protocol):
         """Submit a user message; what the agent does comes through the sink."""
         ...
 
-    async def steer(self, user_input: UserInput, message_id: str) -> None:
+    async def steer(self, user_input: UserInput, message_id: str, *, now: bool = False) -> None:
         """Write a message into the running turn. The engine reads it at its next step
         (after a tool call) or, when the turn ends first, starts its next turn with it;
-        either way the sink hears `message_taken(message_id, ...)` (B59).
+        either way the sink hears `message_taken(message_id, ...)` (B59). With `now`, on
+        an engine that `sends_now`, it reads it at once instead (B160).
         """
         ...
 

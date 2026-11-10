@@ -10,6 +10,7 @@ from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import uuid4
 
 from claude_agent_sdk import (
     AgentDefinition,
@@ -366,6 +367,9 @@ class ClaudeRun:
     """
 
     steers = True
+    # Claude Code's priority "now" moves the running tools and subagents to the
+    # background and gives the agent the message at once; nothing is stopped (B160).
+    sends_now = True
     names_chats = True
 
     def __init__(
@@ -385,6 +389,10 @@ class ClaudeRun:
         self._tasks = BackgroundTasks()
         self._thinking = ThinkingTimer()
         self._output = TurnOutput()
+        # The uuid each message written into a turn went with, by Nest message id: a
+        # message taken back goes again under a new one, as Claude Code drops a uuid it
+        # had (B160).
+        self._uuids: dict[str, str] = {}
         self._reader = asyncio.create_task(self._read())
 
     async def engine_title(self, session_id: str) -> str | None:
@@ -398,14 +406,18 @@ class ClaudeRun:
         self._output.awaiting_replay = True
         await self._client.query(_single(_user_message(user_input)))
 
-    async def steer(self, user_input: UserInput, message_id: str) -> None:
-        uuid = engine_uuid(message_id)
+    async def steer(self, user_input: UserInput, message_id: str, *, now: bool = False) -> None:
+        uuid = engine_uuid(message_id) if message_id not in self._uuids else str(uuid4())
+        self._uuids[message_id] = uuid
         # Its echo carries the uuid; known before the write, as the echo may come at once.
         self._output.steered[uuid] = message_id
-        await self._client.query(_single({**_user_message(user_input), "uuid": uuid}))
+        message = {**_user_message(user_input), "uuid": uuid}
+        if now:
+            message["priority"] = "now"
+        await self._client.query(_single(message))
 
     async def withdraw(self, message_id: str) -> bool:
-        uuid = engine_uuid(message_id)
+        uuid = self._uuids.get(message_id, engine_uuid(message_id))
         if not await withdraw(self._client, uuid):
             return False
         self._output.steered.pop(uuid, None)

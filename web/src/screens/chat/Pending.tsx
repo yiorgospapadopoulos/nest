@@ -26,8 +26,8 @@ function when(message: QueuedMessage, working: boolean): string {
 
 /**
  * Messages sent while Claude works that it has not read yet (B59), above the composer as in
- * Claude's apps: each can be sent now (stopping the turn), edited or removed. Once Claude
- * reads one, it shows in the transcript where it read it.
+ * Claude's apps: each can be sent now (stopping the turn, unless subagents work: B160),
+ * edited or removed. Once Claude reads one, it shows in the transcript where it read it.
  */
 export function Pending({ session, draft }: Props) {
   const { state, actions } = useStore();

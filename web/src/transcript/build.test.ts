@@ -482,6 +482,31 @@ describe("tool groups", () => {
     });
   });
 
+  it("shows a tool a Stop cut off as stopped, not failed (B160)", () => {
+    const stopped = {
+      ...done("a"),
+      is_error: true,
+      content:
+        "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+    };
+    const items = buildTranscript([blocks(1, call("a"), stopped)], {}, null);
+
+    const tool = items.flatMap((i) => (i.kind === "tools" ? i.items : [])).at(0);
+    expect(tool).toMatchObject({ failed: false, result: "Stopped" });
+  });
+
+  it("shows a tool Send now moved to the background as moved, not failed (B160)", () => {
+    const moved = {
+      ...done("a"),
+      is_error: true,
+      content: "<tool_use_error>Error calling tool (Bash): interrupt</tool_use_error>",
+    };
+    const items = buildTranscript([blocks(1, call("a"), moved)], {}, null);
+
+    const tool = items.flatMap((i) => (i.kind === "tools" ? i.items : [])).at(0);
+    expect(tool).toMatchObject({ failed: false, result: "Moved to background" });
+  });
+
   it("folds a single call to a group of one, a failed one too", () => {
     const failed = { ...done("b"), is_error: true };
     const items = buildTranscript(

@@ -89,8 +89,9 @@ async def cancel_queued(session_id: str, message_id: str, ctx: Context) -> Respo
 
 @router.post("/{session_id}/queue/{message_id}/send-now", status_code=status.HTTP_202_ACCEPTED)
 async def send_now(session_id: str, message_id: str, ctx: Context) -> Response:
-    """Send a pending message now: the running turn is stopped and the message starts right
-    after it, first in line; on an idle chat it starts at once (B59).
+    """Send a pending message now, first in line: the running turn is stopped and the
+    message starts right after it, except while subagents work, when it goes into the
+    running turn instead so they go on (B160); on an idle chat it starts at once (B59).
     """
     await ctx.sessions.send_now(session_id, message_id)
     return Response(status_code=status.HTTP_202_ACCEPTED)
