@@ -542,7 +542,6 @@ const calls: Call[] = [
   ["github", (a) => a.github(), "GET", "/api/accounts/github", undefined],
   ["check github", (a) => a.checkGithub(), "POST", "/api/accounts/github/check", undefined],
   ["claude account", (a) => a.claudeAccount(), "GET", "/api/accounts/claude", undefined],
-  ["claude login", (a) => a.claudeLogin(), "POST", "/api/accounts/claude/login", undefined],
   ["claude logout", (a) => a.claudeLogout(), "POST", "/api/accounts/claude/logout", undefined],
   [
     "install claude code",

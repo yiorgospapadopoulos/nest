@@ -223,7 +223,7 @@ describe("the guide's steps", () => {
 });
 
 describe("the setup guide after the Linux checks (B136)", () => {
-  it("says a sign-in goes on in the browser, as the page can open behind Nest", async () => {
+  it("says where a sign-in goes on, as its window can open behind Nest", async () => {
     const api = firstRun([check("engine")]);
     const account = engineAccount({ signed_in: false, active: false });
     api.accounts.mockResolvedValue({ accounts: [account] });
@@ -233,7 +233,8 @@ describe("the setup guide after the Linux checks (B136)", () => {
 
     await user.click(defined((await screen.findAllByRole("button", { name: "Sign in" }))[0]));
 
-    expect(await screen.findByText("Finish signing in in your browser.")).toBeInTheDocument();
+    // Claude Code's own login runs in a terminal (B162).
+    expect(await screen.findByText("Finish signing in in the terminal.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Sign in again" }));
     expect(api.signInAccount).toHaveBeenCalledTimes(2);
   });

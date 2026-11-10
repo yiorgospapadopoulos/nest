@@ -133,6 +133,12 @@ public enum AccountText {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Where a sign-in that started goes on: Claude Code's own login runs in a terminal
+    /// (B162), Codex's page in the browser.
+    public static func finishSignIn(_ provider: String) -> String {
+        provider == "claude" ? "Finish in the terminal" : "Finish in the browser"
+    }
+
     /// The login in a word; "Not checked" while the engine could not be asked. Signed out
     /// is optional while local models run chats (B106).
     public static func state(_ account: EngineAccount, optional: Bool = false) -> String {

@@ -288,8 +288,8 @@ private struct AccountRow: View {
     }
 }
 
-/// The row's trailing side: signing in waits on the browser; otherwise the limits of a
-/// signed-in account, its login, Sign in when signed out, and the menu.
+/// The row's trailing side: signing in waits on the terminal or the browser; otherwise the
+/// limits of a signed-in account, its login, Sign in when signed out, and the menu.
 private struct AccountControls: View {
     let account: EngineAccount
     @Binding var renaming: Bool
@@ -300,7 +300,7 @@ private struct AccountControls: View {
         let store = shell.model.accounts
         if account.signingIn {
             Fireflies()
-            Text("Finish in the browser")
+            Text(AccountText.finishSignIn(account.provider))
                 .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
             Button("Cancel") {

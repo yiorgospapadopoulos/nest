@@ -55,12 +55,18 @@ export function accountDetail(account: EngineAccount): string | null {
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
+/** Where a sign-in that started goes on: Claude Code's own login runs in a terminal
+ * (B162), Codex's page in the browser. */
+export function finishSignIn(provider: string): string {
+  return provider === "claude" ? "Finish in the terminal" : "Finish in the browser";
+}
+
 /** The login in a word; signing in is optional while local models run chats (B106). */
 export function accountState(
   account: EngineAccount,
   optional: boolean,
 ): { tone: StatusTone; label: string } {
-  if (account.signing_in) return { tone: "run", label: "Finish in the browser" };
+  if (account.signing_in) return { tone: "run", label: finishSignIn(account.provider) };
   if (account.signed_in === true) return { tone: "ok", label: "Signed in" };
   if (account.signed_in === false) {
     return { tone: "wait", label: optional ? "Not signed in, optional" : "Signed out" };

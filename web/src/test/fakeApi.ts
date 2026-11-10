@@ -364,7 +364,6 @@ export function fakeApi(): FakeApi {
     github: vi.fn<Api["github"]>().mockResolvedValue(github()),
     checkGithub: vi.fn<Api["checkGithub"]>().mockResolvedValue(github()),
     claudeAccount: vi.fn<Api["claudeAccount"]>().mockResolvedValue(claudeAccount()),
-    claudeLogin: vi.fn<Api["claudeLogin"]>().mockResolvedValue(null),
     claudeLogout: vi
       .fn<Api["claudeLogout"]>()
       .mockResolvedValue(claudeAccount({ signed_in: false, email: null, plan: null })),
