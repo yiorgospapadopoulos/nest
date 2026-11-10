@@ -145,6 +145,10 @@ async def test_a_script_cannot_open_a_pull_request_through_gh(tmp_path: Path) ->
         (("pr", "merge", "12", "--squash"), False),
         (("api", "-X", "POST", "repos/o/r/pulls"), False),
         (("auth", "token"), False),
+        (("auth", "status"), True),
+        (("auth", "status", "--show-token"), False),
+        (("auth", "status", "-t"), False),
+        (("auth", "git-credential", "get"), False),
         # An alias or an extension: what it runs cannot be read.
         (("prc",), False),
         (("extension", "exec", "pusher"), False),

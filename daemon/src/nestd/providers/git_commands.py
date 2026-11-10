@@ -19,12 +19,18 @@ escapes, `;`, `&`, `|`, `(`, `)`, `<`, `>`, newlines and backticks separate comm
 system ignores case) is checked from there, so prefixes and wrappers (`FOO=1`, `env`,
 `command`, `xargs`, `timeout`, `sudo`, `{`, `then`) need no special case. For git, global
 options are stepped over with their values (`-C "a dir"`, `-c k=v`, `--git-dir x`) and
-`-c alias.x=...` aliases are expanded. For gh, flags may stand before or after the group.
+`-c alias.x=...` aliases are expanded, as is what `git config alias.x ...` defines. A line
+that runs git and sets git config through the environment (`GIT_CONFIG_COUNT`,
+`GIT_CONFIG_KEY_<n>`, `GIT_CONFIG_VALUE_<n>`, `GIT_CONFIG_PARAMETERS`, as a prefix, through
+`env` or `export`) is a write: it can define an alias or undo the push block's own settings,
+which use the same variables. For gh, flags may stand before or after the group.
 
 `gh api` passes only when it is clearly a read: no method but GET, and no field or input
 without `-X GET`. `gh api graphql` with fields passes only with no `mutation`, no `@`, no
-`--input` and nothing the shell expands. `gh auth token`, `gh repo sync` and `gh alias`
-writes are refused too. Other gh writes, such as `gh release create`, are not looked at.
+`--input` and nothing the shell expands. `gh repo sync` and `gh alias` writes are refused
+too, and so is what hands out the token or a stored password: every `gh auth` action but
+`status` without `-t` or `--show-token`, `git credential` and git's credential helpers.
+Other gh writes, such as `gh release create`, are not looked at.
 
 A word that holds a command line of its own (`sh -c "..."`, `eval "..."`,
 `python -c "..."`, a heredoc) is checked too, and there a mere mention of git and a write
@@ -52,11 +58,13 @@ from nestd.providers.codex_items import shown_command
 # Subcommands that send worktrees to a remote.
 GIT_WRITES = frozenset({"push", "send-pack", "http-push"})
 _DASHED_WRITES = frozenset(f"git-{name}" for name in GIT_WRITES)
+# `git credential fill` and the helpers (`git credential-osxkeychain get`) print a stored
+# password (B159 R03).
+_CREDENTIAL = "credential"
 # `gh pr new` is gh's own alias of `gh pr create`.
 _GH_WRITES = {
     "pr": frozenset({"create", "merge", "new"}),
     "repo": frozenset({"sync"}),
-    "auth": frozenset({"token"}),
     "alias": frozenset({"set", "import"}),
 }
 # git's global options that take the next word as their value.
@@ -72,6 +80,9 @@ _GIT_FLAGS = frozenset(
     }
 )
 _ALIAS_PREFIX = "alias."
+# git config set through the environment (B159 recheck 2 F).
+_CONFIG_ENV = re.compile(r"GIT_CONFIG_(?:COUNT|PARAMETERS|KEY_\w*|VALUE_\w*)=")
+_RUNS_GIT = re.compile(r"\bgit\b", re.IGNORECASE)
 
 _SEPARATOR = re.compile(r"^[;&|()<>]+$")
 # A word with any of these may hold a command line of its own.
@@ -83,6 +94,9 @@ _GH_MENTION = re.compile(r"\bgh\b.*?\bpr\b.*?\b(?:create|merge|new)\b", re.I | r
 # Both words, in any order: a variable can hold either.
 _WORKTREE_REMOVE = re.compile(r"(?=.*\bworktree\b).*\bremove\b", re.I | re.S)
 _GH_DYNAMIC = re.compile(r"\bpr\b.*?\b(?:create|merge|new)\b", re.I | re.S)
+
+# `gh auth status -t` in any cluster of short flags.
+_SHOW_TOKEN_SHORT = re.compile(r"-[a-zA-Z]*t[a-zA-Z]*")
 
 _GH_API_METHODS = frozenset({"-X", "--method"})
 _GH_API_SENDS = frozenset({"-f", "-F", "--field", "--raw-field", "--input"})
@@ -188,9 +202,11 @@ def _words(text: str) -> list[str]:
 
 def _words_write(words: Sequence[str], text: str, watch: _Watch) -> bool:
     """`text` is the line; only shorter words are read again, so reading ends."""
+    if watch.pushes and any(_CONFIG_ENV.match(word) for word in words) and _RUNS_GIT.search(text):
+        return True
     for index, word in enumerate(words):
         name = basename(word).lower()
-        if watch.pushes and name in _DASHED_WRITES:
+        if watch.pushes and (name in _DASHED_WRITES or name.startswith(f"git-{_CREDENTIAL}")):
             return True
         if name == "git" and _git_writes(words[index + 1 :], {}, watch):
             return True
@@ -244,18 +260,25 @@ def _git_writes(args: Sequence[str], aliases: dict[str, str | None], watch: _Wat
 def _subcommand_writes(subcommand: str, tail: Sequence[str], watch: _Watch) -> bool:
     lowered = [word.lower() for word in tail]
     if watch.pushes and (
-        subcommand in GIT_WRITES or (subcommand == "subtree" and "push" in lowered)
+        subcommand in GIT_WRITES
+        or (subcommand == "subtree" and "push" in lowered)
+        or subcommand.startswith(_CREDENTIAL)
     ):
         return True
     if watch.worktrees and subcommand == "worktree" and _removes_worktree(lowered):
         return True
     # Defining an alias that pushes, to run it later.
-    if subcommand != "config" or not any(word.startswith(_ALIAS_PREFIX) for word in lowered):
+    if subcommand != "config":
+        return False
+    at = next((i for i, word in enumerate(lowered) if word.startswith(_ALIAS_PREFIX)), None)
+    if at is None:
         return False
     definition = " ".join(tail)
     return bool(
         (watch.pushes and _WRITE_WORD.search(definition))
         or (watch.worktrees and _WORKTREE_REMOVE.search(definition))
+        # Read as the alias would run, which also finds `credential` (B159 recheck 1).
+        or _alias_writes(" ".join(tail[at + 1 :]), [], {}, watch)
     )
 
 
@@ -307,6 +330,8 @@ def _gh_writes(args: Sequence[str], text: str) -> bool:
             return True
         if not group and word == "api":
             return _gh_api_writes(args[index + 1 :], text)
+        if not group and word == "auth":
+            return _gh_auth_reveals(args[index + 1 :])
         if group or word not in _GH_WRITES:
             return False
         group = word
@@ -333,6 +358,21 @@ def _gh_api_writes(args: Sequence[str], text: str) -> bool:
         )
     methods = {value.upper() for name, value in flags if name in _GH_API_METHODS}
     return methods != {"GET"} if methods else bool(names & _GH_API_SENDS)
+
+
+def _gh_auth_reveals(args: Sequence[str]) -> bool:
+    """Every action but `status` could hand out the token (`token`, `git-credential get`,
+    a login), and so does `status -t`; `gh auth` alone shows help."""
+    call = _until_separator(args)
+    action = next((word.lower() for word in call if not word.startswith("-")), None)
+    if action != "status":
+        return action is not None
+    return any(
+        _DYNAMIC.search(word)
+        or word.partition("=")[0] == "--show-token"
+        or _SHOW_TOKEN_SHORT.fullmatch(word)
+        for word in call
+    )
 
 
 def _gh_api_flags(call: Sequence[str]) -> tuple[list[tuple[str, str]], list[str]]:
