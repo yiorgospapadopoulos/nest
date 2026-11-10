@@ -1,6 +1,7 @@
 // Nest Computer: the helper app that reads and drives Mac apps for Nest's computer use
 // (B150). The daemon starts it with `open -g -a "Nest Computer.app" --args --socket <path>
 // --controller <pid>` so macOS gives it its own Accessibility and Screen Recording entries.
+// It serves only when that pid is the running process of Nest's daemon service.
 import AppKit
 import NestComputerCore
 import os
@@ -13,6 +14,12 @@ do {
 } catch {
     log.error("bad launch arguments: \(error.message, privacy: .public)")
     exit(64)
+}
+do {
+    try checkController(options.controller)
+} catch {
+    log.error("refused to start: \(error.message, privacy: .public)")
+    exit(77)
 }
 // One helper per socket: a second launch leaves the live one serving.
 if Server.isLive(path: options.socket) {
