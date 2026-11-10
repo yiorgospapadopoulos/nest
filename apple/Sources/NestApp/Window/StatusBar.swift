@@ -2,8 +2,8 @@ import AppKit
 import NestKit
 import SwiftUI
 
-/// the approved design's content colour at an opacity, the way its footer, composer and usage chip
-/// are drawn: #ebebeb in dark, #2e2e2e in light.
+/// The content colour at an opacity, as the footer, composer and usage chip are drawn:
+/// #ebebeb in dark, #2e2e2e in light.
 enum Ink {
     static func content(_ opacity: Double) -> Color {
         Color(
@@ -15,16 +15,15 @@ enum Ink {
     }
 }
 
-/// The bar along the bottom of the window (the approved design's footer): 28 points, no fill of its
+/// The bar along the bottom of the window: 28 points, no fill of its
 /// own, a 1 point line on top. On the left, Settings (as Cmd-comma), led where a project
 /// is open by the sidebar's squeeze button. There the Workspace / Board / Artifacts switch
 /// sits in the middle (B79; the Pixies tab has Workspace / Artifacts), and on the right the
 /// Terminal button opens a terminal where the focused chat works, else the project's
 /// terminal pane, or a new one in the project folder, followed by the details panel's
 /// squeeze button, under the panel (B73). The squeeze buttons' triangles point where
-/// their bar goes on a click (B83). the approved design shows a running command's chip there
-/// instead; the terminal panes do not report their foreground process, so it is left
-/// out. A maximized pane is restored from its header.
+/// their bar goes on a click (B83). The terminal panes do not report their foreground
+/// process, so no running command's chip shows there. A maximized pane is restored from its header.
 struct StatusBar: View {
     static let height = 28.0
 
