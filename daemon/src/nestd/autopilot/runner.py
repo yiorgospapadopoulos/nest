@@ -15,7 +15,7 @@ from typing import Protocol
 
 from pydantic import JsonValue
 
-from nestd.approvals.models import BLOCKING, Approval, ApprovalKind
+from nestd.approvals.models import BLOCKING, USER_ONLY, Approval, ApprovalKind
 from nestd.approvals.queue import ApprovalQueue
 from nestd.autopilot.answers import (
     answers,
@@ -269,10 +269,16 @@ class AutopilotRunner:
         return PlanDecision(approved=True)
 
     async def answer_pending(self, session_id: str) -> None:
-        """Answer what already waited when the run began, or came in as it began."""
+        """Answer what already waited when the run began, or came in as it began. Cards
+        only the user answers stay for the user (B159 R05).
+        """
         for kind in BLOCKING:
-            while (approval := await self._approvals.pending(session_id, kind)) is not None:
-                await self._answer(session_id, approval)
+            while answerable := [
+                approval
+                for approval in await self._approvals.pending_all(session_id, kind)
+                if approval.payload.get(USER_ONLY) is not True
+            ]:
+                await self._answer(session_id, answerable[-1])
 
     async def _answer(self, session_id: str, approval: Approval) -> None:
         await self._approvals.resolve(approval.id, await self._resolution(session_id, approval))

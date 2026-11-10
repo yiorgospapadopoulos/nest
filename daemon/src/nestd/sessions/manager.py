@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pydantic import JsonValue, TypeAdapter
 
-from nestd.approvals.models import BLOCKING, ApprovalKind
+from nestd.approvals.models import BLOCKING, USER_ONLY, ApprovalKind
 from nestd.approvals.queue import ApprovalQueue
 from nestd.attachments.store import Attachment, AttachmentStore
 from nestd.autopilot.keep_awake import KeepAwake
@@ -118,6 +118,10 @@ LIMIT_TICK = timedelta(seconds=5)
 CONTINUE_TEXT = "Continue where you left off."
 LIMIT_RESUME = Sender(origin="limit_resume")
 AUTOPILOT = Sender(origin="autopilot")
+AUTOPILOT_BACKGROUND = (
+    "Autopilot cannot start while the agent's background tasks run. Stop the background "
+    "tasks first, then turn Autopilot on."
+)
 # A called pixie's events that are shown live and never stored (B112).
 _EPHEMERAL = frozenset(
     {types.SESSION_DELTA, types.SESSION_THINKING_DELTA, types.SESSION_SUBAGENT_DELTA}
@@ -989,6 +993,10 @@ class SessionManager:
         require_open(session)
         if session.archived_at is not None:
             raise InvalidInputError("Unarchive the chat to put it on Autopilot.")
+        if self.background_running(session_id):
+            # The run they keep has no Autopilot guard, and a new one would stop them
+            # (B159 R17).
+            raise SessionBusyError(AUTOPILOT_BACKGROUND)
         await self._require_not_open_elsewhere(session)
         mode = session.permission_mode
         await self.update(session_id, UpdateSession(permission_mode=BYPASS))
@@ -1245,10 +1253,12 @@ class SessionManager:
     async def recover(self) -> None:
         """On startup, turns cut off by the previous process can only be resumed, and
         messages written into them wait for a turn again (B59). Worktree changes they
-        recorded are applied now, before any message can start (B119).
+        recorded are applied now, before any message can start (B119), and the files they
+        changed are recorded for their checkpoints (B159 R10).
         """
         await self._queue.unsend_all()
         await self._store.end_all_naming()
+        await FileCheckpoints(self._store).turns_cut_off()
         for session_id in await self._store.interrupt_in_flight():
             await self._bus.publish(
                 types.SESSION_STATE, {"state": SessionState.INTERRUPTED, "error": None}, session_id
@@ -1531,7 +1541,7 @@ class SessionManager:
         prompts = SessionPrompts(
             run_session_id, self._approvals, self._store, self._on_waiting, keep_mode, self._calls
         )
-        return await prompts.choose(payload, notice)
+        return await prompts.choose({**payload, USER_ONLY: True}, notice)
 
     def _handler_for(self, live: LiveSession) -> ApprovalHandler:
         async def on_mode(_session_id: str, mode: PermissionMode) -> None:

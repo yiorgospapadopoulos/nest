@@ -107,6 +107,16 @@ async def test_habit_crud(api: Api) -> None:
     assert after.json() == []
 
 
+async def test_the_user_can_put_a_habit_on_autopilot(api: Api) -> None:
+    pid = await pixie(api)
+    created = await api.http.post(f"/api/pixies/{pid}/habits", json={**HABIT, "autopilot": True})
+    hid = created.json()["id"]
+    patched = await api.http.patch(f"/api/pixies/{pid}/habits/{hid}", json={"autopilot": False})
+
+    assert created.json()["autopilot"] is True
+    assert patched.json()["autopilot"] is False
+
+
 @pytest.mark.loops
 async def test_run_now_and_the_history(api: Api) -> None:
     pid = await pixie(api)

@@ -12,7 +12,7 @@ from typing import get_args
 
 from pydantic import JsonValue, ValidationError
 
-from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
+from nestd.approvals.models import USER_ONLY, Approval, ApprovalKind, ApprovalStatus
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.resolutions import ResolveApproval, resolution_for
 from nestd.clock import Clock
@@ -480,6 +480,9 @@ class _Tools:
         approval = await self._own_approval(pixie, args, ApprovalKind.PERMISSION)
         if "computer" in approval.payload:
             msg = "Only the user answers computer use cards (B150)."
+            raise ToolRefusedError(msg)
+        if approval.payload.get(USER_ONLY) is True:
+            msg = "Only the user answers this card."
             raise ToolRefusedError(msg)
         await self._h.approvals.resolve(
             approval.id,

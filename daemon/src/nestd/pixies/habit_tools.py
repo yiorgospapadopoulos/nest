@@ -227,7 +227,7 @@ class _Tools:
 
     async def habit_create(self, args: Args) -> str:
         try:
-            request = CreateHabit.model_validate(args)
+            request = CreateHabit.model_validate(_advertised(args))
         except ValidationError as error:
             raise ToolRefusedError(problems(error)) from error
         habit = await self._o.habits.create(self._pixie_id, request)
@@ -237,7 +237,9 @@ class _Tools:
     async def habit_update(self, args: Args) -> str:
         habit_id = _text(args, "id")
         try:
-            request = UpdateHabit.model_validate({k: v for k, v in args.items() if k != "id"})
+            request = UpdateHabit.model_validate(
+                _advertised({k: v for k, v in args.items() if k != "id"})
+            )
         except ValidationError as error:
             raise ToolRefusedError(problems(error)) from error
         habit = await self._o.habits.update(self._pixie_id, habit_id, request)
@@ -271,6 +273,21 @@ def _line(habit: Habit) -> str:
     last = habit.last_run
     ran = "never run" if last is None else f"last run {last.outcome}"
     return f"{habit.id} | {habit.name} | {schedule} | triggers: {triggers} | {state} | {ran}"
+
+
+# The habit editor's fields the tools do not offer: Autopilot runs in Bypass (B159 R06).
+USER_ONLY_FIELDS = frozenset(
+    (CreateHabit.model_fields.keys() | UpdateHabit.model_fields.keys()) - HABIT_FIELDS.keys()
+)
+
+
+def _advertised(args: Args) -> Args:
+    """Refuses the fields only the user sets; unknown ones the models refuse."""
+    extra = sorted(USER_ONLY_FIELDS & args.keys())
+    if extra:
+        msg = f"{', '.join(extra)}: only the user sets this, in the habit editor."
+        raise ToolRefusedError(msg)
+    return args
 
 
 def _guarded(handler: Handler) -> Handler:

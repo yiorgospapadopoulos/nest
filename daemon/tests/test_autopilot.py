@@ -1,12 +1,15 @@
 """Autopilot: a chat works on without the user, and stops when it should."""
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import JsonValue
 
+from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
 from nestd.autopilot.answers import (
     DETAIL_CHARS,
     FIRST_OPTION_REASON,
@@ -48,6 +51,7 @@ from tests.fake_provider import (
     until_interrupted,
 )
 from tests.fakes import FakeClock
+from tests.git_support import commit_file
 from tests.session_support import Env
 
 ON = SetAutopilot(on=True)
@@ -612,3 +616,62 @@ async def test_a_run_can_make_a_worktree_but_never_remove_one(env: Env) -> None:
     assert moved.branch == "from-autopilot"
     assert moved.worktree_path is not None
     assert moved.worktree_path.is_dir()
+
+
+async def pending_card(env: Env, session_id: str) -> Approval:
+    async def there() -> bool:
+        return await env.approvals.pending(session_id, ApprovalKind.PERMISSION) is not None
+
+    await until(there)
+    card = await env.approvals.pending(session_id, ApprovalKind.PERMISSION)
+    assert card is not None
+    return card
+
+
+async def test_a_card_only_the_user_answers_waits_for_the_user_on_autopilot(env: Env) -> None:
+    # B159 R05: switching Autopilot on, and its ticks, used to allow a waiting
+    # "Let this chat use X?" card.
+    go_on = asyncio.Event()
+    env.provider.script(wait_then_reply(go_on, "done"))
+    created = await env.create(prompt="first", mode="in_place")
+    chat = await env.reach(created.id, SessionState.RUNNING)
+    payload: dict[str, JsonValue] = {"tool": "computer_use", "input": {"target": "mac:x"}}
+    choosing = asyncio.ensure_future(env.manager.choose(chat.id, payload, "Let this chat use X?"))
+    card = await pending_card(env, chat.id)
+
+    await env.manager.set_autopilot(chat.id, ON)
+    await env.manager.autopilot.tick()
+
+    assert (await env.approvals.get(card.id)).status is ApprovalStatus.PENDING
+    await env.approvals.resolve(card.id, {"behavior": "deny", "message": None, "always": False})
+    assert await choosing == "deny"
+    go_on.set()
+
+
+async def test_autopilot_never_allows_removing_a_worktree_that_holds_work(env: Env) -> None:
+    # B159 R05: the waiting removal card was allowed and the worktree with work deleted.
+    env.use_worktrees()
+    env.provider.script(reply("ok"))
+    created = await env.create("first", mode="worktree")
+    session = await env.reach(created.id, SessionState.IDLE)
+    path = session.worktree_path
+    assert path is not None
+    commit_file(path, "work.txt", "unmerged work")
+
+    async def turn(run: FakeRun) -> None:
+        tool = next(t for t in run.spec.nest_tools if t.name == "worktree")
+        with contextlib.suppress(ToolRefusedError):
+            await tool.handler({"action": "remove"})
+        await reply("ok")(run)
+
+    env.provider.script(turn)
+    await env.manager.send(session.id, "clean up", [])
+    card = await pending_card(env, session.id)
+
+    await env.manager.set_autopilot(session.id, ON)
+    await env.manager.autopilot.tick()
+
+    assert (await env.approvals.get(card.id)).status is ApprovalStatus.PENDING
+    await env.approvals.resolve(card.id, {"behavior": "deny", "message": None, "always": False})
+    await env.reach(session.id, SessionState.IDLE)
+    assert path.is_dir()

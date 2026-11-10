@@ -50,6 +50,8 @@ class Permissions(Protocol):
     async def ask(self, name: PermissionName) -> bool: ...
 
 
+# As deep as a chain of pixie calls goes; a longer one counts as on Autopilot.
+_MAX_CALL_DEPTH = 8
 # How long an app takes to show what an action did before the screenshot after it.
 SETTLE_SECONDS = 0.4
 PIXIES_OFF = "Pixies may not use the computer unless the user allows it in Settings."
@@ -139,9 +141,23 @@ class ComputerService:
             raise RefusedError(MASTER_OFF)
         if pixie_run(session) and not settings.pixies:
             raise RefusedError(PIXIES_OFF)
-        if session.autopilot is not None:
+        if await self._on_autopilot(session):
             raise RefusedError(AUTOPILOT)
         return session
+
+    async def _on_autopilot(self, session: Session) -> bool:
+        """Whether the chat, or a chat that called it, is on Autopilot: a called pixie's
+        cards go to its caller (B159 R05)."""
+        for _ in range(_MAX_CALL_DEPTH):
+            if session.autopilot is not None:
+                return True
+            if session.called_by is None:
+                return False
+            try:
+                session = await self._store.get(session.called_by)
+            except SessionNotFoundError:
+                return False
+        return True
 
     # What there is.
 
@@ -316,6 +332,8 @@ class ComputerService:
             choice = await self._answer(session.id, payload, question)
             if choice == "deny":
                 raise RefusedError(f"The user did not let this chat use {name}.")
+            # Autopilot may have come on while the card waited.
+            await self.check(session.id)
             targets = [*current.computer_targets, key]
             await save_changes(self._store, self._bus, session.id, {"computer_targets": targets})
 
