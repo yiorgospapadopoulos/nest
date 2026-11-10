@@ -97,7 +97,7 @@ public enum UsageMeter {
             UsageMeterLine(
                 id: account.id, provider: account.provider, name: name(account),
                 title: oneEngine ? account.title : nil,
-                chip: UsageChip.of(account.usageLimits, now: now))
+                chip: UsageChip.of(account.chipLimits, now: now))
         }
     }
 

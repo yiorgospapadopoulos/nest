@@ -47,6 +47,9 @@ private struct EngineAccounts: View {
             .overlay(alignment: .top) { Separator() }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("\(engine) account in use")
+            if provider == ProviderInfo.claude {
+                LimitResetRows(accounts: store.accounts(of: provider))
+            }
             // The sign-in page would open on this Mac, not where the remote engine runs.
             if shell.isRemote {
                 RemoteSignIn(provider: provider)
@@ -68,6 +71,54 @@ private struct EngineAccounts: View {
             .padding(.top, 10)
         }
         .task { try? await store.load() }
+    }
+}
+
+/// Claude Code's limit reset (B161), for each signed-in Claude account: Reset in Terminal
+/// asks first, then has the daemon open Claude Code there, which uses a reset if there is one.
+private struct LimitResetRows: View {
+    let accounts: [EngineAccount]
+    @Environment(Shell.self) private var shell
+    @State private var using: EngineAccount?
+
+    var body: some View {
+        let offered = accounts.filter(\.offersLimitReset)
+        if !offered.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(offered) { account in
+                    SettingsListRow(
+                        title: AccountText.limitResetRow,
+                        detail: accounts.count > 1 ? account.title : nil
+                    ) {
+                        EmptyView()
+                    } trailing: {
+                        Button(AccountText.limitResetAction) { using = account }
+                            .buttonStyle(.nest(.soft))
+                            .accessibilityLabel(
+                                "\(AccountText.limitResetAction) for \(account.title)")
+                    }
+                }
+            }
+            .confirmationDialog(
+                using.map(AccountText.limitResetTitle) ?? "",
+                isPresented: Binding(get: { using != nil }, set: { if !$0 { using = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button(AccountText.limitResetAction) { open() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(AccountText.limitResetMessage)
+            }
+        }
+    }
+
+    private func open() {
+        guard let using else { return }
+        let store = shell.model.accounts
+        shell.settingsChange("Could not open the limit reset") {
+            try await store.openLimitReset(using.id)
+            shell.show(AccountText.limitResetOpened, kind: .done)
+        }
     }
 }
 
