@@ -594,10 +594,10 @@ changed = 2026-11-09
 id = "several-accounts"
 group = "engines"
 name = "Several accounts"
-text = "Add more subscriptions for an engine and choose which one is used."
+text = "Add more subscriptions for an engine and choose which one is used. Each signs in with its engine's own login, in a terminal or the browser, so Nest never handles it."
 where = "Settings › Accounts"
 added = 2026-10-21
-changed = 2026-11-02
+changed = 2026-11-10
 block = "B98"
 
 [[features]]
