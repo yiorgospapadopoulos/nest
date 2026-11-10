@@ -56,7 +56,7 @@ import Testing
         #expect(chosen.releaseURL == "http://127.0.0.1:41055")
         #expect(
             ReleasedInstall.installLine(releaseURL: ReleasedInstall.defaultReleaseURL + "/")
-                == "curl -fsSL \(ReleasedInstall.defaultReleaseURL)/install.sh | sh")
+                == "curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh")
     }
 
     /// What Uninstall runs: only a `nest` inside this install's own `daemon` folder.

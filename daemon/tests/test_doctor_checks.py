@@ -175,6 +175,23 @@ def test_a_packaged_install_gets_the_one_line_repair(tmp_path: Path) -> None:
     assert check.fix.value == f"curl -fsSL {address}/install.sh | NEST_RELEASE_URL={address} sh"
 
 
+def test_an_install_from_github_gets_the_short_line(tmp_path: Path) -> None:
+    """B162: the line names the latest install.sh on the project's Pages site, which then
+    downloads the release from GitHub Releases."""
+    machine = replace(
+        _machine(tmp_path, Commands()),
+        service=FakeService(ServiceStatus(installed=False, loaded=False, detail="")),
+        env={"PATH": ""},
+    )
+
+    check = check_service(machine)
+
+    assert check.fix is not None
+    assert (
+        check.fix.value == "curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh"
+    )
+
+
 def test_an_install_keeps_following_the_address_it_came_from(tmp_path: Path) -> None:
     """Regression: the daemon-down line always named GitHub, so a test install's 404'd."""
     machine = replace(
