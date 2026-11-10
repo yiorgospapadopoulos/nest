@@ -205,6 +205,19 @@ describe("inbox", () => {
     expect(needsCount(state(chats("idle"), items), "todo-ui")).toBe(4);
   });
 
+  it("leaves out an archived chat's items until it is unarchived", () => {
+    const items = [approval({ id: "ready", session_id: "s1", kind: "review" })];
+    const chat = (archived_at: string | null) => [
+      session({ id: "s1", repo: "todo-ui", state: "idle", archived_at }),
+    ];
+
+    const archived = state(chat("2026-11-05T10:00:00Z"), items);
+    expect(needsCount(archived, "todo-ui")).toBe(0);
+    expect(needsCount(archived)).toBe(0);
+    expect(inboxGroups(archived)).toEqual([]);
+    expect(needsCount(state(chat(null), items), "todo-ui")).toBe(1);
+  });
+
   it("groups pending items by project in project order, unknown projects last", () => {
     const items = [
       approval({ id: "a", repo: "todo-ui", created_at: "2026-10-06T10:00:02Z" }),

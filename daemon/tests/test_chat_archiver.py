@@ -16,10 +16,10 @@ from nestd.storage.archiver import ChatArchiver
 from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.claude_support import CHAT_A, CHAT_B, CHAT_C, ClaudeHome, simple_chat, user
-from tests.fake_provider import reply
+from tests.fake_provider import edit, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
-from tests.test_api_sessions import create, reach
+from tests.test_api_sessions import create, notified, reach
 
 
 @pytest.fixture
@@ -62,6 +62,9 @@ async def test_only_idle_unpinned_chats_past_the_limit_are_archived(
         "UPDATE sessions SET limit_pause = ? WHERE id = ?",
         (json.dumps({**pause, "since": clock.now().isoformat()}), paused),
     )
+    api.provider.script(edit({"work.txt": "work\n"}, reply("Done.")))
+    reviewing = str((await create(api, prompt="Do it", mode="in_place"))["id"])
+    await notified(api, reviewing, "review_ready")
     clock.advance(timedelta(days=7, seconds=1))
     recent = await idle_chat(api, "Recent")
     keep_after(api, 7)
@@ -69,7 +72,7 @@ async def test_only_idle_unpinned_chats_past_the_limit_are_archived(
     assert await api.ctx.archiver.run_once() == [old]
 
     assert await archived(api, old)
-    for session_id in (pinned, running, paused, recent):
+    for session_id in (pinned, running, paused, reviewing, recent):
         assert not await archived(api, session_id)
     events = await api.ctx.bus.session_events(old)
     updated = [e for e in events if e.type == types.SESSION_UPDATED][-1]
@@ -151,6 +154,7 @@ async def test_a_failed_check_is_logged_and_the_loop_goes_on(
 
     archiver = ChatArchiver(
         sessions=api.ctx.sessions,
+        approvals=api.ctx.approvals,
         claude_chats=api.ctx.claude_chats,
         clock=clock,
         settings=settings,

@@ -154,6 +154,11 @@ export function pixieWorking(state: State, pixie: Pixie): boolean {
   );
 }
 
+/** The unseen artifacts the open project made; none without a project (B160). */
+export function unseenArtifacts(state: State, repo: string | null): number {
+  return repo === null ? 0 : (state.unseenArtifacts[repo] ?? 0);
+}
+
 export function pendingFor(state: State, sessionId: string): Approval[] {
   return Object.values(state.approvals)
     .filter((a) => a.session_id === sessionId)
@@ -376,14 +381,22 @@ export function nudgeText(details: string): string {
 
 /**
  * The pending approvals that need the user now. A review or merge waits while its chat is
- * at work: it cannot be acted on yet, and the turn may replace it.
+ * at work: it cannot be acted on yet, and the turn may replace it. Archived chats' are left
+ * out, as their failed checks and stuck flags are.
  */
 function waitingApprovals(state: State): Approval[] {
   return Object.values(state.approvals).filter((a) => {
-    if (!isFinishedWork(a)) return true;
     const chat = state.sessions[a.session_id];
+    if (isArchivedChat(state, a.session_id)) return false;
+    if (!isFinishedWork(a)) return true;
     return chat === undefined || !isAtWork(chat);
   });
+}
+
+/** An archived chat waits on nobody; unarchiving it brings what it holds back (B160). */
+export function isArchivedChat(state: State, sessionId: string): boolean {
+  const chat = state.sessions[sessionId];
+  return chat !== undefined && chat.archived_at !== null;
 }
 
 const isFinishedWork = (a: Approval) => a.kind === "review" || a.kind === "merge";

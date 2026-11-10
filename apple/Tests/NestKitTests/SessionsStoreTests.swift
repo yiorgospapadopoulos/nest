@@ -71,6 +71,18 @@ import Testing
         #expect(store.attention(of: "todo-ui") == 1)
     }
 
+    /// An archived chat's review waits on nobody until it is unarchived (B160).
+    @Test func anArchivedChatsReviewIsLeftOutOfNeedsYou() async throws {
+        let reviewed = Fixture.approval("ap-review")
+        try await seed([Fixture.session(reviewed.sessionID, state: .idle, archived: true)])
+
+        approvals.apply(.approvalCreated(reviewed))
+
+        #expect(store.waitingApprovals(in: "todo-ui").isEmpty)
+        #expect(store.attention(of: "todo-ui") == 0)
+        #expect(store.attention() == 0)
+    }
+
     @Test func boardColumnsLeaveArchivedOut() async throws {
         try await seed([
             Fixture.session("run", state: .running), Fixture.session("wait", state: .waiting),
