@@ -2,7 +2,12 @@
 // each account's windows as "30% 2h 5m" (used, then the time to its reset), a bar for its
 // first window, and a tooltip naming each window and its reset.
 import type { AccountWindow, EngineAccount } from "../../../api/types.ts";
-import { engineTitle, meterEntries, type UsageMeterChoice } from "../../../store/usageMeter.ts";
+import {
+  engineTitle,
+  meterEntries,
+  ownWindows,
+  type UsageMeterChoice,
+} from "../../../store/usageMeter.ts";
 
 export interface ChipWindow {
   // "30% 2h 5m", or "30% 5h" when the reset time is not reported.
@@ -118,7 +123,7 @@ export function meterLines(
     provider: account.provider,
     name: `${engineTitle(account.provider)} · ${account.title}`,
     title: oneEngine ? account.title : null,
-    chip: usageChip(account.limits, now),
+    chip: usageChip(ownWindows(account.limits), now),
   }));
 }
 

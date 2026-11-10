@@ -13,6 +13,7 @@ const NOW = new Date().toISOString();
 export function accountWindow(overrides: Partial<AccountWindow> = {}): AccountWindow {
   return {
     label: "5 hour",
+    scope: null,
     minutes: 300,
     utilization: 0.3,
     resets_at: null,
@@ -42,6 +43,7 @@ export function engineAccount(overrides: Partial<EngineAccount> = {}): EngineAcc
     ],
     checked_at: NOW,
     banked_resets: null,
+    limit_reset: false,
     ...overrides,
   };
 }

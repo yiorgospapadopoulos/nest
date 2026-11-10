@@ -76,6 +76,18 @@ export function signOutNote(account: EngineAccount, optional: boolean): string {
     : "Codex on this Mac signs out too. Codex chats cannot run until you sign in again.";
 }
 
+// Claude Code's limit reset (B161), as the Mac's AccountText words it.
+export const LIMIT_RESET = {
+  row: "Limit reset",
+  action: "Reset in Terminal",
+  message:
+    "Claude Code opens in a terminal on your computer and runs /limit-reset, which uses this account's limit reset if it has one.",
+};
+
+export function limitResetTitle(account: EngineAccount): string {
+  return `Use the limit reset on ${account.title}?`;
+}
+
 /** "Banked resets", with the count available when there are any. */
 export function bankedTitle(available: number): string {
   return available > 0 ? `Banked resets ${String(available)}` : "Banked resets";

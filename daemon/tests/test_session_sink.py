@@ -508,7 +508,9 @@ async def test_no_error_reaches_the_agent_run(
         await sink.subagent_delta("Hi", "toolu_1")
         await sink.hook(HOOK)
         await sink.result(result)
-        await sink.usage(UsageInfo(five_hour=None, seven_day=None))
+        await sink.usage(
+            UsageInfo(five_hour=UsageWindow(utilization=0.1, resets_at=None), seven_day=None)
+        )
         await sink.subagent_usage("msg_1", TokenUsage())
         await sink.connectors([])
         await sink.commands(CommandCatalog())

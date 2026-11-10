@@ -151,6 +151,17 @@ public enum AccountText {
         return "\(line) · \(UsageText.resetTime(date, now: now, calendar: calendar))"
     }
 
+    /// Claude Code's limit reset (B161): the row, its button and what the button asks.
+    public static let limitResetRow = "Limit reset"
+    public static let limitResetAction = "Reset in Terminal"
+    public static let limitResetMessage =
+        "Claude Code opens in a terminal on your computer and runs /limit-reset, which uses this account's limit reset if it has one."
+    public static let limitResetOpened = "Claude Code opened in a terminal"
+
+    public static func limitResetTitle(_ account: EngineAccount) -> String {
+        "Use the limit reset on \(account.title)?"
+    }
+
     /// "Banked resets", with the count available when there are any.
     public static func bankedResetsTitle(_ available: Int) -> String {
         available > 0 ? "Banked resets \(available)" : "Banked resets"

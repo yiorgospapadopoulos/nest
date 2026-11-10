@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from nestd.providers.base import RunAccount, TokenUsage, UsageInfo, UsageWindow
+from nestd.providers.base import RunAccount, ScopedWindow, TokenUsage, UsageInfo, UsageWindow
+from nestd.providers.claude_messages import usage_info
+from nestd.usage.plan_read import plan_usage
 from nestd.usage.probe import (
     MAX_PROBES_PER_CLIENT,
     PROBE_PROMPT,
@@ -56,7 +58,9 @@ async def test_a_probe_reads_the_plan_usage_for_free(tmp_path: Path) -> None:
     second = await probe.run()
 
     assert first.limits == UsageInfo(
-        five_hour=UsageWindow(utilization=0.35, resets_at=None), seven_day=None, complete=True
+        five_hour=UsageWindow(utilization=0.35, resets_at=None),
+        seven_day=None,
+        complete=True,
     )
     assert first.tokens == TokenUsage()
     assert second.limits is not None
@@ -189,3 +193,81 @@ async def test_a_probe_on_another_account_opens_its_own_client(tmp_path: Path) -
     assert first.disconnects == 1
     assert second.options.env == {"CLAUDE_CONFIG_DIR": str(tmp_path / "work")}
     assert second.prompts == [PROBE_PROMPT, PROBE_PROMPT]
+
+
+FABLE_RESET = datetime(2026, 11, 16, 11, tzinfo=UTC)
+
+
+def _real_plan(**changes: object) -> dict[str, object]:
+    """B161: the shape of a real `get_usage` answer (Claude Code 2.1.317), trimmed."""
+    limits: dict[str, object] = {
+        "five_hour": None,
+        "seven_day": {"utilization": 25, "resets_at": "2026-11-16T10:59:59+00:00"},
+        "seven_day_oauth_apps": None,
+        "seven_day_opus": None,
+        "seven_day_sonnet": {"utilization": 3, "resets_at": None},
+        "seven_day_cowork": None,
+        "extra_usage": {"is_enabled": False, "utilization": None},
+        "limits": [{"kind": "weekly_all", "percent": 25}],
+        "model_scoped": [
+            {"display_name": "Fable", "utilization": 40, "resets_at": "2026-11-16T11:00:00+00:00"}
+        ],
+        **changes,
+    }
+    return {"subscription_type": "max", "rate_limits_available": True, "rate_limits": limits}
+
+
+def test_the_plan_read_keeps_every_per_model_window_by_name() -> None:
+    info = plan_usage(_real_plan())
+
+    assert info is not None
+    assert info.five_hour is None
+    assert info.seven_day is not None
+    assert info.seven_day.utilization == 0.25
+    assert info.scoped == [
+        ScopedWindow(label="Sonnet", utilization=0.03, resets_at=None),
+        ScopedWindow(label="Fable", utilization=0.4, resets_at=FABLE_RESET),
+    ]
+    assert info.complete
+
+
+def test_a_window_without_a_number_never_drops_the_whole_answer() -> None:
+    """B161 regression: a null `utilization` in one window failed the whole read, so the
+    probe sent a turn instead.
+    """
+    info = plan_usage(
+        _real_plan(
+            five_hour={"utilization": None, "resets_at": None},
+            model_scoped=[
+                {"display_name": "Fable", "utilization": None, "resets_at": None},
+                {"utilization": 5},
+                {"display_name": "Haiku", "utilization": 7, "resets_at": None},
+            ],
+        )
+    )
+
+    assert info is not None
+    assert info.five_hour is None
+    assert info.seven_day is not None
+    assert [w.label for w in info.scoped] == ["Sonnet", "Haiku"]
+    assert info.unread == {"five_hour", "scoped:Fable"}
+
+
+def test_a_turn_report_brings_the_fable_window() -> None:
+    """B161: a turn names only the per-model bucket Claude Code calls the Fable limit."""
+    raw = {
+        "unifiedWindows": {
+            "seven_day_overage_included": {"utilization": 0.4, "resetsAt": 1794826800}
+        }
+    }
+
+    info = usage_info(raw)
+
+    assert info is not None
+    assert (info.five_hour, info.seven_day) == (None, None)
+    assert info.scoped == [
+        ScopedWindow(
+            label="Fable", utilization=0.4, resets_at=datetime.fromtimestamp(1794826800, UTC)
+        )
+    ]
+    assert not info.complete

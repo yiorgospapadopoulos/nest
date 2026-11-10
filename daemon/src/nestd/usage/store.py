@@ -10,7 +10,14 @@ from datetime import UTC, date, datetime, timedelta, tzinfo
 from sqlite3 import Row
 
 from nestd.clock import Clock
-from nestd.providers.base import BankedResets, TokenUsage, UsageInfo, UsageWindow, window_label
+from nestd.providers.base import (
+    SCOPED_PREFIX,
+    BankedResets,
+    TokenUsage,
+    UsageInfo,
+    UsageWindow,
+    window_label,
+)
 from nestd.storage.db import Database, Transaction
 from nestd.usage.models import (
     CLAUDE,
@@ -30,6 +37,8 @@ from nestd.usage.period import COMPONENTS, bar_walls, period_of, summarize, tota
 _MARGIN = timedelta(days=1)
 # The lengths of Claude's windows, which it names instead (B98).
 _CLAUDE_MINUTES = {"five_hour": 300, "seven_day": 7 * 24 * 60}
+# Claude's per-model windows are all weekly (B161).
+_SCOPED_MINUTES = 7 * 24 * 60
 
 # The account in use for an engine (B98).
 type ActiveAccount = Callable[[str], str]
@@ -142,7 +151,8 @@ class UsageStore:
     async def update_limits(self, info: UsageInfo, account_id: str | None = None) -> None:
         """Keep the latest report of each window the engine included, as that account's
         (None: the engine's active one). Windows by length (another engine's, B91) come
-        whole and replace the account's, as does a complete report of Claude's (B142).
+        whole and replace the account's, as does a complete report of Claude's (B142),
+        apart from the windows it named without a number (B161).
         """
         account = account_id or self._active(info.provider)
         now = self._clock.now().isoformat()
@@ -151,7 +161,7 @@ class UsageStore:
         async with self._db.transaction() as tx:
             if sized:
                 await tx.execute("DELETE FROM usage_limits WHERE account_id = ?", (account,))
-            for gone in _gone_windows(info):
+            for gone in await _gone_windows(tx, account, info):
                 await tx.execute(
                     "DELETE FROM usage_limits WHERE account_id = ? AND name = ?", (account, gone)
                 )
@@ -254,8 +264,9 @@ class UsageStore:
         return EngineLimits(windows=[EngineLimitWindow.model_validate(dict(row)) for row in rows])
 
     async def windows(self, account_id: str) -> list[AccountWindow]:
-        """The account's windows, shortest first, each labelled (B98). One whose reset
-        time has passed reads as reset until the engine reports it again.
+        """The account's windows, shortest first, each labelled (B98), per-model ones as
+        "Fable weekly" (B161). One whose reset time has passed reads as reset until the
+        engine reports it again.
         """
         rows = await self._db.fetch_all(
             "SELECT name, utilization, resets_at, updated_at, minutes FROM usage_limits"
@@ -264,7 +275,11 @@ class UsageStore:
         )
         now = self._clock.now()
         windows = [_account_window(row, now) for row in rows]
-        return sorted(windows, key=lambda w: (w.minutes is None, w.minutes or 0))
+        # The per-model windows after the account's own of the same length (B161).
+        return sorted(
+            windows,
+            key=lambda w: (w.minutes is None, w.minutes or 0, w.scope is not None, w.label),
+        )
 
     async def forget(self, account_id: str) -> None:
         """Drop the windows of an account that was removed."""
@@ -291,25 +306,37 @@ class UsageStore:
 
 def _claude_windows(info: UsageInfo) -> list[tuple[str, UsageWindow]]:
     pairs = (("five_hour", info.five_hour), ("seven_day", info.seven_day))
-    return [(name, window) for name, window in pairs if window is not None]
+    named = [(name, window) for name, window in pairs if window is not None]
+    return named + [(window.name, window) for window in info.scoped]
 
 
-def _gone_windows(info: UsageInfo) -> list[str]:
-    """Claude's windows a complete report left out: the plan no longer has them."""
+async def _gone_windows(tx: Transaction, account: str, info: UsageInfo) -> list[str]:
+    """Claude's windows a complete report left out: the plan no longer has them. One it
+    named without a number is still there.
+    """
     if not info.complete:
         return []
-    pairs = (("five_hour", info.five_hour), ("seven_day", info.seven_day))
-    return [name for name, window in pairs if window is None]
+    kept = {name for name, _ in _claude_windows(info)} | info.unread
+    rows = await tx.fetch_all(
+        "SELECT name FROM usage_limits WHERE account_id = ? AND minutes IS NULL"
+        " AND (name IN ('five_hour', 'seven_day') OR name LIKE ?)",
+        (account, f"{SCOPED_PREFIX}%"),
+    )
+    return [row["name"] for row in rows if row["name"] not in kept]
 
 
 def _account_window(row: Row, now: datetime) -> AccountWindow:
+    name: str = row["name"]
+    scope = name.removeprefix(SCOPED_PREFIX) if name.startswith(SCOPED_PREFIX) else None
     minutes: int | None = row["minutes"]
     if minutes is None:
-        minutes = _CLAUDE_MINUTES.get(row["name"])
+        minutes = _SCOPED_MINUTES if scope is not None else _CLAUDE_MINUTES.get(name)
     resets_at = None if row["resets_at"] is None else datetime.fromisoformat(row["resets_at"])
     reset = resets_at is not None and resets_at <= now
+    label = window_label(minutes)
     return AccountWindow(
-        label=window_label(minutes),
+        label=label if scope is None else f"{scope} {label.lower()}",
+        scope=scope,
         minutes=minutes,
         utilization=0.0 if reset else row["utilization"],
         resets_at=None if reset else resets_at,

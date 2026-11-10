@@ -246,6 +246,59 @@ describe("banked resets (B98)", () => {
   });
 });
 
+describe("Claude Code's limit reset (B161)", () => {
+  it("shows for the accounts the daemon offers it on, and opens it after a confirmation", async () => {
+    const api = withAccounts([
+      engineAccount({ limit_reset: true }),
+      engineAccount({ id: "claude-work", title: "Work", active: false, first: false }),
+    ]);
+    const { user } = await openAccounts(api);
+
+    const claude = await screen.findByRole("region", { name: "Claude" });
+    expect(await within(claude).findAllByText("Limit reset")).toHaveLength(1);
+    expect(within(claude).queryByRole("button", { name: "Reset in Terminal for Work" })).toBeNull();
+
+    await user.click(
+      within(claude).getByRole("button", { name: "Reset in Terminal for Personal" }),
+    );
+    const confirm = screen.getByRole("alertdialog", { name: "Use the limit reset on Personal?" });
+    expect(confirm).toHaveTextContent("opens in a terminal on your computer");
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(api.openLimitReset).not.toHaveBeenCalled();
+
+    await user.click(
+      within(claude).getByRole("button", { name: "Reset in Terminal for Personal" }),
+    );
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Reset in Terminal" }),
+    );
+    expect(api.openLimitReset).toHaveBeenCalledWith("claude-main");
+  });
+
+  it("lists the per-model limits with the account's own", async () => {
+    await openAccounts(
+      withAccounts([
+        engineAccount({
+          limits: [
+            accountWindow({ label: "Weekly", minutes: 10080, utilization: 0.25 }),
+            accountWindow({
+              label: "Fable weekly",
+              scope: "Fable",
+              minutes: 10080,
+              utilization: 0.42,
+            }),
+          ],
+        }),
+      ]),
+    );
+
+    const claude = await screen.findByRole("region", { name: "Claude" });
+    expect(
+      await within(claude).findByRole("meter", { name: "Personal Fable weekly used" }),
+    ).toHaveAttribute("aria-valuenow", "42");
+  });
+});
+
 describe("github account", () => {
   it.each<[Partial<GithubAccount>, string, string]>([
     [{}, "octocat", "Signed in"],

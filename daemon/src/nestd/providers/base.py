@@ -157,6 +157,26 @@ class EngineWindow(UsageWindow):
         return window_label(self.minutes)
 
 
+class ScopedWindow(UsageWindow):
+    """One of Claude's weekly windows for one model, such as Fable's, or for one kind of
+    use (B161), named as Claude Code names it.
+    """
+
+    label: str
+
+    @property
+    def name(self) -> str:
+        return scoped_name(self.label)
+
+
+SCOPED_PREFIX = "scoped:"
+
+
+def scoped_name(label: str) -> str:
+    """The key a per-model window is kept under: "scoped:Fable"."""
+    return f"{SCOPED_PREFIX}{label}"
+
+
 class BankedCredit(BaseModel):
     """One of Codex's banked resets (B98): it resets the account's limits when used."""
 
@@ -191,6 +211,11 @@ class UsageInfo(BaseModel):
     # Every Claude window the plan has, as read from Claude Code (B142): one left out is
     # gone, where a turn's report may leave out windows that did not change.
     complete: bool = Field(default=False, exclude=True)
+    # Claude's per-model weekly windows (B161); never in the usage events, whose payload
+    # the usage warnings and older clients read as before.
+    scoped: list[ScopedWindow] = Field(default_factory=list[ScopedWindow], exclude=True)
+    # The windows a complete report named without a number (B161): each keeps its last one.
+    unread: frozenset[str] = Field(default=frozenset[str](), exclude=True)
 
 
 # The usage window whose limit was reached (B78), as the engine names it.

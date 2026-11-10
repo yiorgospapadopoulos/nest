@@ -90,6 +90,27 @@ extension Fixture {
         // Claude has no banked resets; Codex's count comes before their details.
         #expect(claude.bankedResets == nil)
         #expect(accounts[1].bankedResets == BankedResets(available: 2, credits: nil))
+        // A daemon before B161 sends no per-model scope or limit reset.
+        #expect(claude.limits.allSatisfy { $0.scope == nil })
+        #expect(!claude.offersLimitReset)
+    }
+
+    /// B161: a per-model window names its model, and a Claude account its limit reset.
+    @Test func decodesPerModelWindowsAndTheLimitReset() {
+        let json = """
+            {"id": "claude-main", "provider": "claude", "name": null, "title": "Personal",
+              "email": null, "plan": null, "signed_in": true, "active": true, "first": true,
+              "signing_in": false, "error": null, "checked_at": null, "banked_resets": null,
+              "limit_reset": true,
+              "limits": [{"label": "Fable weekly", "scope": "Fable", "minutes": 10080,
+                "utilization": 0.42, "resets_at": null, "updated_at": "2026-10-20T10:00:00Z",
+                "reset": false}]}
+            """
+        let account = Fixture.decode(EngineAccount.self, json: json)
+        #expect(account.limits.map(\.scope) == ["Fable"])
+        #expect(account.offersLimitReset)
+        #expect(account.chipLimits == nil)
+        #expect(account.usageLimits?.windows?.map(\.label) == ["Fable weekly"])
     }
 
     /// A window past its reset counts as 0 used, without a time, in every view.
@@ -434,6 +455,13 @@ extension Fixture {
         #expect(try await store.useBankedReset("codex-main", credit: "r2") == .nothingToReset)
     }
 
+    /// B161: Reset in Terminal only asks the daemon to open the terminal.
+    @Test func opensTheLimitReset() async throws {
+        let store = try await loaded()
+        try await store.openLimitReset("claude-main")
+        #expect(api.calls.filter { $0.contains("LimitReset") } == ["openLimitReset claude-main"])
+    }
+
     @Test func outcomesDecodeWithUnknownOnesSafe() {
         let json = #"{"outcome": "no_credit", "accounts": []}"#
         #expect(Fixture.decode(BankedResetUse.self, json: json).outcome == .noCredit)
@@ -546,6 +574,21 @@ extension Fixture {
         // The popover lists the rows by their names.
         #expect(groups[0].rows.map(\.id) == ["5 hour", "Weekly"])
         #expect(groups[2].rows.map(\.title) == ["Usage"])
+    }
+
+    /// B161: the per-model windows show in the popover under the account's own, never on
+    /// the chip, even with no five-hour window and a sooner reset.
+    @Test func perModelWindowsStayOffTheChip() {
+        var fable = Fixture.limit("Fable weekly", 10_080, 0.95, resetsIn: 1)
+        fable.scope = "Fable"
+        let account = Fixture.account(
+            "claude-main", title: "Personal", active: true, first: true,
+            limits: [Fixture.limit("Weekly", 10_080, 0.25, resetsIn: 47), fable])
+        let lines = UsageMeter.lines([account], choice: UsageMeterChoice(), now: now)
+        #expect(lines[0].chip?.entries.map(\.text) == ["25% 1d 23h"])
+        #expect(lines[0].chip?.used == 0.25)
+        let groups = UsageMeter.groups([account], choice: UsageMeterChoice())
+        #expect(groups[0].rows.map(\.title) == ["Weekly", "Fable weekly"])
     }
 
     /// Drag and Alt plus the arrow keys move a row within the list.

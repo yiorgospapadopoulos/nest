@@ -408,6 +408,11 @@ public final class AccountsStore {
         return used.outcome
     }
 
+    /// Opens Claude Code's limit reset for the account in a terminal (B161).
+    public func openLimitReset(_ id: String) async throws {
+        try await api.openLimitReset(id)
+    }
+
     /// The Refresh button's words: "as of 14:05" once the shown limits were reported.
     public func refreshTitle(_ groups: [UsageLimitGroup]) -> String {
         UsageText.asOf(reported(groups), calendar: calendar) ?? "Refresh"

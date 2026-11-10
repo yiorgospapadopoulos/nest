@@ -113,7 +113,11 @@ class EngineLimits(BaseModel):
 class AccountWindow(BaseModel):
     """One of an account's windows as `GET /api/accounts` lists them (B98)."""
 
+    # "5 hour", "Weekly", or a per-model one's "Fable weekly" (B161).
     label: str
+    # The model a per-model window is for, as Claude Code names it ("Fable"); None for
+    # the account's own windows. The usage chip leaves these out (B161).
+    scope: str | None = None
     # Claude's five-hour window is 300, its weekly one 10080; None when not known.
     minutes: int | None
     utilization: float

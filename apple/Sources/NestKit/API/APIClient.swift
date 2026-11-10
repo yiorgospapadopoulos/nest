@@ -690,6 +690,10 @@ public struct APIClient: NestAPI {
             body: UseBankedResetRequest(creditID: creditID))
     }
 
+    public func openLimitReset(_ id: String) async throws {
+        try await perform("POST", ["accounts", id, "limit-reset"])
+    }
+
     public func saveEngineKey(_ id: String, key: String) async throws {
         try await perform("PUT", ["accounts", id, "key"], body: EngineKeyRequest(key: key))
     }

@@ -12,7 +12,9 @@ import {
   bankedTitle,
   creditExpiry,
   creditTitle,
+  LIMIT_RESET,
   limitLine,
+  limitResetTitle,
   signOutNote,
   used,
 } from "./accountText.ts";
@@ -51,6 +53,7 @@ export function EngineAccounts({
   const { state, actions } = useStore();
   const [acting, setActing] = useState<EngineAccount | null>(null);
   const [banked, setBanked] = useState(false);
+  const [resetting, setResetting] = useState<EngineAccount | null>(null);
   const all = state.settings.accounts;
   const engine = engineTitle(provider);
   if (all === null) return <Loading title={engine} />;
@@ -79,7 +82,42 @@ export function EngineAccounts({
       {signedOut && (
         <p className="srow note">Sign in to {engine} on the Mac, in Settings &gt; Accounts.</p>
       )}
-      {/* Claude Code keeps no banked resets. */}
+      {accounts
+        .filter((a) => a.limit_reset)
+        .map((account) => (
+          <Row
+            key={`reset-${account.id}`}
+            label={
+              <>
+                <span>{LIMIT_RESET.row}</span>
+                {accounts.length > 1 && <span className="hint">{account.title}</span>}
+              </>
+            }
+          >
+            <button
+              className="b"
+              aria-label={`${LIMIT_RESET.action} for ${account.title}`}
+              onClick={() => {
+                setResetting(account);
+              }}
+            >
+              {LIMIT_RESET.action}
+            </button>
+          </Row>
+        ))}
+      {resetting !== null && (
+        <Confirm
+          title={limitResetTitle(resetting)}
+          about={LIMIT_RESET.message}
+          action={LIMIT_RESET.action}
+          neutral
+          onConfirm={() => void actions.openLimitReset(resetting.id)}
+          onClose={() => {
+            setResetting(null);
+          }}
+        />
+      )}
+      {/* Claude Code's limit reset is above; it keeps no banked resets. */}
       {provider === "codex" && accounts.length > 0 && (
         <button
           className="srow slink"
