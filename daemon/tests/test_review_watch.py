@@ -5,11 +5,14 @@ import pytest
 from nestd.approvals.models import ApprovalStatus
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
+from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.notifications.notifier import Notifier
 from nestd.review import watch
 from nestd.review.models import SessionDiff
+from nestd.review.scope import ReviewScope
 from nestd.review.watch import ReviewWatcher
+from nestd.sessions.checkpoints import FileCheckpoints
 from nestd.sessions.models import Session
 from nestd.sessions.store import SessionStore
 from nestd.storage.db import Database
@@ -24,7 +27,9 @@ async def test_a_working_directory_git_cannot_diff_gets_no_review(
 ) -> None:
     bus = EventBus(db, clock)
     queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
-    watcher = ReviewWatcher(queue, Tracking(bus))
+    watcher = ReviewWatcher(
+        queue, Tracking(bus), ReviewScope(SessionStore(db, clock).changed_paths)
+    )
     session = await SessionStore(db, clock).create(new_session(cwd=tmp_path, base_ref="abc"))
 
     assert await watcher.turn_ended(session) is None
@@ -40,13 +45,15 @@ async def test_an_unexpected_diff_error_is_logged_and_gets_no_review(
 ) -> None:
     """BUG-01: the turn's "finished" notice still goes out (it follows a None)."""
 
-    async def broken(cwd: Path) -> SessionDiff:
+    async def broken(cwd: Path, only: object = None) -> SessionDiff:
         raise IsADirectoryError(21, "Is a directory")
 
     monkeypatch.setattr(watch, "session_diff", broken)
     bus = EventBus(db, clock)
     queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
-    watcher = ReviewWatcher(queue, Tracking(bus))
+    watcher = ReviewWatcher(
+        queue, Tracking(bus), ReviewScope(SessionStore(db, clock).changed_paths)
+    )
     session = await SessionStore(db, clock).create(new_session(cwd=tmp_path, base_ref="abc"))
 
     assert await watcher.turn_ended(session) is None
@@ -60,7 +67,9 @@ async def test_changes_the_new_folder_already_holds_are_not_the_chats_work(
     """B119: a chat that moved to the project folder finds its unrelated changes there."""
     bus = EventBus(db, clock)
     queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
-    watcher = ReviewWatcher(queue, Tracking(bus))
+    watcher = ReviewWatcher(
+        queue, Tracking(bus), ReviewScope(SessionStore(db, clock).changed_paths)
+    )
     repo = init_repo(tmp_path / "repo")
     other = init_repo(tmp_path / "worktree")
     store = SessionStore(db, clock)
@@ -83,7 +92,9 @@ async def watched(
     (repo / "mine.txt").write_text("the user's\n", encoding="utf-8")
     bus = EventBus(db, clock)
     queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
-    watcher = ReviewWatcher(queue, Tracking(bus))
+    watcher = ReviewWatcher(
+        queue, Tracking(bus), ReviewScope(SessionStore(db, clock).changed_paths)
+    )
     base = git(repo, "rev-parse", "HEAD").strip()
     session = await SessionStore(db, clock).create(new_session(cwd=repo, base_ref=base))
     return watcher, queue, session, repo
@@ -259,10 +270,82 @@ async def test_a_start_git_cannot_diff_is_logged_and_skipped(
 ) -> None:
     bus = EventBus(db, clock)
     queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
-    watcher = ReviewWatcher(queue, Tracking(bus))
+    watcher = ReviewWatcher(
+        queue, Tracking(bus), ReviewScope(SessionStore(db, clock).changed_paths)
+    )
     session = await SessionStore(db, clock).create(new_session(cwd=tmp_path, base_ref="abc"))
 
     await watcher.turn_started(session)
 
     assert not watcher.has_start(session.id)
     assert f"could not diff session {session.id} for review" in caplog.text
+
+
+async def test_a_commit_made_while_the_chat_is_idle_withdraws_its_review(
+    tmp_path: Path, db: Database, clock: FakeClock
+) -> None:
+    """B160: the user committed the chat's work from a terminal; no turn followed."""
+    watcher, queue, session, repo = await watched(tmp_path, db, clock)
+    review = await watcher.turn_ended(session)
+    assert review is not None
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "from a terminal")
+
+    assert await watcher.reviewed_in("repo") == [session.id]
+    await watcher.recheck(session)
+
+    assert [(a.id, a.status) for a in await queue.list_approvals()] == [
+        (review.id, ApprovalStatus.SUPERSEDED)
+    ]
+    assert await watcher.reviewed_in("repo") == []
+
+
+async def test_a_partial_commit_while_idle_leaves_the_rest_for_review(
+    tmp_path: Path, db: Database, clock: FakeClock
+) -> None:
+    watcher, queue, session, repo = await watched(tmp_path, db, clock)
+    (repo / "agent.txt").write_text("agent\n", encoding="utf-8")
+    first = await watcher.turn_ended(session)
+    git(repo, "add", "mine.txt")
+    git(repo, "commit", "-q", "-m", "from a terminal")
+
+    await watcher.recheck(session)
+    # Branches moving again with the work as it is leaves the review alone.
+    await watcher.recheck(session)
+
+    assert first is not None
+    approvals = await queue.list_approvals()
+    assert [a.status for a in approvals] == [ApprovalStatus.SUPERSEDED, ApprovalStatus.PENDING]
+    assert approvals[1].payload["paths"] == ["agent.txt"]
+
+
+async def test_an_in_place_review_leaves_out_other_chats_work(
+    tmp_path: Path, db: Database, clock: FakeClock
+) -> None:
+    """B160: another chat's uncommitted files in the shared folder are not this chat's to
+    review, keep open or commit.
+    """
+    repo = init_repo(tmp_path / "repo")
+    (repo / "other.txt").write_text("another chat's\n", encoding="utf-8")
+    bus = EventBus(db, clock)
+    store = SessionStore(db, clock)
+    queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
+    watcher = ReviewWatcher(queue, Tracking(bus), ReviewScope(store.changed_paths))
+    checkpoints = FileCheckpoints(store)
+    session = await store.create(new_session(cwd=repo, mode="in_place", base_ref="abc"))
+    message = await bus.publish(types.SESSION_USER_MESSAGE, {"text": "go"}, session.id)
+    assert message.id is not None
+
+    # As a message written into a turn: its checkpoint comes first.
+    await checkpoints.take(session.id, message.id, repo)
+    await watcher.turn_started(session)
+    (repo / "agent.txt").write_text("agent\n", encoding="utf-8")
+    await checkpoints.turn_ended(session.id)
+    review = await watcher.turn_ended(session)
+
+    assert review is not None
+    assert review.payload["paths"] == ["agent.txt"]
+    git(repo, "add", "agent.txt")
+    git(repo, "commit", "-q", "-m", "the chat's work")
+    await watcher.recheck(session)
+    assert [a.status for a in await queue.list_approvals()] == [ApprovalStatus.SUPERSEDED]

@@ -21,7 +21,7 @@ from nestd.review.hold import ReviewHold
 from nestd.review.watch import ReviewWatcher
 from nestd.sessions.commands import CommandStore
 from nestd.sessions.errors import SessionNotFoundError
-from nestd.sessions.models import LimitPause, Session, SessionState
+from nestd.sessions.models import IN_FLIGHT, LimitPause, Session, SessionState
 from nestd.tracking.service import Tracking
 from nestd.tracking.steps import one_line
 from nestd.tracking.tracker import SessionTracker
@@ -150,6 +150,21 @@ class SessionReactions:
             await self._tracking.sync(session.id)
         if files and session.habit_run_id is None and await self._reviewable(session):
             await self._reviews.refresh(session)
+
+    async def refs_moved(self, repo: str) -> None:
+        """The project's branches moved, say a commit from a terminal: its idle chats'
+        pending reviews are checked again (B160). A chat in a turn, or waiting for its
+        helpers, is reviewed when that ends.
+        """
+        for session_id in await self._reviews.reviewed_in(repo):
+            try:
+                session = await self._session(session_id)
+            except SessionNotFoundError:
+                continue
+            busy = session.state in IN_FLIGHT or self._reviews.has_start(session_id)
+            if busy or self._holds.holds(session_id) or not await self._reviewable(session):
+                continue
+            await self._reviews.recheck(session)
 
     async def moved(self, session: Session) -> None:
         """What the new folder holds already is not the chat's work: only what later

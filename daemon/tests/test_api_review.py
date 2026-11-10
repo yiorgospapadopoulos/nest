@@ -1,7 +1,7 @@
 import asyncio
 import gc
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Collection
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +9,7 @@ import httpx
 import pytest
 from pydantic import TypeAdapter
 
+from nestd.approvals.models import ApprovalKind
 from nestd.events import types
 from nestd.gitops.runner import CommandError
 from nestd.issues.models import IssueRef
@@ -831,13 +832,13 @@ async def test_a_message_sent_as_a_turn_ends_waits_for_its_review(
 
     calls = 0
 
-    async def slow_diff(cwd: Path) -> SessionDiff:
+    async def slow_diff(cwd: Path, only: Collection[str] | None = None) -> SessionDiff:
         nonlocal calls
         calls += 1
         if calls == 2:  # the first turn's end; its start came first
             entered.set()
             await release.wait()
-        return await real_diff(cwd)
+        return await real_diff(cwd, only)
 
     monkeypatch.setattr(watch, "session_diff", slow_diff)
     api.provider.script(edit({"fix.txt": "fixed\n"}, reply("Fixed the bug.")), hang())
@@ -997,8 +998,23 @@ async def test_in_place_sessions_commit_only_the_chosen_files(api: Api) -> None:
     assert api.runner.gh_calls() == []
     after = (await api.http.get(f"/api/sessions/{session_id}/diff")).json()
     assert after["head"] == {"commit": approved.json()["commit_sha"], "branch": "main"}
-    # The user's own file stays out of the commit, so it is still in the review.
-    assert [f["path"] for f in after["files"]] == ["mine.txt"]
+    # The user's own file was never the chat's work, so it is not in its review (B160).
+    assert after["files"] == []
+
+
+async def test_committing_the_work_from_a_terminal_clears_the_review(api: Api) -> None:
+    """B160: the chat stays idle; the project's branches moving checks its review again."""
+    repo = api.ctx.repos.get("repo").path
+    api.provider.script(edit({"agent.txt": "agent\n"}, reply("Done.")))
+    session_id = str((await create(api, mode="in_place"))["id"])
+    await reach(api, session_id, "idle")
+    await notified(api, session_id, "review_ready")
+    git(repo, "add", "agent.txt")
+    git(repo, "commit", "-q", "-m", "from a terminal")
+
+    await api.ctx.reactions.refs_moved("repo")
+
+    assert await api.ctx.approvals.pending(session_id, ApprovalKind.REVIEW) is None
 
 
 async def test_your_own_commits_on_the_pushed_branch_go_with_the_work(api: Api) -> None:
