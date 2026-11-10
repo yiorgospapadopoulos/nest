@@ -32,14 +32,18 @@ afterEach(() => {
 });
 
 describe("the artifacts button (B79)", () => {
-  it("shows how many are new in every project, live, and nothing at 0", async () => {
+  it("shows how many are new in the chat's project, live, and nothing at 0", async () => {
     const api = fakeApi();
-    api.artifactsUnseen.mockResolvedValue({ unseen: 2 });
+    // Another project's new artifacts count only there (B160).
+    api.artifactsUnseen.mockResolvedValue({ unseen: 5, unseen_by_repo: { "todo-ui": 2, web: 3 } });
     const { push } = await openChat({ api });
 
     const button = await screen.findByRole("button", { name: "Artifacts, 2 new" });
     expect(button).toHaveTextContent("2");
-    push({ type: "artifact.seen", payload: { artifact_id: "a1", unseen: 0 } });
+    push({
+      type: "artifact.seen",
+      payload: { artifact_id: "a1", unseen: 3, unseen_by_repo: { web: 3 } },
+    });
     expect(screen.getByRole("button", { name: "Artifacts" })).toHaveTextContent("");
     push(saved(plan, 1));
     expect(screen.getByRole("button", { name: "Artifacts, 1 new" })).toBeInTheDocument();
@@ -58,7 +62,7 @@ describe("the artifacts button (B79)", () => {
       payload: { repo: repo("todo-ui") as unknown as JsonObject },
     });
     api.artifacts.mockResolvedValue([plan]);
-    api.artifactsUnseen.mockResolvedValue({ unseen: 5 });
+    api.artifactsUnseen.mockResolvedValue({ unseen: 5, unseen_by_repo: { "todo-ui": 5 } });
     rendered.reconnect();
 
     expect(await screen.findByText("Rollout plan")).toBeInTheDocument();

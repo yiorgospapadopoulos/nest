@@ -205,8 +205,9 @@ ENGINE_MODELS: Final = "engine.models"
 # `edited` when the user saved a document section in the reader (B88).
 SESSION_ARTIFACT: Final = "session.artifact"
 # Global, each with `unseen`, the count of artifacts whose latest version is not opened
-# yet. Saved: `{artifact, action, version, unseen}` with the whole artifact. Seen (opened
-# while unseen) or deleted: `{artifact_id, unseen}`.
+# yet, and `unseen_by_repo`, that count of each project that has any (B160). Saved:
+# `{artifact, action, version, unseen, unseen_by_repo}` with the whole artifact. Seen
+# (opened while unseen) or deleted: `{artifact_id, unseen, unseen_by_repo}`.
 ARTIFACT_SAVED: Final = "artifact.saved"
 ARTIFACT_SEEN: Final = "artifact.seen"
 ARTIFACT_DELETED: Final = "artifact.deleted"

@@ -79,7 +79,7 @@ private struct PendingRow: View {
                     Button("Send now", action: sendNow)
                         .buttonStyle(.nest(.soft, height: 22))
                         .disabled(sendingNow)
-                        .help("Stop the turn and send this message now")
+                        .help("Send this message now; subagents keep working")
                     if canTakeBack {
                         Button(action: remove) {
                             Image(systemName: Icon.close).font(.system(size: 9, weight: .bold))

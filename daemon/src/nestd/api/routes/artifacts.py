@@ -46,7 +46,7 @@ async def list_artifacts(
 
 @router.get("/unseen")
 async def unseen(ctx: Context) -> UnseenCount:
-    return UnseenCount(unseen=await ctx.artifacts.unseen())
+    return await ctx.artifacts.unseen()
 
 
 @router.get("/{artifact_id}")

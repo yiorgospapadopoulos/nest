@@ -159,6 +159,8 @@ from nestd.repos.places import PlaceBook
 from nestd.repos.service import GENERAL, RepoService
 from nestd.review.actions import ReviewActions
 from nestd.review.publish import GitPublisher
+from nestd.review.recheck import ReviewRecheck
+from nestd.review.scope import ReviewScope
 from nestd.review.watch import ReviewWatcher
 from nestd.runs.blocks import PortBlocks
 from nestd.runs.listening import PortProbe
@@ -229,6 +231,8 @@ class AppContext:
     branch_watch: BranchWatch
     # Removes merged worktrees in projects that ask for it (B141).
     merged_worktrees: MergedWorktrees
+    # Checks pending reviews again when a project's branches move (B160).
+    review_recheck: ReviewRecheck
     usage_refresher: UsageRefresher
     commands: CommandStore
     prs: PullRequests
@@ -616,9 +620,10 @@ class AppContext:
         issues = IssueService(
             repo=repos.get, run=runner, clock=clock, cwd=paths.data_dir, chats=store.issue_chats
         )
+        review_scope = ReviewScope(store.changed_paths)
         reactions = SessionReactions(
             tracking,
-            ReviewWatcher(approvals, tracking),
+            ReviewWatcher(approvals, tracking, review_scope),
             notifier,
             usage,
             connectors,
@@ -636,7 +641,12 @@ class AppContext:
             runs=runs,
             defaults=lambda: context.settings.worktrees,
         )
+
+        async def subagents_working(session_id: str) -> bool:
+            return (await tracking.sync(session_id)).agents.subagents_working()
+
         sessions = SessionManager(
+            subagents_working=subagents_working,
             store=store,
             bus=bus,
             repos=repos,
@@ -827,6 +837,7 @@ class AppContext:
             tracking=tracking,
             publisher=publisher,
             prs=monitor,
+            scope=review_scope,
         )
         prs = PullRequests(
             sessions=sessions,
@@ -1040,6 +1051,7 @@ class AppContext:
             notifications=notifications,
             claude_chats=claude_chats,
             branch_watch=BranchWatch(repos=repos, bus=bus),
+            review_recheck=ReviewRecheck(bus=bus, repos=repos, recheck=reactions.refs_moved),
             merged_worktrees=MergedWorktrees(
                 repos=repos,
                 store=store,
@@ -1094,6 +1106,7 @@ class AppContext:
             ),
             archiver=ChatArchiver(
                 sessions=sessions,
+                approvals=approvals,
                 claude_chats=claude_chats,
                 clock=clock,
                 # Read at each check, so a new limit from the API applies at once.

@@ -84,6 +84,7 @@ export const saved = (found: Artifact, unseen: number): Partial<NestEvent> & { t
     action: "updated",
     version: found.latest_version,
     unseen,
+    unseen_by_repo: unseen > 0 ? { [found.repo]: unseen } : {},
   },
 });
 

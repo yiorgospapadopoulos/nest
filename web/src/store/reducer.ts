@@ -524,9 +524,14 @@ function withEngineLimits(state: State, p: JsonObject, ts: string): State {
   return { ...state, engineLimits: { ...state.engineLimits, [provider]: { windows } } };
 }
 
-/** The badge's count from an artifact event, which carries the new total. */
+/** The badges' counts from an artifact event, which carries each project's new count. */
 function withUnseen(state: State, p: JsonObject): State {
-  return typeof p.unseen === "number" ? { ...state, unseenArtifacts: p.unseen } : state;
+  const counts = obj(p.unseen_by_repo);
+  if (p.unseen_by_repo === undefined) return state;
+  const unseen = Object.fromEntries(
+    Object.entries(counts).flatMap(([repo, n]) => (typeof n === "number" ? [[repo, n]] : [])),
+  );
+  return { ...state, unseenArtifacts: unseen };
 }
 
 /**

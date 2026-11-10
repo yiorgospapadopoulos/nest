@@ -1047,9 +1047,9 @@ public struct APIClient: NestAPI {
             })
     }
 
-    public func unseenArtifacts() async throws -> Int {
+    public func unseenArtifacts() async throws -> [String: Int] {
         let answer: UnseenArtifacts = try await get("artifacts", "unseen")
-        return answer.unseen
+        return answer.unseenByRepo
     }
 
     public func artifact(_ id: String) async throws -> ArtifactDetail {

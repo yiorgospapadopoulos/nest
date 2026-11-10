@@ -263,6 +263,36 @@ async def test_send_now_stops_the_turn_and_starts_the_message_right_after(env: E
     assert "handoff" not in done
 
 
+async def test_send_now_stops_the_turn_for_a_waiting_message_when_nothing_else_works(
+    env: Env,
+) -> None:
+    """A message the run cannot take in its turn: the turn stops, as Esc in Claude Code."""
+    env.provider.steering = False
+    env.provider.script(until_interrupted(), reply("now done"))
+    session_id = await running(env)
+    sent = await env.manager.send(session_id, "do this instead", [])
+    assert sent.queued_message is not None
+    assert not sent.queued_message.sent
+
+    await env.manager.send_now(session_id, sent.queued_message.id)
+    await idle_after(env, session_id, 2)
+
+    (run,) = env.provider.runs
+    assert ("interrupt", None) in run.calls
+    assert [i.text for i in run.inputs] == ["first", "do this instead"]
+    assert await transcript(env, session_id) == [
+        "user: first",
+        "user: do this instead",
+        "agent: now done",
+    ]
+    assert await env.states(session_id) == ["starting", "running", "running", "idle"]
+    # The stopped turn's result is a handoff to the message, not a failure to show.
+    (stopped, done) = await results(env, session_id)
+    assert stopped["handoff"] is True
+    assert "stopped" not in stopped
+    assert "handoff" not in done
+
+
 async def test_send_now_leaves_a_message_the_agent_already_read_in_its_turn(env: Env) -> None:
     gate = asyncio.Event()
 

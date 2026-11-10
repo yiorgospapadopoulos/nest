@@ -46,6 +46,43 @@ async def test_a_steered_message_carries_its_uuid_and_its_echo_is_reported(
     ]
 
 
+async def test_send_now_asks_claude_code_to_read_the_message_at_once(tmp_path: Path) -> None:
+    """B160: priority "now" is Claude Code's own Send now: it moves the running tools and
+    subagents to the background instead of stopping them. A plain message has none.
+    """
+    opened = Opened(tmp_path)
+    run, client = await opened.open(SessionSpec(tmp_path, "default"))
+
+    await run.send(UserInput(text="Fix it"))
+    await run.steer(UserInput(text="also"), MESSAGE_ID)
+    await run.steer(UserInput(text="what is 2+2?"), MESSAGE_ID, now=True)
+    await run.close()
+
+    assert run.sends_now is True
+    assert "priority" not in client.prompts[1]
+    assert client.prompts[2]["priority"] == "now"
+
+
+async def test_a_message_written_again_goes_under_a_new_uuid(tmp_path: Path) -> None:
+    """B160, checked live: Claude Code drops a message whose uuid it had before, so Send
+    now's second write of a message taken back was never read.
+    """
+    opened = Opened(tmp_path)
+    run, client = await opened.open(SessionSpec(tmp_path, "default"))
+
+    await run.send(UserInput(text="Fix it"))
+    await run.steer(UserInput(text="what is 2+2?"), MESSAGE_ID)
+    await run.steer(UserInput(text="what is 2+2?"), MESSAGE_ID, now=True)
+    again = client.prompts[2]["uuid"]
+    client.push(UserMessage(content=[TextBlock("what is 2+2?")], uuid=again), RESULT)
+    await until(lambda: any(name == "result" for name, _ in opened.sink.calls))
+    await run.close()
+
+    assert client.prompts[1]["uuid"] == ENGINE_UUID
+    assert again != ENGINE_UUID
+    assert ("message_taken", (MESSAGE_ID, again)) in opened.sink.calls
+
+
 async def test_a_second_echo_of_a_steered_message_is_not_reported_again(tmp_path: Path) -> None:
     opened = Opened(tmp_path)
     run, client = await opened.open(SessionSpec(tmp_path, "default"))

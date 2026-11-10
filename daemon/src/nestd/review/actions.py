@@ -39,6 +39,7 @@ from nestd.review.errors import (
 )
 from nestd.review.models import ApproveRequest, SessionDiff
 from nestd.review.publish import GitPublisher, PublishPlan, PullRequest
+from nestd.review.scope import ReviewScope
 from nestd.sessions.errors import SessionBusyError
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import IN_FLIGHT, Session
@@ -56,7 +57,9 @@ class ReviewActions:
         tracking: Tracking,
         publisher: GitPublisher,
         prs: PrMonitor,
+        scope: ReviewScope,
     ) -> None:
+        self._scope = scope
         self._sessions = sessions
         self._repos = repos
         self._approvals = approvals
@@ -70,7 +73,7 @@ class ReviewActions:
         session = await self._sessions.get(session_id)
         await self._repos.require_git(session.repo)
         cwd = require_workspace(session)
-        return await session_diff(cwd)
+        return await session_diff(cwd, only=await self._scope.paths(session, cwd))
 
     async def approve(self, session_id: str, request: ApproveRequest) -> Session:
         # Refused, in this order (409 unless noted): a turn still running; background tasks
@@ -85,7 +88,7 @@ class ReviewActions:
             session = await self._idle(session_id)
             cwd = require_workspace(session)
             await self._repos.require_git(session.repo)
-            work = await reviewed_work(cwd)
+            work = await reviewed_work(cwd, only=await self._scope.paths(session, cwd))
             diff = work.diff
             if request.expected_head is not None and diff.head.commit != request.expected_head:
                 raise HeadChangedError

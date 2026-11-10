@@ -225,8 +225,8 @@ public protocol NestAPI: Sendable {
     /// Artifacts newest first, at most 500; the filters combine (B79).
     func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws
         -> [Artifact]
-    /// How many artifacts' latest versions the user has not opened, in every project.
-    func unseenArtifacts() async throws -> Int
+    /// How many artifacts' latest versions the user has not opened, by project (B160).
+    func unseenArtifacts() async throws -> [String: Int]
     func artifact(_ id: String) async throws -> ArtifactDetail
     func artifactContent(_ id: String, version: Int) async throws -> ArtifactContent
     /// The user opened its latest version; answers the artifact.

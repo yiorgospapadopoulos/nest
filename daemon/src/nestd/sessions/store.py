@@ -444,6 +444,28 @@ class SessionStore:
             found |= paths
         return found
 
+    async def changed_paths(self, session_id: str, folder: Path) -> set[str] | None:
+        """Every path the chat's turns changed in `folder`, by its checkpoints there (B160);
+        None when it has none there or one of them is not known. The checkpoint of a turn
+        still running counts once its turn has ended.
+        """
+        rows = await self._db.fetch_all(
+            "SELECT paths, turn_mark FROM file_snapshots WHERE session_id = ? AND folder = ?",
+            (session_id, str(folder)),
+        )
+        if not rows:
+            return None
+        found: set[str] = set()
+        for row in rows:
+            paths = _paths_from(row["paths"])
+            if paths is not None:
+                found |= paths
+            elif (
+                row["turn_mark"] is None or not TurnMark.model_validate_json(row["turn_mark"]).first
+            ):
+                return None
+        return found
+
     async def snapshot_paths_of(self, session_id: str, event_id: int) -> set[str] | None:
         """The paths recorded for the snapshot of event `event_id` alone (a fork's copy)."""
         row = await self._db.fetch_one(

@@ -95,7 +95,7 @@ public enum UsageText {
         return "\(checks), \(tokens(probes.tokens)) tokens, not counted above"
     }
 
-    /// Compact token counts: "940", "340k", "1.2M", "12M".
+    /// Compact token counts: "940", "340k", "1.2M", "12M", "1.5B".
     public static func tokens(_ count: Int) -> String {
         if count < 1000 {
             return "\(count)"
@@ -103,8 +103,17 @@ public enum UsageText {
         if count < 999_500 {
             return "\(Int((Double(count) / 1000).rounded()))k"
         }
-        let millions = (Double(count) / 1_000_000 * 10).rounded() / 10
-        return millions == millions.rounded() ? "\(Int(millions))M" : "\(millions)M"
+        // From where the millions would round to 1000.0.
+        if count < 999_950_000 {
+            return "\(oneDecimal(Double(count) / 1_000_000))M"
+        }
+        return "\(oneDecimal(Double(count) / 1_000_000_000))B"
+    }
+
+    /// One decimal, without a trailing ".0".
+    private static func oneDecimal(_ value: Double) -> String {
+        let rounded = (value * 10).rounded() / 10
+        return rounded == rounded.rounded() ? "\(Int(rounded))" : "\(rounded)"
     }
 
     /// "1 chat", "74 chats".

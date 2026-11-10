@@ -4,9 +4,10 @@ A message the running agent can take is stored in the queue marked sent and writ
 the turn at once; the agent reads it at its next step, or starts its next turn with it, and
 its echo removes it from the queue (the turn runner shows it then). Until the agent reads
 it, the message can be taken back: to remove it, before a Stop or Send now, and when the
-turn ends, so that a message the agent did not read waits in Nest's queue again. A message
-the agent cannot take now (no run open, publishing, a Stop pressed, a new attachment
-folder, another effort) waits in the queue for the turn's end, as before (D032).
+turn ends, so that a message the agent did not read waits in Nest's queue again. Send now
+hands one to the agent at once on an engine that can (B160). A message the agent cannot
+take now (no run open, publishing, a Stop pressed, a new attachment folder, another
+effort) waits in the queue for the turn's end, as before (D032).
 """
 
 import logging
@@ -78,6 +79,27 @@ class Steering:
                 if not await self._write(live, message, attachments):
                     return
 
+    async def send_now(self, live: LiveSession, message_id: str) -> bool:
+        """Hand the message to the agent at once, on a run that `sends_now`: it reads it
+        now while the turn's tools and subagents go on in the background (B160). One
+        already in the turn is taken back and written again as urgent. True when it went,
+        or the agent had already read it; False when the run cannot, as another engine's.
+        """
+        async with live.steering:
+            run = live.run
+            if run is None or not run.sends_now or not _ready(live):
+                return False
+            message = await self._queue.get(live.session_id, message_id)
+            if message.sent and not await run.withdraw(message_id):
+                return True
+            ids = [attachment.id for attachment in message.attachments]
+            attachments = await self._attachments.for_session(ids, live.session_id)
+            if not await self._fits_run(live, attachments):
+                await self._queue.mark_sent(live.session_id, [message_id], False)
+                return False
+            await self._queue.mark_sent(live.session_id, [message_id], True)
+            return await self._write(live, message, attachments, now=True)
+
     async def retract(self, live: LiveSession) -> list[str]:
         """Take back every sent message the agent has not read; they wait for a turn again.
         Returns the ones it has read and not echoed yet. The caller holds `live.steering`.
@@ -113,13 +135,18 @@ class Steering:
         return await self._fits(live, session, folders)
 
     async def _write(
-        self, live: LiveSession, message: QueuedMessage, attachments: list[Attachment]
+        self,
+        live: LiveSession,
+        message: QueuedMessage,
+        attachments: list[Attachment],
+        *,
+        now: bool = False,
     ) -> bool:
         run = live.run
         assert run is not None  # noqa: S101 (checked by `_ready` under the same lock)
         try:
             text = await self._agent_text(live, message.text, message.sender)
-            await run.steer(user_input(text, attachments), message.id)
+            await run.steer(user_input(text, attachments), message.id, now=now)
         except Exception as error:
             # The run is ending; the message waits for the next turn instead.
             logger.warning(

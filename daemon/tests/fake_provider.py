@@ -68,6 +68,7 @@ class FakeRun:
         self.closed = False
         # Like Claude Code's queue of messages written into a running turn (B59).
         self.steers = provider.steering
+        self.sends_now = provider.sending_now
         self.names_chats = provider.names_chats
         self.steered: list[tuple[str, UserInput]] = []
         self._turns: asyncio.Queue[Turn] = asyncio.Queue()
@@ -86,11 +87,11 @@ class FakeRun:
             await self.provider.title_gate.wait()
         return self.provider.chat_title
 
-    async def steer(self, user_input: UserInput, message_id: str) -> None:
+    async def steer(self, user_input: UserInput, message_id: str, *, now: bool = False) -> None:
         if self.provider.steer_error is not None:
             self.provider.steer_failures += 1
             raise self.provider.steer_error
-        self.calls.append(("steer", message_id))
+        self.calls.append(("steer_now" if now else "steer", message_id))
         self.steered.append((message_id, user_input))
 
     async def withdraw(self, message_id: str) -> bool:
@@ -195,6 +196,8 @@ class FakeProvider:
         self.running_tasks: set[str] = set()
         # Whether runs take messages written into a running turn, and a failure to write.
         self.steering = False
+        # Whether its runs hand a message over at once with `steer(now=True)` (B160).
+        self.sending_now = False
         self.steer_error: Exception | None = None
         self.steer_failures = 0
         # Where a conversation is cut to before a message, by (session id, message id).

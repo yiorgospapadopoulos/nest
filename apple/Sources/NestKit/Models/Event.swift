@@ -244,8 +244,9 @@ public enum EventBody: Sendable, Hashable {
     case autopilotDecision(AutopilotDecision)
     case autopilotReport(AutopilotReport)
     case artifactSaved(ArtifactSaved)
-    case artifactSeen(id: String, unseen: Int)
-    case artifactDeleted(id: String, unseen: Int)
+    /// Each carries the unseen count of every project that has any (B160).
+    case artifactSeen(id: String, unseen: [String: Int])
+    case artifactDeleted(id: String, unseen: [String: Int])
     case artifactStorage(ArtifactStorageEvent)
     case artifactAsk(ArtifactAskEvent)
     case runChanged(RunChanged)
@@ -380,11 +381,11 @@ public enum EventBody: Sendable, Hashable {
         case EventType.artifactSeen:
             self = .artifactSeen(
                 id: try field("artifact_id", as: String.self),
-                unseen: try field("unseen", as: Int.self))
+                unseen: try field("unseen_by_repo", as: [String: Int].self))
         case EventType.artifactDeleted:
             self = .artifactDeleted(
                 id: try field("artifact_id", as: String.self),
-                unseen: try field("unseen", as: Int.self))
+                unseen: try field("unseen_by_repo", as: [String: Int].self))
         case EventType.artifactStorage:
             self = .artifactStorage(try payload.decode(ArtifactStorageEvent.self))
         case EventType.artifactAsk: self = .artifactAsk(try payload.decode(ArtifactAskEvent.self))

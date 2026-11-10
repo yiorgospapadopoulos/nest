@@ -9,7 +9,13 @@ import {
   reviewOf,
 } from "../../api/payloads.ts";
 import type { Approval, IssueSummary, Session } from "../../api/types.ts";
-import { ciFailure, pendingFor, stuckChats, type Tone } from "../../store/selectors.ts";
+import {
+  ciFailure,
+  isArchivedChat,
+  pendingFor,
+  stuckChats,
+  type Tone,
+} from "../../store/selectors.ts";
 import type { State } from "../../store/state.ts";
 import { restackTitle } from "./prWork.ts";
 
@@ -123,7 +129,7 @@ export function startLists(state: State, repo: string): StartLists {
   const sessions = Object.values(state.sessions).filter((s) => s.repo === repo);
   const titleOf = (a: Approval) => state.sessions[a.session_id]?.title ?? a.title;
   const approvals: Waiting[] = Object.values(state.approvals)
-    .filter((a) => a.repo === repo)
+    .filter((a) => a.repo === repo && !isArchivedChat(state, a.session_id))
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
     .map((a) => ({
       id: `approval-${a.id}`,

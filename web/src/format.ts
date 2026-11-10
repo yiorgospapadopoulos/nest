@@ -15,12 +15,19 @@ export function ago(iso: string, now: Date): string {
   return `${String(Math.floor(minutes / 1440))}d`;
 }
 
-/** 950, 12k, 1.4M, 3M */
+/** 950, 12k, 1.4M, 3M, 1.5B */
 export function tokens(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${String(Math.round(n / 1000))}k`;
-  const millions = (n / 1_000_000).toFixed(1);
-  return `${millions.endsWith(".0") ? millions.slice(0, -2) : millions}M`;
+  // From where the millions would round to 1000.0.
+  if (n < 999_950_000) return `${oneDecimal(n / 1_000_000)}M`;
+  return `${oneDecimal(n / 1_000_000_000)}B`;
+}
+
+/** One decimal, without a trailing ".0". */
+function oneDecimal(value: number): string {
+  const text = value.toFixed(1);
+  return text.endsWith(".0") ? text.slice(0, -2) : text;
 }
 
 export function percent(fraction: number): number {

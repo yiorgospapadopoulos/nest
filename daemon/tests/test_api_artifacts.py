@@ -62,7 +62,7 @@ async def test_list_get_read_see_and_delete(api: Api) -> None:
 
     assert [a["id"] for a in listed.json()] == [notes, page]
     assert filtered.json() == []
-    assert unseen.json() == {"unseen": 2}
+    assert unseen.json() == {"unseen": 2, "unseen_by_repo": {"web": 2}}
     body = detail.json()
     assert body["chat_title"] == "Fix the bug"
     # Its chat was never stored, so it counts as deleted.
@@ -89,7 +89,7 @@ async def test_list_get_read_see_and_delete(api: Api) -> None:
     assert SHIM_TAG in notes_page
     assert '<pre id="nest-md">\n# Notes</pre>' in notes_page
     assert seen.json()["seen"] is True
-    assert unseen_after.json() == {"unseen": 1}
+    assert unseen_after.json() == {"unseen": 1, "unseen_by_repo": {"web": 1}}
     assert deleted.status_code == 204
     assert [a["id"] for a in (await api.http.get("/api/artifacts")).json()] == [page]
 

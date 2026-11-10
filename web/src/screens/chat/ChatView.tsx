@@ -211,7 +211,10 @@ function SessionChat({
             }}
           />
           {run !== null && <RunButton sessionId={id} status={run} onOpen={showOutput} />}
-          <ArtifactsButton scopes={chatScopes(session)} />
+          <ArtifactsButton
+            scopes={chatScopes(session)}
+            repo={session.pixie_id == null ? session.repo : null}
+          />
           <button
             className="ib"
             aria-haspopup="dialog"

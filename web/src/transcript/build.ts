@@ -815,10 +815,21 @@ function addBlocks(
         const raw = str(block.content) ?? "";
         // An agent's answer comes wrapped by Claude Code; only its report shows.
         const content = AGENT_TOOLS.has(tool.name) ? agentReport(raw) : raw;
-        tool.failed = block.is_error === true;
+        // A tool the turn's Stop cut off was stopped, and one Send now moved to the
+        // background goes on there: neither failed (B160).
+        const error = block.is_error === true;
+        const stopped = error && content.startsWith(STOPPED_TOOL);
+        const moved = error && MOVED_TOOL.test(content.trim());
+        tool.failed = error && !stopped && !moved;
         if (!tool.failed && saves.has(tool.id)) saved.add(tool.id);
         // A computer use row says what it did already; its screenshot shows under it.
-        tool.result = tool.computer && !tool.failed ? "" : resultSummary(content, tool.failed);
+        tool.result = stopped
+          ? "Stopped"
+          : moved
+            ? "Moved to background"
+            : tool.computer && !tool.failed
+              ? ""
+              : resultSummary(content, tool.failed);
         if (tool.computer && !tool.failed) Object.assign(tool, namedAction(content) ?? {});
         tool.detail = content.trim() ? content : null;
         const images = imagesOf(block);
@@ -836,6 +847,11 @@ function imagesOf(block: JsonObject): ResultImage[] {
     return id === null ? [] : [{ id, mediaType: str(image.media_type) ?? "image/png" }];
   });
 }
+
+// How Claude Code answers a tool call that a Stop of its turn cut off.
+const STOPPED_TOOL = "The user doesn't want to proceed with this tool use.";
+// How it answers one that Send now moved to the background, where it goes on.
+const MOVED_TOOL = /^<tool_use_error>Error calling tool \([^)]*\): interrupt<\/tool_use_error>$/;
 
 export function resultSummary(content: string, failed: boolean): string {
   if (failed) return "failed";

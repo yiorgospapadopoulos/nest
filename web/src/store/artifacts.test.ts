@@ -64,11 +64,12 @@ describe("artifact lists", () => {
       action: "created",
       version: 1,
       unseen: 4,
+      unseen_by_repo: { "todo-ui": 3, web: 1 },
     });
     expect(ids(next, chat)).toEqual(["a3", "a1"]);
     expect(ids(next, project)).toEqual(["a3", "a1"]);
     expect(ids(next, pixie)).toEqual([]);
-    expect(next.unseenArtifacts).toBe(4);
+    expect(next.unseenArtifacts).toEqual({ "todo-ui": 3, web: 1 });
 
     // A new version of one listed replaces it and moves it up.
     const updated = {
@@ -89,9 +90,13 @@ describe("artifact lists", () => {
 
   it("mark one seen, and drop one deleted, setting the badge from the event", () => {
     const state = listed([[chat, [older]]]);
-    const seen = apply(state, "artifact.seen", { artifact_id: "a1", unseen: 0 });
+    const seen = apply(state, "artifact.seen", {
+      artifact_id: "a1",
+      unseen: 0,
+      unseen_by_repo: {},
+    });
     expect(artifactList(seen, chat)?.[0]?.seen).toBe(true);
-    expect(seen.unseenArtifacts).toBe(0);
+    expect(seen.unseenArtifacts).toEqual({});
     // Seen again, or an unknown one, changes nothing but the count.
     expect(apply(seen, "artifact.seen", { artifact_id: "a1", unseen: 0 }).artifacts).toBe(
       seen.artifacts,
@@ -113,9 +118,16 @@ describe("artifact lists", () => {
   });
 
   it("keep the badge when an event leaves its count out", () => {
-    const state = reduce(initialState, { type: "unseenArtifacts", unseen: 3 });
-    expect(apply(state, "artifact.seen", { artifact_id: "a1" }).unseenArtifacts).toBe(3);
-    expect(global("artifact.deleted", { artifact_id: "a1", unseen: 1 }).unseenArtifacts).toBe(1);
+    const state = reduce(initialState, { type: "unseenArtifacts", unseen: { web: 3 } });
+    expect(apply(state, "artifact.seen", { artifact_id: "a1" }).unseenArtifacts).toEqual({
+      web: 3,
+    });
+    const deleted = global("artifact.deleted", {
+      artifact_id: "a1",
+      unseen: 1,
+      unseen_by_repo: { web: 1 },
+    });
+    expect(deleted.unseenArtifacts).toEqual({ web: 1 });
   });
 
   it("keep a deleted chat's artifacts, marked as from a deleted chat", () => {

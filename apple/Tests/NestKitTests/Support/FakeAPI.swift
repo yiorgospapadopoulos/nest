@@ -132,7 +132,7 @@ final class FakeAPI: NestAPI {
         /// Artifacts newest first, and their versions' content by "<id>/<version>" (B79).
         var artifacts: [Artifact] = []
         var artifactContents: [String: ArtifactContent] = [:]
-        var unseenArtifacts = 0
+        var unseenArtifacts: [String: Int] = [:]
         /// What each artifact's page stored, by artifact id (B88).
         var artifactStorage: [String: ArtifactStorage] = [:]
         var askAnswer = ArtifactAnswer(text: "", remaining: 19, limit: 20)
@@ -1144,7 +1144,7 @@ final class FakeAPI: NestAPI {
         }
     }
 
-    func unseenArtifacts() async throws -> Int {
+    func unseenArtifacts() async throws -> [String: Int] {
         try call("unseenArtifacts") { $0.unseenArtifacts }
     }
 

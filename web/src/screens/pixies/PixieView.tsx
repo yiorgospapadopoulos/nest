@@ -85,7 +85,7 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
       }
       back="Pixies"
       onBack={onBack}
-      tools={<ArtifactsButton scopes={pixieScopes(pixie.id)} />}
+      tools={<ArtifactsButton scopes={pixieScopes(pixie.id)} repo={null} />}
       details={
         <div className="pxtabs mseg" role="tablist" aria-label={`${pixie.name} sections`}>
           {TABS.map(({ tab: value, label }) => (

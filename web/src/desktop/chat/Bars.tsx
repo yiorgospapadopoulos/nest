@@ -311,7 +311,7 @@ export function PendingMessages({ session, draftKey }: { session: Session; draft
                   </button>
                   <Button
                     disabled={tapped.includes(message.id)}
-                    title="Stop the turn and send this message now"
+                    title="Send this message now; subagents keep working"
                     onClick={() => void sendNow(message.id)}
                   >
                     Send now

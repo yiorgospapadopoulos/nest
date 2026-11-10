@@ -122,6 +122,7 @@ class CodexNotSignedInError(ConflictError):
 
 class CodexRun:
     steers = True
+    sends_now = False
     # Only Codex's terminal app names threads; `app-server` leaves them unnamed (0.163).
     names_chats = False
 
@@ -282,9 +283,9 @@ class CodexRun:
             logger.exception("Codex's plan could not be reviewed")
         await self.stream.end_turn(info)
 
-    async def steer(self, user_input: UserInput, message_id: str) -> None:
-        """Codex reads the message at its next step; a turn goes on while it has unread
-        input, so only a Stop loses it. Its echo carries `message_id` (B59).
+    async def steer(self, user_input: UserInput, message_id: str, *, now: bool = False) -> None:
+        """Codex reads the message at its next step, `now` or not; a turn goes on while it
+        has unread input, so only a Stop loses it. Its echo carries `message_id` (B59).
         """
         turn_id = self.stream.turn_id
         if turn_id is None:

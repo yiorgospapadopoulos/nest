@@ -252,9 +252,10 @@ async def test_creating_saves_the_first_version_and_announces_it(
             "action": "created",
             "version": 1,
             "unseen": 1,
+            "unseen_by_repo": {"web": 1},
         }
     ]
-    assert await ctx.artifacts.unseen() == 1
+    assert (await ctx.artifacts.unseen()).unseen == 1
 
 
 async def test_updating_adds_a_version_and_keeps_the_earlier_ones(
@@ -441,11 +442,29 @@ async def test_deleting_removes_rows_and_files(ctx: AppContext, provider: FakePr
         "SELECT * FROM artifact_versions WHERE artifact_id = ?", (gone,)
     )
     assert versions == []
-    assert await published(ctx, types.ARTIFACT_DELETED) == [{"artifact_id": gone, "unseen": 1}]
+    assert await published(ctx, types.ARTIFACT_DELETED) == [
+        {"artifact_id": gone, "unseen": 1, "unseen_by_repo": {"web": 1}}
+    ]
     with pytest.raises(ArtifactNotFoundError):
         await ctx.artifacts.delete(gone)
     with pytest.raises(ArtifactNotFoundError):
         await ctx.artifacts.detail(gone)
+
+
+async def test_unseen_artifacts_count_in_their_own_project(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    """B160: a project's badge counts only what its own chats made."""
+    _, web = await chat(ctx, provider)
+    _, api = await chat(ctx, provider, "api")
+    first = await create(web)
+    await create(web, title="Second")
+    await create(api)
+
+    await ctx.artifacts.mark_seen(first)
+
+    counts = await ctx.artifacts.unseen()
+    assert (counts.unseen, counts.unseen_by_repo) == (2, {"web": 1, "api": 1})
 
 
 async def test_seen_is_announced_once(ctx: AppContext, provider: FakeProvider) -> None:
@@ -457,8 +476,10 @@ async def test_seen_is_announced_once(ctx: AppContext, provider: FakeProvider) -
     again = await ctx.artifacts.mark_seen(first)
 
     assert (seen.seen, again.seen) == (True, True)
-    assert await published(ctx, types.ARTIFACT_SEEN) == [{"artifact_id": first, "unseen": 1}]
-    assert await ctx.artifacts.unseen() == 1
+    assert await published(ctx, types.ARTIFACT_SEEN) == [
+        {"artifact_id": first, "unseen": 1, "unseen_by_repo": {"web": 1}}
+    ]
+    assert (await ctx.artifacts.unseen()).unseen == 1
     with pytest.raises(ArtifactNotFoundError):
         await ctx.artifacts.mark_seen("nope")
 

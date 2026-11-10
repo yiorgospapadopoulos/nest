@@ -1154,9 +1154,12 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("GET", "/api/artifacts?repo=todo-ui&session_id=s1&pixie_id=p1", response: "[]") {
             _ = try await $0.artifacts(repo: "todo-ui", sessionID: "s1", pixieID: "p1")
         },
-        RouteCase("GET", "/api/artifacts/unseen", response: #"{"unseen": 3}"#) {
+        RouteCase(
+            "GET", "/api/artifacts/unseen",
+            response: #"{"unseen": 3, "unseen_by_repo": {"todo-ui": 2, "web": 1}}"#
+        ) {
             let unseen = try await $0.unseenArtifacts()
-            #expect(unseen == 3)
+            #expect(unseen == ["todo-ui": 2, "web": 1])
         },
         RouteCase("GET", "/api/artifacts/a1", response: detailJSON) {
             let detail = try await $0.artifact("a1")

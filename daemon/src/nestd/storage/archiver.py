@@ -1,7 +1,8 @@
 """Archives Nest chats left idle for the days set in `[storage] archive_after_days` (D104).
 
 It checks when the daemon starts, every hour and when the setting is saved. Pinned chats,
-chats in a turn or waiting on the user, and chats paused at the usage limit are kept. Each
+chats in a turn or waiting on the user (a prompt, or work to review or merge, B160), and
+chats paused at the usage limit are kept. Each
 archive goes through the same path as the user's Archive, so it is announced the same way.
 The Claude Code chats Nest lists go into Nest's own archive for them (D040), unless open in
 Claude Code right now (D133); the Codex chats it lists are archived in Codex (B113).
@@ -13,6 +14,8 @@ from collections.abc import Callable
 from contextlib import suppress
 from datetime import timedelta
 
+from nestd.approvals.models import ApprovalStatus
+from nestd.approvals.queue import ApprovalQueue
 from nestd.claude_sessions.catalog import ClaudeChats
 from nestd.clock import Clock
 from nestd.config.models import StorageSettings
@@ -29,6 +32,7 @@ class ChatArchiver:
         self,
         *,
         sessions: SessionManager,
+        approvals: ApprovalQueue,
         claude_chats: ClaudeChats,
         clock: Clock,
         settings: Callable[[], StorageSettings],
@@ -36,6 +40,7 @@ class ChatArchiver:
     ) -> None:
         """`settings` is read at each check, so a new limit applies at once."""
         self._sessions = sessions
+        self._approvals = approvals
         self._claude_chats = claude_chats
         self._clock = clock
         self._settings = settings
@@ -64,9 +69,12 @@ class ChatArchiver:
             return []
         cutoff = self._clock.now() - timedelta(days=days)
         archived: list[str] = []
+        pending = await self._approvals.list_approvals(ApprovalStatus.PENDING)
+        waiting = {approval.session_id for approval in pending}
         for session in await self._sessions.list_sessions():
             if (
                 session.pinned
+                or session.id in waiting
                 or session.state in IN_FLIGHT
                 or session.limit_pause is not None
                 or session.updated_at > cutoff

@@ -12,6 +12,10 @@ never by attributes or settings (SEC-09). The patch's `a/` and `b/` prefixes are
 since the files are matched to their patch sections by path and the repository's config
 may change the prefixes (BUG-52).
 
+An in-place chat shares its folder with the user and other chats, so its review can be
+limited to the paths its own turns changed (`only`, B160): other work never shows in it,
+keeps it open or gets committed with it.
+
 The fingerprint covers everything approving would publish, so an approval is tied to the
 review the user saw. The tracked changes are shown from an index of the review's own, the
 untracked files from one read each, and approving commits those same objects (B159 P-1).
@@ -19,7 +23,7 @@ untracked files from one read each, and approving commits those same objects (B1
 
 import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -46,33 +50,38 @@ class ReviewedWork:
     entries: list[IndexEntry]
 
 
-async def session_diff(cwd: Path) -> SessionDiff:
-    """The changes in `cwd` that are not committed: staged, unstaged and untracked."""
-    return (await _review(cwd, keep=False)).diff
+async def session_diff(cwd: Path, only: Collection[str] | None = None) -> SessionDiff:
+    """The changes in `cwd` that are not committed: staged, unstaged and untracked; of the
+    paths `only` names when given.
+    """
+    return (await _review(cwd, only, keep=False)).diff
 
 
-async def reviewed_work(cwd: Path) -> ReviewedWork:
+async def reviewed_work(cwd: Path, only: Collection[str] | None = None) -> ReviewedWork:
     """The review as `session_diff` makes it, with each change as the object approving
     commits: the tracked ones staged for the review, the untracked ones written from the
     very bytes the review read (B159 P-1).
     """
-    return await _review(cwd, keep=True)
+    return await _review(cwd, only, keep=True)
 
 
-async def _review(cwd: Path, *, keep: bool) -> ReviewedWork:
+async def _review(cwd: Path, only: Collection[str] | None, *, keep: bool) -> ReviewedWork:
     safe = await _safe_options(cwd)
     # HEAD's commit, read once, so both diffs and the review name the same one.
     head = await read_head(cwd, safe)
     ref = head.commit or EMPTY_TREE
     async with work_index(cwd, head.commit) as index:
-        await _stage_tracked(index, safe, ref)
+        # Only the paths staged here are in the review's index, so every diff of it below
+        # covers just them.
+        await _stage_tracked(index, safe, ref, only)
         # The same rename detection for both, so git lists the files in the same order.
         diff = [*safe, "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv"]
         diff += ["--ignore-submodules=dirty", "-M"]
         statuses = await index.git([*diff, "-z", "--raw", "--no-abbrev", ref, "--"])
         patch_args = [*diff, "--full-index", "--src-prefix=a/", "--dst-prefix=b/", ref]
         patch = await index.git([*patch_args, "--"])
-        untracked = await run_git([*safe, "ls-files", "--others", "--exclude-standard", "-z"], cwd)
+        listing = await run_git([*safe, "ls-files", "--others", "--exclude-standard", "-z"], cwd)
+        untracked = _among(filter(None, listing.split("\0")), only)
         entries = parse_raw(statuses)
         # By path, not position: a typechange is one status but two patch sections.
         parts = by_path(parse_patch(patch, MAX_LINES_PER_FILE))
@@ -89,7 +98,7 @@ async def _review(cwd: Path, *, keep: bool) -> ReviewedWork:
             committed = parse_entries(await index.git([*changes, ref, "--"]))
         trusts_mode = keep and await _trusts_executable_bit(cwd, safe)
         digests: list[tuple[str, str]] = []
-        for number, path in enumerate(filter(None, untracked.split("\0"))):
+        for number, path in enumerate(untracked):
             copy = index.folder / f"untracked-{number}" if keep and not path.endswith("/") else None
             found = await untracked_diff(cwd, path, MAX_LINES_PER_FILE, copy)
             files.append(found.diff)
@@ -114,14 +123,23 @@ async def _review(cwd: Path, *, keep: bool) -> ReviewedWork:
     )
 
 
-async def _stage_tracked(index: WorkIndex, safe: Sequence[str], ref: str) -> None:
+async def _stage_tracked(
+    index: WorkIndex, safe: Sequence[str], ref: str, only: Collection[str] | None
+) -> None:
     """Stage into the review's own index every tracked path whose file differs from `ref`,
     as `git add` would; the checkout's index only tells which paths these are.
     """
     names = [*safe, "diff", "--name-only", "-z", "--no-renames", "--ignore-submodules=dirty"]
     listing = await run_git([*names, ref, "--"], index.cwd)
-    for paths in batches([path for path in listing.split("\0") if path]):
+    for paths in batches(_among(filter(None, listing.split("\0")), only)):
         await index.git([*safe, "update-index", "--add", "--remove", "--", *paths])
+
+
+def _among(paths: Iterable[str], only: Collection[str] | None) -> list[str]:
+    """`paths`, or those of them `only` names (a nested repository's ends with a slash)."""
+    if only is None:
+        return list(paths)
+    return [path for path in paths if path.removesuffix("/") in only]
 
 
 async def _trusts_executable_bit(cwd: Path, safe: Sequence[str]) -> bool:

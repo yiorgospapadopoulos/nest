@@ -78,7 +78,8 @@ struct StatusBar: View {
             if hasViews {
                 ViewSwitch(
                     views: ProjectView.choices(pixies: shell.pixiesOpen),
-                    view: shell.workspaceState.view, unseen: shell.artifacts.unseen
+                    view: shell.workspaceState.view,
+                    unseen: shell.artifacts.unseen(in: shell.project)
                 ) { shell.showView($0) }
             }
         }

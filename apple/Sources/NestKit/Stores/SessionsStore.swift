@@ -210,10 +210,12 @@ public final class SessionsStore {
 
     /// The pending approvals that need the user now, of one project or of all. A review or
     /// merge waits while its chat is at work: it cannot be acted on yet, and the turn may
-    /// replace it.
+    /// replace it. An archived chat's are left out, as its failed checks and stuck flag are;
+    /// unarchiving it brings them back (B160).
     public func waitingApprovals(in repo: String? = nil) -> [Approval] {
         let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
         return pending.filter { approval in
+            if sessions[approval.sessionID]?.isArchived == true { return false }
             guard approval.kind == .review || approval.kind == .merge else { return true }
             return sessions[approval.sessionID]?.state.isInFlight != true
         }

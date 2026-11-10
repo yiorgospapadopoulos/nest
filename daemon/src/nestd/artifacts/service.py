@@ -20,6 +20,7 @@ from nestd.artifacts.models import (
     InvalidArtifactError,
     Origin,
     SaveAction,
+    UnseenCount,
     VersionContent,
     checked_content,
     checked_title,
@@ -129,8 +130,9 @@ class Artifacts:
     async def file(self, artifact_id: str, version: int, path: str) -> FileData:
         return await self._store.file(artifact_id, version, path)
 
-    async def unseen(self) -> int:
-        return await self._store.unseen()
+    async def unseen(self) -> UnseenCount:
+        by_repo = await self._store.unseen()
+        return UnseenCount(unseen=sum(by_repo.values()), unseen_by_repo=by_repo)
 
     async def mark_seen(self, artifact_id: str) -> Artifact:
         artifact, changed = await self._store.mark_seen(artifact_id)
@@ -224,7 +226,7 @@ class Artifacts:
         )
 
     async def _unseen(self) -> dict[str, JsonValue]:
-        return {"unseen": await self._store.unseen()}
+        return (await self.unseen()).model_dump()
 
 
 def _checked(kind: ArtifactKind, content: str) -> bytes:

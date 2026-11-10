@@ -233,10 +233,12 @@ class ArtifactStore:
         )
         return await self.get(artifact_id), changed > 0
 
-    async def unseen(self) -> int:
-        row = await self._db.fetch_one("SELECT COUNT(*) AS n FROM artifacts WHERE seen_at IS NULL")
-        assert row is not None  # noqa: S101 (COUNT always returns a row)
-        return row["n"]
+    async def unseen(self) -> dict[str, int]:
+        """The count of unseen artifacts of each project that has any (B160)."""
+        rows = await self._db.fetch_all(
+            "SELECT repo, COUNT(*) AS n FROM artifacts WHERE seen_at IS NULL GROUP BY repo"
+        )
+        return {row["repo"]: row["n"] for row in rows}
 
     async def delete(self, artifact_id: str) -> None:
         """Its rows and every version's file."""
