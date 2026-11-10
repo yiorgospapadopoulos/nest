@@ -59,7 +59,8 @@ def doctor(machine: Machine, *, report: bool) -> int:
         written = write_report(machine, datetime.now(UTC))
         print(written.text)
         print(f"Saved to {written.path}")
-        print("Nothing was sent. Read it first. To report it, open this and add what happened:")
+        print("Nothing was sent. Read it first. To report it, open this, add what happened")
+        print("and attach the file or paste the report:")
         print(written.issue_url)
         return 0
     checks = by_rank(run_checks(machine))

@@ -718,10 +718,11 @@ block = "B130"
 id = "check-nest"
 group = "around"
 name = "Says what's wrong in plain words"
-text = "Check Nest and `nest doctor` name what's broken and how to fix it, even with Nest stopped. A bug report leaves out your secrets, and Report on GitHub opens an issue with it filled in for you to send."
+text = "Check Nest and `nest doctor` name what's broken and how to fix it, even with Nest stopped. A bug report leaves out your secrets and your projects' names, and Report on GitHub opens an issue for you to attach it to."
 where = "Settings > General"
 added = 2026-11-07
 block = "B130"
+changed = 2026-11-10
 
 [[features]]
 id = "uninstall"

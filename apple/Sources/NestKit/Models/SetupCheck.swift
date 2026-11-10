@@ -115,8 +115,8 @@ struct SetupReportAsk: Encodable {
 }
 
 /// `POST /api/setup/report`: the bug report with secrets removed, and the file it was saved
-/// as. Nothing is sent anywhere: `issueURL` is a new GitHub issue with the report filled in,
-/// for the user to read and submit.
+/// as. Nothing is sent anywhere: `issueURL` is a new GitHub issue that asks for the report,
+/// which the user attaches or pastes before submitting.
 public struct SetupReport: Codable, Sendable, Hashable {
     public var path: String
     public var text: String

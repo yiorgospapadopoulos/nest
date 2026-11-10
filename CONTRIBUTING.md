@@ -4,8 +4,8 @@ Thanks for wanting to help.
 
 ## Reporting a bug
 
-1. Run `nest doctor --report` in a terminal, or use Settings > General > Report a bug in the app. It writes a report with Nest's versions, its check results and the end of its log, with tokens, keys, emails and home paths removed. Nest sends it nowhere by itself.
-2. Read the report, then press **Report on GitHub**. It opens a new issue with the report filled in. When the report is too long for that, attach the file instead.
+1. Run `nest doctor --report` in a terminal, or use Settings > General > Report a bug in the app. It writes a report with Nest's versions, its check results and the end of its log, with tokens, keys, emails, pairing codes, repository addresses, project paths and quoted text in errors removed. Nest sends it nowhere by itself.
+2. Read the report, then press **Report on GitHub**. It opens a new issue and shows the report file: attach it to the issue, or press **Copy** and paste the report in.
 3. Say what you did, what you expected and what happened instead.
 
 ## Pull requests

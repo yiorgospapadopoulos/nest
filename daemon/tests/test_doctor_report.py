@@ -61,6 +61,37 @@ HOME = Path("/Users/alice")
         ("/Users/alice/Library/Application Support/nest/daemon.log", "alice"),
         ("/home/bob/.config/nest/settings.toml", "bob"),
         ("worktree /Users/someone-else/nest", "someone-else"),
+        # B159 R50: what a scratch run of the report kept.
+        ("cd ~/Work/acme-secret-project && make", "acme-secret-project"),
+        ("open /Users/alice/Projects/acme-secret/app.py failed", "acme-secret"),
+        ("worktree ~/Library/Application Support/nest/worktrees/acme-secret/x", "acme-secret"),
+        ("remote https://github.com/janedoe/private-repo.git", "janedoe"),
+        ("remote git@github.com:janedoe/private-repo.git", "janedoe"),
+        (
+            '2026-11-10 10:00:00,000 INFO uvicorn.access: 127.0.0.1:5 - "POST '
+            '/api/pairing/redeem?code=4829PQ3M HTTP/1.1" 400',
+            "4829PQ3M",
+        ),
+        ('{"code": "K7QX4MPA", "device_name": "phone"}', "K7QX4MPA"),
+        ("pairing with 4829PQ3M refused", "4829PQ3M"),
+        # Codes without a digit, about one in eleven.
+        ("pairing code ABCDEFGH issued", "ABCDEFGH"),
+        # An unquoted prompt in an error keeps only its first words.
+        (
+            "ERROR nestd.sessions: RuntimeError: engine stopped while reading the request to"
+            " migrate the acme payroll records",
+            "payroll",
+        ),
+        (
+            "ERROR nestd.sessions: turn failed: ProcessError: "
+            '{"prompt": "fix the billing bug for our client acme"}',
+            "billing",
+        ),
+        (
+            "anthropic.BadRequestError: Error code: 400 - {'messages': 'the secret plan for Q4"
+            " launch'}",
+            "secret plan",
+        ),
     ],
 )
 def test_nothing_private_survives(line: str, secret: str) -> None:
@@ -73,23 +104,36 @@ def test_nothing_private_survives(line: str, secret: str) -> None:
         "2026-11-07 00:39:37,753 INFO uvicorn.error: Uvicorn running on http://127.0.0.1:8765",
         # Regression: the module name read as a label and took "serving" with it.
         "2026-11-07 09:59:44,920 INFO nestd.auth.token_socket: serving this Mac's device token"
-        " on ~/nest/token.sock",
+        " on ~/Library/Application Support/nest/token.sock",
         # Regression: a long path read as a key.
         "Using bundled Claude Code CLI: ~/Library/Application Support/nest/daemon/0.1.2/lib/"
         "python3.12/site-packages/claude_agent_sdk/_bundled/claude",
+        # B159 R50: error codes are no pairing codes, and "repair" is no line about pairing.
+        "spawn claude failed, code: 'ENOENT'",
+        "open failed: code=EACCES",
+        "repair state DEGRADED EXPECTED",
     ],
 )
 def test_what_helps_with_a_bug_stays(line: str) -> None:
     assert redact(line, HOME) == line
 
 
-def test_a_long_report_asks_for_the_file_instead() -> None:
-    short = issue_url("a short report", "nest-report-1.txt")
-    long = issue_url("x " * 10000, "nest-report-1.txt")
+def test_a_cut_exception_keeps_its_exit_status() -> None:
+    line = (
+        "ERROR nestd.gitops: subprocess.CalledProcessError: Command '['git', 'fetch',"
+        " 'origin']' returned non-zero exit status 128."
+    )
 
-    assert "a+short+report" in short
-    assert len(long) < 1000
-    assert "nest-report-1.txt" in long
+    assert redact(line, HOME).endswith("exit status 128.")
+
+
+def test_the_issue_link_never_carries_the_report() -> None:
+    """B159 R50: the address reaches github.com before the user presses Submit."""
+    url = issue_url("nest-report-1.txt")
+
+    assert url.startswith("https://github.com/")
+    assert "nest-report-1.txt" in url
+    assert len(url) < 1000
 
 
 class Service:
@@ -114,7 +158,15 @@ def test_the_report_file_holds_the_checks_and_a_clean_log(tmp_path: Path) -> Non
     paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
     paths.logs_dir.mkdir(parents=True)
     routine = '2026-11-07 09:59:33 INFO uvicorn.access: 1.2.3.4:5 - "GET /api/pixies HTTP/1.1" 200'
-    log = f"ERROR at {home}/projects/x with token=abc123 for me@example.com\n{routine}\n"
+    engine = (
+        "2026-11-07 09:59:34,000 DEBUG nestd.engine_stderr: Claude Code in ~/x: warning one\n"
+        "  the second line of it\n"
+    )
+    after = "2026-11-07 09:59:35,000 INFO nestd.app: started\n"
+    log = (
+        f"ERROR at {home}/Library/Logs/x with token=abc123 for me@example.com\n{routine}\n"
+        f"{engine}{after}"
+    )
     (paths.logs_dir / "daemon.log").write_text(log, encoding="utf-8")
 
     def nothing(_args: object, _env: object, _limit: float = 1.0) -> CommandResult:
@@ -145,11 +197,15 @@ def test_the_report_file_holds_the_checks_and_a_clean_log(tmp_path: Path) -> Non
     text = Path(report.path).read_text(encoding="utf-8")
     assert text == report.text
     assert "[missing] Background service" in text
-    assert "~/projects/x" in text
+    assert "~/Library/Logs/x" in text
+    assert "warning one" not in text
+    assert "the second line" not in text
+    assert "nestd.app: started" in text
     assert "abc123" not in text
     assert "me@example.com" not in text
     assert oct(Path(report.path).stat().st_mode)[-3:] == "600"
     assert "/api/pixies" not in text
     assert "[ok] Dictation: Allowed" in text
     assert report.issue_url.startswith("https://github.com/")
-    assert not report.attach_file
+    assert "Dictation" not in report.issue_url
+    assert report.attach_file
