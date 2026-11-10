@@ -41,6 +41,9 @@ x11 = { version = "=2.21.0", features = ["xlib"] }
 # Already in Tauri's tree (wry's web view): the microphone for voice input (B154).
 webkit2gtk = "=2.0.2"
 zbus = "=5.19.0"
+# Already in Tauri's tree (the opener plugin): its list of launchers, run with the user's
+# own environment rather than the AppImage's (platform::open_in_system).
+open = "=5.4.5"
 
 # Linux sends notifications itself (platform/linux.rs); the Windows layer can use the plugin.
 [target.'cfg(windows)'.dependencies]

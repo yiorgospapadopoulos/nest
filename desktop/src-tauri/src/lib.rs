@@ -51,7 +51,6 @@ const DISPLAY_INPUTS: &[&str] = &[
 pub struct Prepared {
     settings_path: PathBuf,
     settings: Settings,
-    set_vars: Vec<String>,
     follow_display: bool,
 }
 
@@ -91,11 +90,11 @@ pub fn prepare() -> Prepared {
     for (name, value) in &vars {
         std::env::set_var(name, value);
     }
+    env::set_own(vars.iter().map(|(name, _)| (*name).to_owned()).collect());
     Prepared {
         settings_path,
         settings,
         follow_display,
-        set_vars: vars.iter().map(|(name, _)| (*name).to_owned()).collect(),
     }
 }
 
@@ -112,7 +111,6 @@ pub fn run(prepared: Prepared) {
         pill_size: Mutex::new(window::PILL_SIZE),
         maximized: Mutex::default(),
         follow_display: prepared.follow_display,
-        own_vars: prepared.set_vars.clone(),
         swap_tried: AtomicBool::new(false),
     };
 
@@ -123,7 +121,7 @@ pub fn run(prepared: Prepared) {
         }))
         // Its own commands are not granted to any window; pick_folder calls it from Rust.
         .plugin(tauri_plugin_dialog::init())
-        // Like the dialog: only Nest's own commands (open_external, open_path) call it.
+        // Like the dialog: only Nest's own commands call it, to show an item in its folder.
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -139,7 +137,7 @@ pub fn run(prepared: Prepared) {
                 .build(),
         )
         .manage(state)
-        .manage(Ptys::new(prepared.set_vars))
+        .manage(Ptys::new(env::program_changes()))
         .manage(Artifacts::default())
         .register_uri_scheme_protocol(artifact::SCHEME, |context, request| {
             context

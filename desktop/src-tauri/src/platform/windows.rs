@@ -102,6 +102,10 @@ pub fn start_service() -> Result<&'static str, String> {
     unimplemented!()
 }
 
+pub fn open_in_system(_target: &std::ffi::OsStr) -> Result<(), String> {
+    unimplemented!()
+}
+
 pub fn open_in_text_editor(_file: &Path) -> Result<bool, String> {
     unimplemented!()
 }

@@ -28,7 +28,7 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 const LOG_FILE: &str = "app-update.log";
 
 /// Starts the helper from the install, in a session of its own, for the app to quit next.
-pub fn start(install: &Install, version: &str, scrub: &[String]) -> Result<(), String> {
+pub fn start(install: &Install, version: &str) -> Result<(), String> {
     let mut command = Command::new(install.program());
     command
         .arg(HELPER_ARG)
@@ -37,7 +37,7 @@ pub fn start(install: &Install, version: &str, scrub: &[String]) -> Result<(), S
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    app_swap::scrub(&mut command, scrub);
+    app_swap::scrub(&mut command);
     install::detach(&mut command);
     command
         .spawn()
@@ -190,7 +190,7 @@ pub fn run(args: &[String]) -> i32 {
                 .to_str()
                 .ok_or_else(|| "The app file's path is not text".to_owned())
                 .and_then(|path| app_swap::app_file(path, &data_dir))
-                .and_then(|file| app_swap::swap(&file, &install, &[]));
+                .and_then(|file| app_swap::swap(&file, &install));
             match swap {
                 Ok(()) => {
                     log.say("swapped in the new app: it opens as this helper ends");
@@ -206,7 +206,7 @@ pub fn run(args: &[String]) -> i32 {
     if swapped {
         return 0;
     }
-    match app_swap::reopen(&install, &[]) {
+    match app_swap::reopen(&install) {
         Ok(()) => 0,
         Err(error) => {
             log.say(&error);

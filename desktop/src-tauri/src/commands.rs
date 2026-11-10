@@ -88,8 +88,6 @@ pub struct AppState {
     /// Whether GTK's scale follows the display's while Nest runs: Nest chose XWayland and
     /// the user set no scale of their own (window::follow_display_scale).
     pub follow_display: bool,
-    /// The variables Nest set for itself, which a new app must work out again.
-    pub own_vars: Vec<String>,
     /// Whether this launch already tried to swap to a new app.
     pub swap_tried: AtomicBool,
 }
@@ -227,10 +225,9 @@ pub async fn swap_app(
     if app_swap::swapped_lately(&data, &file, &version) {
         return Ok(());
     }
-    let own_vars = state.own_vars.clone();
     tauri::async_runtime::spawn_blocking(move || {
         app_swap::note_swap(&data, &file, &version)?;
-        app_swap::swap(&file, &install, &own_vars)
+        app_swap::swap(&file, &install)
     })
     .await
     .map_err(message)??;
@@ -267,7 +264,7 @@ pub async fn relaunch_app(
     app_swap::app_file(&file.to_string_lossy(), &data)?;
     // The helper swaps; this launch does not try as well.
     state.swap_tried.store(true, Ordering::SeqCst);
-    after_update::start(&install, &version, &state.own_vars)?;
+    after_update::start(&install, &version)?;
     app.exit(0);
     Ok(true)
 }
@@ -275,13 +272,9 @@ pub async fn relaunch_app(
 /// Starts `nest uninstall`, with `--delete-data` when asked, so it outlives the app and the
 /// service, then quits.
 #[tauri::command(rename_all = "snake_case")]
-pub async fn uninstall_nest(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    delete_data: bool,
-) -> Result<(), String> {
+pub async fn uninstall_nest(app: AppHandle, delete_data: bool) -> Result<(), String> {
     let data = daemon::data_dir(&env::process)?;
-    install::uninstall(&data, delete_data, &state.own_vars)?;
+    install::uninstall(&data, delete_data)?;
     app.exit(0);
     Ok(())
 }
@@ -335,11 +328,9 @@ pub async fn browser_reload(app: AppHandle, label: String) -> Result<(), String>
 
 /// A web or mail link in the system's browser or mail app, as on the Mac.
 #[tauri::command(rename_all = "snake_case")]
-pub async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+pub async fn open_external(url: String) -> Result<(), String> {
     let url = external::external_url(&url)?;
-    app.opener()
-        .open_url(url.as_str(), None::<&str>)
-        .map_err(message)
+    open_in_system(url.as_str().into()).await
 }
 
 /// A folder in the file manager, or with `reveal` any item shown in its folder; only in
@@ -362,9 +353,13 @@ pub async fn open_path(
     if !path.is_dir() {
         return Err(format!("Not a folder: {}", path.display()));
     }
-    app.opener()
-        .open_path(path.to_string_lossy(), None::<&str>)
-        .map_err(message)
+    open_in_system(path.into_os_string()).await
+}
+
+async fn open_in_system(target: std::ffi::OsString) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || crate::platform::open_in_system(&target))
+        .await
+        .map_err(message)?
 }
 
 /// A file a message names, in the app that opens text, never run and never through the
