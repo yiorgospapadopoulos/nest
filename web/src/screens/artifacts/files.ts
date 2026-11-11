@@ -41,9 +41,14 @@ export function fileName(title: string, kind: ArtifactKind): string {
   return `${safeName(title) || "Artifact"}.${EXTENSIONS[kind]}`;
 }
 
+/** The content as a file of its kind (`TYPES`). */
+export function fileBlob(kind: ArtifactKind, content: string): Blob {
+  return new Blob([content], { type: TYPES[kind] });
+}
+
 /** Hands the content to the browser as a download, as written (no injected policy). */
 export function saveFile(title: string, kind: ArtifactKind, content: string): void {
-  download(fileName(title, kind), new Blob([content], { type: TYPES[kind] }));
+  download(fileName(title, kind), fileBlob(kind, content));
 }
 
 /** Hands the blob to the browser as a download under the name. */

@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { Artifact, ArtifactContent } from "../../api/types.ts";
 import { PRINT } from "../../screens/artifacts/bridge.ts";
-import { download } from "../../screens/artifacts/files.ts";
 import { useStore } from "../../store/context.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
-import type { Bridge } from "../bridge.ts";
 import { useBridge } from "../context.ts";
 import { Button } from "../ui/controls.tsx";
 import { ArtifactFrame } from "./ArtifactFrame.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { Glyph } from "./glyphs.tsx";
 import { useAsks, useStoredSize } from "./pageData.ts";
-import { ASKING, exportsPdf, fileName, line, pdfName, savedText, versionText } from "./text.ts";
+import { ASKING, exportsPdf, fileName, line, pdfName, versionText } from "./text.ts";
 import { useNow } from "../pixies/useNow.ts";
+import { saveAs } from "./save.ts";
 import { select } from "./viewState.ts";
 
 interface Props {
@@ -230,20 +229,6 @@ export function ArtifactReader({ artifact, version }: Props) {
       )}
     </section>
   );
-}
-
-/**
- * Save as file: the version as written (HTML without the injected policy), where the user
- * picks in the system's save dialog, as the Mac's saveArtifact; a download in a browser.
- */
-async function saveAs(content: ArtifactContent, bridge: Bridge): Promise<string | null> {
-  const name = fileName(content.title, content.kind);
-  if (!bridge.native) {
-    const type = content.kind === "html" ? "text/html" : "text/plain";
-    download(name, new Blob([savedText(content)], { type: `${type};charset=utf-8` }));
-    return null;
-  }
-  return bridge.saveFile(name, { text: savedText(content) });
 }
 
 /** The version shown, read once per version; `retry` reads it again after a failure. */
