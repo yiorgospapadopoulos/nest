@@ -1,6 +1,6 @@
 # Nest
 
-Nest is the best open-source app for running many coding agents at once. Start a chat on one task, then another and another: each agent works on its own, in its own git worktree, so they can change the same project side by side without getting in each other's way. You watch them all in one window, and whatever needs you (a question, a permission, work to review) waits in one list, so you can move between them instead of waiting on any one. Pixies, agents you keep, take on jobs of their own, and Autopilot keeps a chat going while you're away.
+Nest is the best open-source app for running many coding agents at once. Start a chat on one task, then another and another: each agent works on its own, and any chat can take its own git worktree, so several can change the same project side by side without getting in each other's way. You watch them all in one window, and whatever needs you (a question, a permission, work to review) waits in one list, so you can move between them instead of waiting on any one. Pixies, agents you keep, take on jobs of their own, and Autopilot keeps a chat going while you're away.
 
 The agents are the real ones (Claude Code, Codex, a few others, or a model on your own computer), running on your own plan and your own setup: your CLAUDE.md, skills, plugins, MCP servers and hooks all load as they do in the terminal. It runs on your machine, with a Mac app, a Linux app and an iPhone app.
 
@@ -16,24 +16,24 @@ On a Mac with Apple silicon and macOS 15 or later, or on x86_64 or arm64 Linux w
 curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh
 ```
 
-It needs no developer tools. Ubuntu doesn't come with `curl`, so on Linux run `sudo apt install curl` first if the line says `curl` is not found. It downloads Nest, checks the release's signature and every file against its sha256, starts the background service and opens the app. A first install takes the newest Claude Code and Codex, once they pass a quick test, so Nest starts up to date. You can run the same line again at any time to repair an install; it keeps your chats.
+It needs no developer tools. Ubuntu doesn't come with `curl`, so on Linux run `sudo apt install curl` first if the line says `curl` is not found. It downloads Nest, checks the release's signature and every file against its sha256, starts the background service and opens the app. A first install takes the newest Claude Code and Codex from PyPI instead of the release's own, keeping them only once they pass a quick test, so Nest starts up to date. You can run the same line again at any time to repair an install; it keeps your chats.
 
 Nest goes in `/Applications` on a Mac (run it from an administrator account) and in your app menu on Linux, with no `sudo`. It changes no shell files: if `~/.local/bin` is not on your `PATH`, the script prints the line to add. When the background service is down, Nest first starts it again itself, and only shows this line if that fails. It refuses to run over a Nest that runs from a source checkout.
 
 On Linux Nest needs a systemd user session and the Secret Service, which Ubuntu has. Without them the script says what is missing and stops.
 
-Downloading the Mac app from the Releases page in a browser also works. It is signed and notarized by Apple, so it opens like any other app.
+You can also download the Mac app from the Releases page in a browser. It is signed and notarized by Apple, so it opens like any other app, but on its own it only shows the install line above: the background service still needs that line, run once.
 
 ## First run
 
-The app opens on a short guide. Each step says whether it is done, and you can skip any of them but the first. Afterwards, Settings > General > Set up Nest shows every step and what is still missing.
+The app opens on a short guide. Each step says whether it is done, and you can skip any of them but the first and the last. Afterwards, Settings > General > Set up Nest shows every step and what is still missing.
 
 1. **Engine.** Sign in to Claude Code or Codex with your own plan, or choose local models only. Nest needs one engine to work. Claude Code signs in with its own login, which Nest opens in a terminal; it opens the sign-in page in your browser.
 2. **git.** On a Mac, Install opens Apple's installer for the command line tools.
 3. **GitHub.** Sign in with the `gh` tool, for pull requests and issues.
 4. **Background service.** Nest's own server on this computer, which the installer already started.
 5. **Tailscale and iPhone.** See [iPhone](#iphone) below.
-6. **Notifications** and **Dictation.** macOS asks for each.
+6. **Notifications** and **Dictation.** macOS asks for each. On Linux the **Secret Service** step takes Dictation's place.
 7. **First chat.** Add a project folder and send one message to check it all works.
 
 ## A tour
@@ -142,7 +142,7 @@ While Nest runs, a strip around the MacBook's notch shows your pixies at work: t
 
 ### Also in Nest
 
-- **More engines.** Besides Claude Code and Codex, chats can run on OpenCode, Gemini CLI, Cursor, Copilot CLI, Antigravity, Grok Build or a model on your own computer (LM Studio, Ollama and others), all from one model menu. See [Local models](docs/using-nest.md#local-models) and [More engines](docs/using-nest.md#more-engines-agent-client-protocol).
+- **More engines.** Besides Claude Code and Codex, chats can run on OpenCode, Gemini CLI, Cursor (your own install of its CLI), Copilot CLI, Antigravity, Grok Build or a model on your own computer (LM Studio, Ollama and others), all from one model menu. See [Local models](docs/using-nest.md#local-models) and [More engines](docs/using-nest.md#more-engines-agent-client-protocol).
 - **Several accounts.** Sign in more than one plan per engine and switch which one chats use. See [Accounts](docs/using-nest.md#settings-storage-pixies-and-accounts).
 - **Your terminal chats.** Chats you started in Claude Code or Codex outside Nest show up too, and **Continue in Nest** picks one up. See [Chats from Claude Code and Codex](docs/using-nest.md#chats-from-claude-code-and-codex).
 - **Terminal agents and the `nest` command.** Let Claude Code, Codex or your shell list, read, message and start Nest chats, at the level you give each. See [Terminal agents](docs/using-nest.md#terminal-agents-and-the-nest-command).
@@ -182,7 +182,7 @@ Every device can be revoked in Settings > Devices.
 
 ## Privacy
 
-Nest sends nothing home. Your chats, settings and files stay on your computer. Nest talks only to the engines you sign in to and to GitHub, as you, through your own logins, and, when an app opens, to GitHub, PyPI and npm to look for updates. It never reads or keeps your passwords, and there is no Nest account or server. A picture an agent puts in a reply by its web address loads only when you click Show picture, since its address could carry what the agent read to that site.
+Nest sends nothing home. Your chats, settings and files stay on your computer. Nest talks to the engines you sign in to and to GitHub, as you, through your own logins, and, when an app opens, to GitHub, PyPI and npm to look for updates. Engines and their updates are downloaded from PyPI, npm, Google's download server for Antigravity, and Anthropic's installer if you install Claude Code from Nest. Voice input downloads its speech engine from PyPI and its model from Hugging Face, once, when you set it up. Artifact pages load script libraries from public CDNs (jsDelivr and cdnjs, and, for a page an agent wrote, also unpkg, the Tailwind and jQuery CDNs and Google Fonts). Push notifications reach the iPhone through Apple's push service, and through the ntfy server you set if you turn ntfy on. It never reads or keeps your passwords, and there is no Nest account or server. A picture an agent puts in a reply by its web address loads only when you click Show picture, since its address could carry what the agent read to that site.
 
 ## Updates
 
