@@ -319,7 +319,7 @@ name = "Review before it lands"
 text = "Changes wait in a diff. Approve commits exactly what you saw and can open a pull request."
 where = "Above the composer"
 added = 2026-10-15
-block = "B57"
+block = "B56"
 
 [[features]]
 id = "issues-to-chats"
@@ -584,7 +584,7 @@ block = "B91"
 id = "more-engines"
 group = "engines"
 name = "More engines"
-text = "Chat with more coding agents, each its maker's own, some with free models. Nest installs them at a checked version, and each asks Nest before it runs a command, so none can push while agents may not."
+text = "Chat with more coding agents, each its maker's own, some with free models. Nest installs most of them at a checked version, checks the commands they run and refuses pushes while agents may not push."
 where = "Settings › Accounts"
 added = 2026-10-27
 block = "B107"
@@ -604,7 +604,7 @@ block = "B98"
 id = "free-usage-checks"
 group = "engines"
 name = "Free usage checks"
-text = "The usage meter keeps your plan's limits up to date without using any of them."
+text = "The usage meter keeps your plan's limits up to date without using any of them. Only when that free read gets no answer does it send a tiny message instead, which can start a five-hour window."
 where = "Usage meter"
 added = 2026-11-08
 block = "B142"
@@ -613,7 +613,7 @@ block = "B142"
 id = "per-model-limits"
 group = "engines"
 name = "Per-model limits"
-text = "The weekly limits your plan has for one model, such as Fable, show with their percent and reset time next to the 5 hour and weekly ones."
+text = "The weekly limits your plan has for a single model show with their percent and reset time next to the 5 hour and weekly ones."
 where = "Settings > Accounts, Settings > Usage and the usage popover"
 added = 2026-11-10
 block = "B161"
@@ -621,11 +621,20 @@ block = "B161"
 [[features]]
 id = "claude-limit-reset"
 group = "engines"
-name = "Claude limit reset in a terminal"
-text = "Reset in Terminal opens Claude Code ready to use your Claude plan's limit reset, after asking you first. Claude Code says there whether you have one."
+name = "Limit reset in a terminal"
+text = "Reset in Terminal opens a terminal ready to use your plan's limit reset, after asking you first. The terminal then says whether you have one."
 where = "Settings > Accounts > Claude > Limit reset"
 added = 2026-11-10
 block = "B161"
+
+[[features]]
+id = "banked-resets"
+group = "engines"
+name = "Banked limit resets"
+text = "The limit resets your plan has saved up are listed with when they expire, and you can use one after a confirmation."
+where = "Settings > Accounts > Codex > Banked resets"
+added = 2026-10-21
+block = "B98"
 
 [[features]]
 id = "local-models"
@@ -666,6 +675,15 @@ where = "Settings › Devices"
 added = 2026-10-07
 changed = 2026-11-02
 block = "B10"
+
+[[features]]
+id = "other-computer"
+group = "engines"
+name = "Nest on another computer"
+text = "The Mac app can switch to Nest running on another of your computers over your private network, one at a time. Each keeps its own tabs and panes."
+where = "Settings › Devices › Pair a daemon"
+added = 2026-10-22
+block = "B105"
 
 [[features]]
 
@@ -738,7 +756,7 @@ block = "B130"
 id = "check-nest"
 group = "around"
 name = "Says what's wrong in plain words"
-text = "Check Nest and `nest doctor` name what's broken and how to fix it, even with Nest stopped. A bug report leaves out your secrets and your projects' names, and Report on GitHub opens an issue for you to attach it to."
+text = "Set up Nest and `nest doctor` name what's broken and how to fix it, `nest doctor` even with Nest stopped. Report a bug writes a report that leaves out your secrets and your projects' names, and Report on GitHub opens an issue for you to attach it to."
 where = "Settings > General"
 added = 2026-11-07
 block = "B130"
