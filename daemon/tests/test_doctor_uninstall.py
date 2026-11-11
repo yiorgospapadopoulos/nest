@@ -104,7 +104,9 @@ def test_it_removes_nest_and_keeps_the_users_things(machine: Machine) -> None:
     assert paths.settings_file.exists()
     assert paths.attachments_dir.exists()
     assert any("Kept your chats" in line for line in said)
-    assert any("tailscale serve reset" in line for line in said)
+    # B166: the command that ends Nest's share only, never one that ends every share.
+    assert any("tailscale serve --https=443 off" in line for line in said)
+    assert not any("serve reset" in line for line in said)
 
 
 def test_delete_data_is_the_only_way_chats_go(machine: Machine) -> None:
