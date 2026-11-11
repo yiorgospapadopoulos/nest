@@ -16,7 +16,7 @@ On a Mac with Apple silicon and macOS 15 or later, or on x86_64 or arm64 Linux w
 curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh
 ```
 
-It needs no developer tools. Ubuntu doesn't come with `curl`, so on Linux run `sudo apt install curl` first if the line says `curl` is not found. It downloads Nest, checks the release's signature and every file against its sha256, starts the background service and opens the app. You can run the same line again at any time to repair an install; it keeps your chats.
+It needs no developer tools. Ubuntu doesn't come with `curl`, so on Linux run `sudo apt install curl` first if the line says `curl` is not found. It downloads Nest, checks the release's signature and every file against its sha256, starts the background service and opens the app. A first install takes the newest Claude Code and Codex, once they pass a quick test, so Nest starts up to date. You can run the same line again at any time to repair an install; it keeps your chats.
 
 Nest goes in `/Applications` on a Mac (run it from an administrator account) and in your app menu on Linux, with no `sudo`. It changes no shell files: if `~/.local/bin` is not on your `PATH`, the script prints the line to add. When the background service is down, Nest first starts it again itself, and only shows this line if that fails. It refuses to run over a Nest that runs from a source checkout.
 
