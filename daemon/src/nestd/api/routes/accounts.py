@@ -172,7 +172,7 @@ async def open_limit_reset(account_id: str, ctx: Context) -> Response:
     there and uses it.
     """
     account = await ctx.accounts.limit_reset_account(account_id)
-    await ctx.local_apps.open_limit_reset(account)
+    await ctx.local_apps.open_limit_reset(account, ctx.claude_code.program())
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

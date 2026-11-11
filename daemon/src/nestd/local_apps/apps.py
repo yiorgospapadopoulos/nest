@@ -50,8 +50,11 @@ class LocalApps:
         self._launchers_dir = launchers_dir
         self._opener = opener_for(platform, run, launchers_dir, which, editor_folders)
 
-    async def open_in_claude_code(self, session: Session, live: bool) -> ClaudeCodeLaunch:
-        """Open a terminal running `claude --resume` in the session's folder.
+    async def open_in_claude_code(
+        self, session: Session, live: bool, program: Path
+    ) -> ClaudeCodeLaunch:
+        """Open a terminal running `claude --resume` in the session's folder, `program`
+        being the Claude Code Nest runs.
 
         `live` says Nest runs the session too; that is allowed, with a warning.
         """
@@ -60,17 +63,17 @@ class LocalApps:
             raise ConflictError(msg)
         cwd = require_workspace(session)
         launcher = self._launchers_dir / f"{session.id}{self._opener.launcher_suffix}"
-        await asyncio.to_thread(write_launcher, launcher, cwd, session.provider_session_id)
+        await asyncio.to_thread(write_launcher, launcher, program, cwd, session.provider_session_id)
         await self._opener.open_launcher(launcher)
         return ClaudeCodeLaunch(launcher, LIVE_WARNING if live else None)
 
-    async def open_limit_reset(self, account: RunAccount) -> Path:
+    async def open_limit_reset(self, account: RunAccount, program: Path) -> Path:
         """Open a terminal running Claude Code's `/limit-reset` on the Claude account
         (B161). Only Claude Code uses the reset, after asking in the terminal.
         """
         launcher = self._launchers_dir / f"limit-reset-{account.id}{self._opener.launcher_suffix}"
         cwd = self._launchers_dir / "limit-reset"
-        await asyncio.to_thread(write_limit_reset_launcher, launcher, cwd, account.env)
+        await asyncio.to_thread(write_limit_reset_launcher, launcher, program, cwd, account.env)
         await self._opener.open_launcher(launcher)
         return launcher
 
