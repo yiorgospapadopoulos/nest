@@ -29,7 +29,8 @@ final class WebPanes: NSObject {
     /// newest, and back when that one leaves.
     @ObservationIgnored private var holders: [WebPaneBridge.Target: [PaneContentView]] = [:]
     @ObservationIgnored private var configuration: WKWebViewConfiguration?
-    @ObservationIgnored private var rules: Task<Void, Never>?
+    /// Whether the list of blocked addresses is in place for the shared configuration.
+    @ObservationIgnored private var rules: Task<Bool, Never>?
     /// Pages that could not show, which their panes say.
     private var failed: Set<WebPaneBridge.Target> = []
 
@@ -157,18 +158,30 @@ final class WebPanes: NSObject {
         return configuration
     }
 
-    private func install(rulesFor base: URL, in configuration: WKWebViewConfiguration) async {
+    /// False when WebKit could not build the list.
+    private func install(
+        rulesFor base: URL, in configuration: WKWebViewConfiguration
+    ) async -> Bool {
         let list = try? await WKContentRuleListStore.default().compileContentRuleList(
             forIdentifier: WebPaneBridge.rulesIdentifier(base: base),
             encodedContentRuleList: WebPaneBridge.contentRules(base: base))
-        if let list {
-            configuration.userContentController.add(list)
-        }
+        guard let list else { return false }
+        configuration.userContentController.add(list)
+        return true
     }
 
-    /// Nothing loads before the rule list is in place.
+    /// Nothing loads before the rule list is in place. Without one the page fails instead
+    /// of loading with nothing blocked, and the next page builds the list again.
     private func load(_ page: WebPane) async {
-        await rules?.value
+        let building = rules
+        guard await building?.value == true else {
+            if rules == building {
+                configuration = nil
+                rules = nil
+            }
+            fail(page)
+            return
+        }
         guard pages[page.target] === page, let base = model.pageConnection?.baseURL else { return }
         guard let address = WebPaneBridge.address(base: base, target: page.target)
         else { return }
