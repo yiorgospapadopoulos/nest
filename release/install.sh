@@ -144,6 +144,9 @@ fetch_release() {
     "" | *[!0-9.]* | .* | *. | *..*) stop "The release list could not be read." ;;
     esac
     check_not_older
+    # Before anything here changes: only a computer with no Nest yet gets the newest engines.
+    first_install=1
+    [ ! -e "$data/daemon/current" ] && [ ! -L "$data/daemon/current" ] || first_install=0
     say "Installing Nest $version"
     fetch app "$platform" "$work/app"
     fetch wheel any "$work/nestd.whl"
@@ -203,21 +206,51 @@ sys.exit(0 if ok else 1)
     say "Your data is backed up to $backup"
 }
 
+# A new environment with only Nest's own package in, which needs nothing else to install.
+new_environment() {
+    rm -rf "$partial"
+    run_uv venv --quiet --relocatable --python 3.12 --python-preference only-managed "$partial"
+    # uv reads the version from the name, and engine updates install this copy again.
+    wheel="$partial/$(field "$(entry wheel any)" name)"
+    cp "$work/nestd.whl" "$wheel"
+    run_uv pip install --quiet --python "$partial/bin/python" --no-deps "$wheel"
+}
+
+# A first install starts on the newest Claude Code and Codex, kept only when they pass the
+# engines' own check (D193). Fails, changing nothing kept, when there is none newer, PyPI
+# cannot be asked or the check fails. An install already here keeps the release's engines:
+# its updates wait for Relaunch to update.
+newest_engines() {
+    [ "$first_install" = 1 ] || return 1
+    "$partial/bin/python" -m nestd.updates.first_install "$work/requirements.txt" \
+        "$work/requirements-rest.txt" >"$work/newest-engines.txt" 2>/dev/null || return 1
+    say "Getting the newest engines"
+    run_uv pip install --quiet --python "$partial/bin/python" --require-hashes \
+        -r "$work/requirements-rest.txt" || return 1
+    # Built wheels only, as engine updates take them.
+    run_uv pip install --quiet --python "$partial/bin/python" --only-binary :all: \
+        -r "$work/newest-engines.txt" || return 1
+    say "Checking them"
+    mkdir -p "$work/selfcheck-engines"
+    "$partial/bin/python" -m nestd engines selfcheck --engines-dir "$work/selfcheck-engines" \
+        >/dev/null 2>&1 && return 0
+    say "They didn't pass, so Nest uses the engines this release comes with"
+    return 1
+}
+
 # The daemon in a folder of its own, made beside the others and renamed once it runs.
 build_daemon() {
     say "Setting up the background service"
     folder="$data/daemon/$version"
     partial="$folder.partial"
-    rm -rf "$partial"
     mkdir -p "$data/daemon"
     export UV_PYTHON_INSTALL_DIR="$data/bin/python"
     export UV_CACHE_DIR="$work/uv-cache"
-    run_uv venv --quiet --relocatable --python 3.12 --python-preference only-managed "$partial"
-    run_uv pip install --quiet --python "$partial/bin/python" --require-hashes -r "$work/requirements.txt"
-    # uv reads the version from the name, and engine updates install this copy again.
-    wheel="$partial/$(field "$(entry wheel any)" name)"
-    cp "$work/nestd.whl" "$wheel"
-    run_uv pip install --quiet --python "$partial/bin/python" --no-deps "$wheel"
+    new_environment
+    if ! newest_engines; then
+        [ ! -s "$work/newest-engines.txt" ] || new_environment
+        run_uv pip install --quiet --python "$partial/bin/python" --require-hashes -r "$work/requirements.txt"
+    fi
     # Kept for Undo update, and for an app that has to swap to this version's copy.
     cp "$work/app" "$partial/app-file"
     "$partial/bin/python" -m nestd service --help >/dev/null ||
