@@ -8,9 +8,7 @@ from importlib import metadata
 from pydantic import BaseModel
 
 from nestd.providers.acp_engines import ACP_ENGINES, AcpEngine
-
-CLAUDE_PACKAGE = "claude-agent-sdk"
-CODEX_PACKAGE = "openai-codex-cli-bin"
+from nestd.updates.pypi import CLAUDE_PACKAGE, CODEX_PACKAGE
 
 
 @dataclass(frozen=True)
