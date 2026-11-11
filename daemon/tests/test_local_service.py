@@ -301,19 +301,6 @@ async def test_the_first_run_ends_only_when_finished(env: Env) -> None:
     assert await env.local.finish_setup() == SetupState(first_run=False, local_only=False)
 
 
-async def test_engine_updates_wait_a_day_from_the_first_finish(env: Env) -> None:
-    """B136: a new install offered a newer Claude Code in its first minute."""
-    assert await env.local.engine_updates_wait()
-    await env.local.finish_setup()
-    env.clock.advance(timedelta(hours=23))
-    await env.local.finish_setup()
-    assert await env.local.engine_updates_wait()
-
-    env.clock.advance(timedelta(hours=2))
-
-    assert not await env.local.engine_updates_wait()
-
-
 async def test_apps_are_started_only_when_installed(env: Env) -> None:
     with pytest.raises(AppNotInstalledError):
         await env.local.start("lmstudio")

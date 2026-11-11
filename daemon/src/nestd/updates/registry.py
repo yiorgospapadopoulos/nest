@@ -4,7 +4,8 @@ from typing import cast
 
 import httpx
 
-_PYPI = "https://pypi.org/pypi/{package}/json"
+from nestd.updates.pypi import PYPI_URL, newest_in
+
 # npm's `latest` dist-tag; scoped names work unescaped in this path.
 _NPM = "https://registry.npmjs.org/{package}/latest"
 
@@ -29,16 +30,11 @@ async def _json(client: httpx.AsyncClient, url: str) -> dict[str, object]:
 
 async def latest_on_pypi(client: httpx.AsyncClient, package: str) -> str | None:
     """None when the newest release was pulled."""
-    info = (await _json(client, _PYPI.format(package=package))).get("info")
-    if not isinstance(info, dict):
-        msg = f"PyPI's answer for {package} has no info"
-        raise RegistryError(msg)
-    fields = cast("dict[str, object]", info)
-    version = fields.get("version")
-    if not isinstance(version, str):
-        msg = f"PyPI's answer for {package} has no version"
-        raise RegistryError(msg)
-    return None if fields.get("yanked") is True else version
+    body = await _json(client, PYPI_URL.format(package=package))
+    try:
+        return newest_in(body, package)
+    except ValueError as error:
+        raise RegistryError(str(error)) from error
 
 
 async def latest_on_npm(client: httpx.AsyncClient, package: str) -> str:

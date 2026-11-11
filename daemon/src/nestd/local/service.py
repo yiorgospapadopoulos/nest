@@ -61,11 +61,6 @@ CHECK_TTL = timedelta(seconds=3)
 ENGINE = "local_engine"
 LOCAL_ONLY = "local_only"
 FIRST_RUN_DONE = "first_run_done"
-# When the guide was first finished, and how long engine updates then wait (B136): a new
-# install's engines are its release's, and a newer Claude Code is nearly always out, which
-# put an update in front of a user who had just installed.
-FIRST_RUN_DONE_AT = "first_run_done_at"
-ENGINE_UPDATES_WAIT = timedelta(days=1)
 _APPS: dict[str, StartApp] = {"LM Studio": "lmstudio", "Ollama": "ollama"}
 # The app whose Messages usage counts cache reads inside input_tokens (live, 0.4.21).
 _LM_STUDIO = "LM Studio"
@@ -323,25 +318,7 @@ class LocalModels:
         await self._first_run_done()
         return await self.setup()
 
-    async def engine_updates_wait(self) -> bool:
-        """Whether a new install is still in its first day, while engine-only updates wait:
-        the guide is open, or was finished less than a day ago. An install from before this
-        was recorded never waits.
-        """
-        if (await self.setup()).first_run:
-            return True
-        done = await self._store.setting(FIRST_RUN_DONE_AT)
-        if not isinstance(done, str):
-            return False
-        try:
-            finished = datetime.fromisoformat(done)
-        except ValueError:
-            return False
-        return self._clock.now() - finished < ENGINE_UPDATES_WAIT
-
     async def _first_run_done(self) -> None:
-        if not await self._flag(FIRST_RUN_DONE):
-            await self._store.set_setting(FIRST_RUN_DONE_AT, self._clock.now().isoformat())
         await self._store.set_setting(FIRST_RUN_DONE, True)
 
     async def in_use(self) -> bool:

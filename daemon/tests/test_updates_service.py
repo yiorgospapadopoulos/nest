@@ -74,12 +74,9 @@ class Rig:
             self.files.load().model_copy(update=fields),
         )
 
-    def service(self, engines_wait: bool = False) -> UpdateService:
+    def service(self) -> UpdateService:
         async def healthy(_port: int) -> bool:
             return self.answers.pop(0) if self.answers else True
-
-        async def wait() -> bool:
-            return engines_wait
 
         return UpdateService(
             paths=AppPaths(config_dir=self.root.parent / "config", data_dir=self.root.parent),
@@ -97,7 +94,6 @@ class Rig:
                 versions=lambda: NOW,
                 prefix=self.prefix,
             ),
-            engines_wait=wait,
         )
 
     async def check(self, service: UpdateService | None = None) -> UpdateService:
@@ -233,18 +229,6 @@ async def test_a_newer_version_replaces_the_prepared_one(rig: Rig) -> None:
     assert ready not in (None, stale)
     assert rig.folders() == [ready]
     assert (await service.status()).state == "ready"
-
-
-async def test_a_prepared_engine_update_is_not_offered_while_it_waits(rig: Rig) -> None:
-    """B136: a new install's first day keeps its engine updates back, prepared."""
-    rig.latest = registry(NEW_SDK)
-    await rig.check()
-
-    held = await rig.service(engines_wait=True).status()
-
-    assert (held.state, held.engines) == ("none", [])
-    assert rig.files.load().ready is not None
-    assert (await rig.service().status()).state == "ready"
 
 
 @pytest.mark.parametrize(
