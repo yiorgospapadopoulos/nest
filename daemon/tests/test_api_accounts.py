@@ -1007,7 +1007,8 @@ async def test_the_limit_reset_opens_claude_code_in_a_terminal_and_sends_nothing
         "exec",
         "env",
         f"CLAUDE_CONFIG_DIR={profile}",
-        "claude",
+        # The Claude Code Nest runs, by its path (B166).
+        str(api.ctx.claude_code.program()),
         "/limit-reset",
     ]
     # No `claude` command ran for it, and no usage was read.

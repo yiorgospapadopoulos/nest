@@ -14,6 +14,8 @@ from nestd.local_apps.launchers import (
     SIGN_IN_MARKER,
     launcher_script,
     limit_reset_script,
+    write_launcher,
+    write_limit_reset_launcher,
     write_sign_in_launcher,
 )
 from nestd.platform import LINUX, MACOS
@@ -38,6 +40,10 @@ def session(cwd: Path | None, provider_session_id: str | None = "sdk-1") -> Sess
     )
 
 
+# The Claude Code Nest runs, by its path; the space checks the quoting.
+CLAUDE = Path("/opt/nest tools/claude")
+
+
 @pytest.fixture
 def opener() -> FakeOpener:
     return FakeOpener()
@@ -55,24 +61,29 @@ def install_mac_apps(tmp_path: Path, *bundles: str) -> None:
 
 def test_the_launcher_quotes_the_folder_and_the_conversation() -> None:
     folder = "/work/it's here; rm -rf ~"
-    script = launcher_script(Path(folder), "sdk-1 $(x)")
+    script = launcher_script(CLAUDE, Path(folder), "sdk-1 $(x)")
 
     assert script.startswith("#!/bin/sh\n")
     command = script.splitlines()[-1]
-    assert command == (
-        f"cd {shlex.quote(folder)} && exec claude --resume {shlex.quote('sdk-1 $(x)')}"
-    )
-    assert shlex.split(command)[:5] == ["cd", folder, "&&", "exec", "claude"]
+    assert shlex.split(command) == [
+        "cd",
+        folder,
+        "&&",
+        "exec",
+        str(CLAUDE),
+        "--resume",
+        "sdk-1 $(x)",
+    ]
 
 
 async def test_open_in_claude_code_writes_and_opens_a_launcher(
     apps: LocalApps, opener: FakeOpener, tmp_path: Path
 ) -> None:
-    launch = await apps.open_in_claude_code(session(tmp_path), live=False)
+    launch = await apps.open_in_claude_code(session(tmp_path), live=False, program=CLAUDE)
 
     assert launch.launcher == tmp_path / "launchers" / "abc123.command"
     assert launch.warning is None
-    assert launch.launcher.read_text(encoding="utf-8") == launcher_script(tmp_path, "sdk-1")
+    assert launch.launcher.read_text(encoding="utf-8") == launcher_script(CLAUDE, tmp_path, "sdk-1")
     assert os.access(launch.launcher, os.X_OK)
     assert opener.calls == [(("open", str(launch.launcher)), tmp_path / "launchers")]
 
@@ -80,7 +91,7 @@ async def test_open_in_claude_code_writes_and_opens_a_launcher(
 async def test_open_in_claude_code_warns_while_nest_runs_the_session(
     apps: LocalApps, tmp_path: Path
 ) -> None:
-    launch = await apps.open_in_claude_code(session(tmp_path), live=True)
+    launch = await apps.open_in_claude_code(session(tmp_path), live=True, program=CLAUDE)
 
     assert launch.warning == LIVE_WARNING
 
@@ -89,11 +100,13 @@ async def test_open_in_claude_code_needs_a_conversation_and_a_folder(
     apps: LocalApps, opener: FakeOpener, tmp_path: Path
 ) -> None:
     with pytest.raises(ConflictError, match="no Claude Code conversation"):
-        await apps.open_in_claude_code(session(tmp_path, provider_session_id=None), live=False)
+        await apps.open_in_claude_code(
+            session(tmp_path, provider_session_id=None), live=False, program=CLAUDE
+        )
     with pytest.raises(NoWorkspaceError):
-        await apps.open_in_claude_code(session(None), live=False)
+        await apps.open_in_claude_code(session(None), live=False, program=CLAUDE)
     with pytest.raises(NoWorkspaceError, match="no longer exists"):
-        await apps.open_in_claude_code(session(tmp_path / "gone"), live=False)
+        await apps.open_in_claude_code(session(tmp_path / "gone"), live=False, program=CLAUDE)
     assert opener.calls == []
 
 
@@ -288,14 +301,14 @@ async def test_linux_continues_a_conversation_in_a_terminal_running_a_shell_laun
     opener: FakeOpener, tmp_path: Path
 ) -> None:
     launch = await linux_apps(opener, tmp_path, "gnome-terminal").open_in_claude_code(
-        session(tmp_path), live=False
+        session(tmp_path), live=False, program=CLAUDE
     )
     await linux_apps(opener, tmp_path, "x-terminal-emulator").open_in_claude_code(
-        session(tmp_path), live=False
+        session(tmp_path), live=False, program=CLAUDE
     )
 
     assert launch.launcher == tmp_path / "launchers" / "abc123.sh"
-    assert launch.launcher.read_text(encoding="utf-8") == launcher_script(tmp_path, "sdk-1")
+    assert launch.launcher.read_text(encoding="utf-8") == launcher_script(CLAUDE, tmp_path, "sdk-1")
     assert os.access(launch.launcher, os.X_OK)
     assert opener.calls == [
         ((*DETACH, "gnome-terminal", "--", str(launch.launcher)), tmp_path / "launchers"),
@@ -317,7 +330,7 @@ def test_the_limit_reset_launcher_quotes_the_profile_and_runs_only_claude_code()
     """
     profile = "/data/it's here; rm -rf ~"
     folder = Path("/data/limit reset")
-    script = limit_reset_script(folder, {"CLAUDE_CONFIG_DIR": profile})
+    script = limit_reset_script(CLAUDE, folder, {"CLAUDE_CONFIG_DIR": profile})
 
     assert script.startswith("#!/bin/sh\n")
     command = script.splitlines()[-1]
@@ -328,13 +341,13 @@ def test_the_limit_reset_launcher_quotes_the_profile_and_runs_only_claude_code()
         "exec",
         "env",
         f"CLAUDE_CONFIG_DIR={profile}",
-        "claude",
+        str(CLAUDE),
         "/limit-reset",
     ]
-    first = limit_reset_script(Path("/data"), {}).splitlines()[-1]
-    assert first == "cd /data && exec claude /limit-reset"
+    first = limit_reset_script(Path("/bin/claude"), Path("/data"), {}).splitlines()[-1]
+    assert first == "cd /data && exec /bin/claude /limit-reset"
     with pytest.raises(ValueError, match="not an environment variable name"):
-        limit_reset_script(folder, {"X; rm -rf ~": "1"})
+        limit_reset_script(CLAUDE, folder, {"X; rm -rf ~": "1"})
 
 
 def fake_claude(tmp_path: Path) -> tuple[Path, Path]:
@@ -351,6 +364,27 @@ def fake_claude(tmp_path: Path) -> tuple[Path, Path]:
 
 def run_launcher(launcher: Path) -> None:
     subprocess.run(["/bin/sh", str(launcher)], check=True, timeout=10)  # noqa: S603
+
+
+def test_the_terminal_scripts_run_nests_own_claude_code_with_none_on_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B166: an install with only the Claude Code that comes with Nest has no `claude` for
+    a terminal to find, so Reset in Terminal and Continue in Claude Code run it by path.
+    """
+    program, log = fake_claude(tmp_path)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    folder = tmp_path / "limit reset"
+    reset = tmp_path / "launchers" / "limit-reset-claude-main.command"
+    resume = tmp_path / "launchers" / "abc123.command"
+
+    write_limit_reset_launcher(reset, program, folder, {})
+    write_launcher(resume, program, tmp_path, "sdk-1")
+    run_launcher(reset)
+    run_launcher(resume)
+
+    assert log.read_text("utf-8").splitlines() == [" /limit-reset", " --resume sdk-1"]
 
 
 def test_an_added_accounts_sign_in_runs_claude_codes_login_and_keeps_it(tmp_path: Path) -> None:

@@ -13,7 +13,10 @@ from nestd.platform.linux import xdg_dir
 
 _SECRET_LOOP_LIMIT = 100
 _KEYCHAIN_ITEM_NOT_FOUND = 44
-_TAILSCALE_NOTE = "If you shared Nest with Tailscale, stop that with: tailscale serve reset"
+# Only Nest's share: `tailscale serve reset` would also end everything else the user shares.
+_TAILSCALE_NOTE = (
+    "If you shared Nest with Tailscale, stop that with: tailscale serve --https=443 off"
+)
 
 
 class NotAReleaseError(Exception):
