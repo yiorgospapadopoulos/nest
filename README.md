@@ -10,10 +10,12 @@ The agents are the real ones (Claude Code, Codex, a few others, or a model on yo
 
 ## Install
 
-On a Mac with Apple silicon and macOS 15 or later, or on x86_64 or arm64 Linux with Ubuntu 22.04 or later, paste this in a terminal:
+On a Mac with Apple silicon and macOS 15 or later, [download Nest](https://github.com/yiorgospapadopoulos/nest/releases/latest/download/Nest-macos-arm64.zip), drag it into Applications, open it and press Set up Nest. It sets up the background service and opens the guide below, with no terminal.
+
+Or, on a Mac or on x86_64 or arm64 Linux with Ubuntu 22.04 or later, paste this in a terminal:
 
 ```sh
-curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh
+curl -fsSL https://nestcode.app/install | sh
 ```
 
 It needs no developer tools. Ubuntu doesn't come with `curl`, so on Linux run `sudo apt install curl` first if the line says `curl` is not found. It downloads Nest, checks the release's signature and every file against its sha256, starts the background service and opens the app. A first install takes the newest Claude Code and Codex from PyPI instead of the release's own, keeping them only once they pass a quick test, so Nest starts up to date. You can run the same line again at any time to repair an install; it keeps your chats.
@@ -22,7 +24,7 @@ Nest goes in `/Applications` on a Mac (run it from an administrator account) and
 
 On Linux Nest needs a systemd user session and the Secret Service, which Ubuntu has. Without them the script says what is missing and stops.
 
-You can also download the Mac app from the Releases page in a browser. It is signed and notarized by Apple, so it opens like any other app, but on its own it only shows the install line above: the background service still needs that line, run once.
+The downloaded Mac app is signed and notarized by Apple, so it opens like any other app. Set up Nest runs the same installer as the line above, from inside the app, so it checks the same signature, gets the same newest engines and keeps the same data. Opened from Downloads or a disk image, the app first asks you to move it to Applications. If setup fails, it says why and offers Try again and the line above. The download link always gives the newest release.
 
 ## First run
 

@@ -148,7 +148,7 @@ final class FakeRunner: CommandRunner {
     @Test func aReleaseGetsTheOneLine() {
         #expect(
             DaemonService.installCommand(repoPath: nil)
-                == "curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh")
+                == "curl -fsSL https://nestcode.app/install | sh")
     }
 
     /// Regression: a test install, or one from any other address, got GitHub's line, which

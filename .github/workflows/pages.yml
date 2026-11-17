@@ -1,5 +1,5 @@
 # Serves the latest release's install.sh at https://yiorgospapadopoulos.github.io/nest/install.sh,
-# so the install line stays short. The script is the release's own file, copied unchanged;
+# where https://nestcode.app/install forwards, so the install line stays short. The script is the release's own file, copied unchanged;
 # everything it downloads is still checked against the release's signature. The deploying
 # actions are pinned to commits, as this job publishes the script every new install trusts.
 name: pages

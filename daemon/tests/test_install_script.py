@@ -63,18 +63,30 @@ class Machine:
         )
 
 
-def _machine(tmp_path: Path, *, uv: str = "exit 0", app: bytes = b"app") -> Machine:
-    """A Linux computer with a good release on disk, reached through `file://`."""
+def _machine(
+    tmp_path: Path, *, uv: str = "exit 0", app: bytes = b"app", mac: bool = False
+) -> Machine:
+    """A Linux computer, or an Apple silicon Mac on macOS 15, with a good release on disk,
+    reached through `file://`."""
     home = tmp_path / "home"
     shims = tmp_path / "shims"
     release = tmp_path / "release"
     for folder in (home, shims, release):
         folder.mkdir()
-    _write_program(shims / "uname", 'case "$1" in -s) echo Linux ;; *) echo x86_64 ;; esac')
-    _write_program(shims / "systemctl", "exit 0")
+    if mac:
+        _write_program(shims / "uname", 'case "$1" in -s) echo Darwin ;; *) echo arm64 ;; esac')
+        _write_program(shims / "sysctl", "echo 1")
+        _write_program(shims / "sw_vers", "echo 15.0")
+        _write_program(shims / "xcode-select", "exit 0")
+        for program in ("open", "ditto"):
+            _write_program(shims / program, f'echo "$0 $*" >> "{tmp_path}/ran"')
+    else:
+        _write_program(shims / "uname", 'case "$1" in -s) echo Linux ;; *) echo x86_64 ;; esac')
+        _write_program(shims / "systemctl", "exit 0")
     _write_program(shims / "uv", uv)
+    app_name = "Nest-1.0.0-macos-arm64.zip" if mac else "Nest-1.0.0-linux-x86_64.AppImage"
     files = {
-        "Nest-1.0.0-linux-x86_64.AppImage": ("app", "linux-x86_64", app),
+        app_name: ("app", "macos-arm64" if mac else "linux-x86_64", app),
         "nestd-1.0.0-py3-none-any.whl": ("wheel", "any", b"wheel"),
         "nestd-1.0.0-requirements.txt": ("requirements", "any", b"requirements"),
     }
@@ -341,3 +353,40 @@ def test_running_the_install_line_again_keeps_the_first_backup_and_makes_another
         connection = sqlite3.connect(backup)
         assert connection.execute("SELECT value FROM t").fetchone() == (value,)
         connection.close()
+
+
+def test_set_up_from_the_mac_app_leaves_the_running_app_alone(tmp_path: Path) -> None:
+    # The app's Set up Nest runs this script from inside /Applications/Nest.app: replacing
+    # that app under itself, or opening a second one, would break the window doing the setup.
+    machine = _machine(tmp_path, uv=_BUILDING_UV, mac=True)
+    applications = tmp_path / "Applications"
+    app = applications / "Nest.app"
+    app.mkdir(parents=True)
+    (app / "Info.plist").write_text("the running app", encoding="utf-8")
+    applications.chmod(0o555)
+    env = {**machine.env, "NEST_MAC_APP": str(app), "NEST_SETUP_BY_APP": "1"}
+
+    try:
+        result = replace(machine, env=env).run()
+    finally:
+        applications.chmod(0o755)
+
+    assert result.returncode == 0, result.stderr
+    assert (app / "Info.plist").read_text(encoding="utf-8") == "the running app"
+    assert not (tmp_path / "ran").exists()
+    assert result.stdout.splitlines()[-2:] == ["Starting Nest", "Nest 1.0.0 is installed."]
+    assert (machine.data / "daemon" / "current").resolve().name == "1.0.0"
+    # The app's checklist follows these lines: each step in order, and the download to 100%.
+    lines = result.stdout.splitlines()
+    steps = [line.removeprefix("@step ") for line in lines if line.startswith("@step ")]
+    assert steps == ["download", "service", "engines", "check", "start"]
+    assert "@progress 100" in lines
+
+
+def test_the_terminal_line_prints_no_lines_meant_for_the_app(tmp_path: Path) -> None:
+    machine = _machine(tmp_path, uv=_BACKING_UP_UV, app=_UNPACKING_APP)
+
+    result = machine.run()
+
+    assert result.returncode == 0, result.stderr
+    assert not [line for line in result.stdout.splitlines() if line.startswith("@")]

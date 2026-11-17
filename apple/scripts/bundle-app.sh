@@ -33,6 +33,9 @@ xcrun actool support/AppIcon.icon --compile "$app/Contents/Resources" --app-icon
     --output-partial-info-plist /dev/null >/dev/null
 test -f "$app/Contents/Resources/Assets.car"
 cp support/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+# The release's own installer, which the first-time Set up Nest runs: the same file as the
+# terminal line's, sealed by the app's signature.
+cp ../release/install.sh "$app/Contents/Resources/install.sh"
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 # The computer use helper (B150): its own app inside Nest.app, so macOS gives it its own
 # Accessibility and Screen Recording entries. It takes the app's version.

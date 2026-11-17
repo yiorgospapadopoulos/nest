@@ -38,11 +38,16 @@ def sha256(path: Path) -> str:
 
 
 def kind_of(name: str) -> tuple[str, str] | None:
-    """A release file's kind and the platform it is for; None for files not listed."""
+    """A release file's kind and the platform it is for; None for files not listed. The
+    copies without the version, for download links that always give the newest release,
+    are kinds of their own, so the installer and updates never take one for the app."""
     patterns = (
         (r"Nest-.+-macos-arm64\.zip", "app", "macos-arm64"),
         (r"Nest-.+-linux-(x86_64|arm64)\.AppImage", "app", None),
         (r"Nest-.+-linux-(x86_64|arm64)\.deb", "deb", None),
+        (r"Nest-macos-arm64\.zip", "latest-app", "macos-arm64"),
+        (r"Nest-linux-(x86_64|arm64)\.AppImage", "latest-app", None),
+        (r"Nest-linux-(x86_64|arm64)\.deb", "latest-deb", None),
         (r"nestd-.+-py3-none-any\.whl", "wheel", "any"),
         (r"nestd-.+-requirements\.txt", "requirements", "any"),
         (r"install\.sh", "script", "any"),

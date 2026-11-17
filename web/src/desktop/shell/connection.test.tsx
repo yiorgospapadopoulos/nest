@@ -71,9 +71,7 @@ describe("no daemon at launch", () => {
     expect(
       screen.getByRole("heading", { name: "Nest's background service isn't running" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("curl -fsSL https://nestcode.app/install | sh")).toBeInTheDocument();
     running = true;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);

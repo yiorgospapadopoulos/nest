@@ -187,9 +187,7 @@ def test_an_install_from_github_gets_the_short_line(tmp_path: Path) -> None:
     check = check_service(machine)
 
     assert check.fix is not None
-    assert (
-        check.fix.value == "curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh"
-    )
+    assert check.fix.value == "curl -fsSL https://nestcode.app/install | sh"
 
 
 def test_an_install_keeps_following_the_address_it_came_from(tmp_path: Path) -> None:

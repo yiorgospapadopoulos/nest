@@ -56,8 +56,9 @@ public struct UpdateUnderWay: Codable, Sendable, Equatable {
 public struct ReleasedInstall: Sendable {
     public static let defaultReleaseURL =
         "https://github.com/yiorgospapadopoulos/nest/releases/latest/download"
-    /// The latest release's install.sh on the project's GitHub Pages, for a short line (B162).
-    public static let installScriptURL = "https://yiorgospapadopoulos.github.io/nest/install.sh"
+    /// The short line's address: Nest's domain forwards it to the latest release's install.sh
+    /// on the project's GitHub Pages (B162, B167).
+    public static let installScriptURL = "https://nestcode.app/install"
 
     public let dataFolder: URL
     let environment: [String: String]
@@ -106,6 +107,13 @@ public struct ReleasedInstall: Sendable {
             url.removeLast()
         }
         return url
+    }
+
+    /// Whether a released Nest is installed here: `<data>/daemon/current`, as install.sh
+    /// checks for a first install, even as a link to nothing.
+    public var hasDaemon: Bool {
+        (try? FileManager.default.attributesOfItem(
+            atPath: daemons.appending(path: "current").path)) != nil
     }
 
     /// `<data>/daemon/current/bin/nest`, with its links resolved, only while it stays inside

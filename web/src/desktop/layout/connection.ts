@@ -45,8 +45,9 @@ export function installCommand(checkout: string | null): string {
 
 export const DEFAULT_RELEASE_URL =
   "https://github.com/yiorgospapadopoulos/nest/releases/latest/download";
-// The latest release's install.sh on the project's GitHub Pages, for a short line (B162).
-export const INSTALL_SCRIPT_URL = "https://yiorgospapadopoulos.github.io/nest/install.sh";
+// The short line's address: Nest's domain forwards it to the latest release's install.sh on
+// the project's GitHub Pages (B162, B167).
+export const INSTALL_SCRIPT_URL = "https://nestcode.app/install";
 
 /**
  * What repairs an install and keeps the data (release/install.sh), from the address the

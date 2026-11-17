@@ -21,6 +21,8 @@ final class AppController {
     private var pendingLink: NestLink?
     /// Starts the daemon's launchd service when the daemon cannot be reached.
     let service: ServiceStarter
+    /// Sets Nest up from the app on a Mac that has none yet.
+    let setup: NestSetup
     /// This Mac and the paired remotes, with the one selected.
     let daemons: DaemonList
     /// Settings > Devices' Pair a daemon sheet while it is open.
@@ -40,10 +42,9 @@ final class AppController {
         let environment = ProcessInfo.processInfo.environment
         let local = DaemonLocation(environment: environment)
         daemons = DaemonList(local: local)
-        service = .local(
-            repoPath: AppBuild.checkout,
-            releaseURL: ReleasedInstall(dataFolder: local.dataFolder, environment: environment)
-                .releaseURL)
+        let install = ReleasedInstall(dataFolder: local.dataFolder, environment: environment)
+        service = .local(repoPath: AppBuild.checkout, releaseURL: install.releaseURL)
+        setup = .local(install: install)
     }
 
     /// This Mac's install, read from its data folder while the daemon is down.
@@ -53,9 +54,17 @@ final class AppController {
     }
 
     /// A controller around a prepared shell, for snapshots.
-    init(shell: Shell, service: ServiceStarter, daemons: DaemonList? = nil) {
+    init(
+        shell: Shell, service: ServiceStarter, setup: NestSetup? = nil, daemons: DaemonList? = nil
+    ) {
         self.shell = shell
         self.service = service
+        self.setup =
+            setup
+            ?? NestSetup(
+                runner: ProcessLineRunner(), script: nil, appPath: "/Applications/Nest.app",
+                releaseURL: ReleasedInstall.defaultReleaseURL, environment: [:],
+                developerBuild: true, isInstalled: { true })
         self.daemons =
             daemons
             ?? DaemonList(
@@ -269,6 +278,15 @@ final class AppController {
         Task {
             await runService()
             connect()
+        }
+    }
+
+    /// The first-time Set up Nest, then the connection to the service it started.
+    func setUp() {
+        Task {
+            if await setup.run() {
+                connect()
+            }
         }
     }
 

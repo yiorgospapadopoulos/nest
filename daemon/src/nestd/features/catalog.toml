@@ -738,10 +738,11 @@ block = "B125"
 id = "setup-guide"
 group = "around"
 name = "A guide from install to first answer"
-text = "One line in a terminal installs Nest, and a guide takes you through signing in, your phone and a first chat. Skip what you don't need and reopen it any time."
+text = "Download the Mac app, put it in Applications and press Set up Nest, or paste one line in a terminal. A guide then takes you through signing in, your phone and a first chat. Skip what you don't need and reopen it any time."
 where = "Settings > General > Set up Nest"
 added = 2026-11-07
 block = "B130"
+changed = 2026-11-17
 
 [[features]]
 id = "one-click-updates"
