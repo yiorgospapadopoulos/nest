@@ -4,6 +4,7 @@ import { HttpApi } from "./api/client.ts";
 import type { SocketLike } from "./api/events.ts";
 import { App } from "./App.tsx";
 import "./generated/tokens.css";
+import { preventZoom } from "./pwa/noZoom.ts";
 import { registerServiceWorker } from "./pwa/register.ts";
 import "./styles/base.css";
 import "./styles/chat.css";
@@ -21,4 +22,5 @@ createRoot(rootElement).render(
   </StrictMode>,
 );
 
+preventZoom(document);
 void registerServiceWorker(navigator, import.meta.env.PROD);
