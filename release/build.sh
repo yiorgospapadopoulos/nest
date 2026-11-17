@@ -66,6 +66,10 @@ notarize() {
   }
 }
 
+# Each download also under a name without the version, so a link to
+# releases/latest/download/<name> always gives the newest release.
+latest() { ln -f "$out/$1" "$out/${1/-$version-/-}"; }
+
 mkdir -p "$out"
 (cd web && npm ci --no-audit --no-fund && npm run build)
 
@@ -92,6 +96,7 @@ if wants macos; then
   notarize apple/build/Nest.app
   rm -f "$out/Nest-$version-macos-arm64.zip"
   ditto -c -k --keepParent apple/build/Nest.app "$out/Nest-$version-macos-arm64.zip"
+  latest "Nest-$version-macos-arm64.zip"
 fi
 
 for platform in linux/arm64 linux/amd64; do
@@ -103,6 +108,8 @@ for platform in linux/arm64 linux/amd64; do
   # The build volume keeps earlier versions' bundles, so only this version's are copied.
   cp "$bundle"/appimage/*"_${version}_"*.AppImage "$out/Nest-$version-linux-$arch.AppImage"
   cp "$bundle"/deb/*"_${version}_$deb.deb" "$out/Nest-$version-linux-$arch.deb"
+  latest "Nest-$version-linux-$arch.AppImage"
+  latest "Nest-$version-linux-$arch.deb"
 done
 
 cp release/install.sh "$out/install.sh"
