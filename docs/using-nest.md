@@ -53,6 +53,41 @@ On Linux, Nest is a desktop app that looks and works like the Mac app: the Pixie
 - Start Nest when I log in (Settings > General > Linux) adds an autostart entry.
 - Artifacts open in a frame served from Nest's own `nest-artifact:` address with the artifact rules as a response header, once per view, so the app window keeps its strict rules and artifact pages never reach Nest's commands.
 
+## A download button for your web page
+
+The links below always give the newest release, so a page that uses them never needs editing when a new Nest comes out. The Mac link downloads the signed app; opened from Applications, it sets itself up with one button. Plain HTML, to restyle as you like:
+
+```html
+<div class="nest-download">
+  <h3>Mac</h3>
+  <a class="nest-download-button"
+     href="https://github.com/yiorgospapadopoulos/nest/releases/latest/download/Nest-macos-arm64.zip">Download for Mac</a>
+  <p>Needs a Mac with Apple silicon and macOS 15 or later. Or paste this in Terminal:</p>
+  <p class="nest-install-line">
+    <code>curl -fsSL https://nestcode.app/install | sh</code>
+    <button type="button" data-nest-copy>Copy</button>
+  </p>
+
+  <h3>Linux</h3>
+  <p>Ubuntu 22.04 or later, on x86_64 or arm64. Paste this in a terminal:</p>
+  <p class="nest-install-line">
+    <code>curl -fsSL https://nestcode.app/install | sh</code>
+    <button type="button" data-nest-copy>Copy</button>
+  </p>
+</div>
+<script>
+  for (const button of document.querySelectorAll("[data-nest-copy]")) {
+    button.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(button.previousElementSibling.textContent);
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy"), 1500);
+    });
+  }
+</script>
+```
+
+The Copy buttons need the page served over HTTPS, as browsers only allow copying from secure pages. The Linux files have fixed links too, for a page that wants them: `Nest-linux-x86_64.AppImage`, `Nest-linux-arm64.AppImage`, `Nest-linux-x86_64.deb` and `Nest-linux-arm64.deb` under the same `releases/latest/download/` address. The install line sets up more than the app, so it stays the way to install on Linux.
+
 ## iPhone access
 
 The iPhone reaches Nest through Tailscale, a free private network between your own devices, never the public internet. The setup guide's Tailscale and iPhone step does it for you: install Tailscale, sign in, then Share with my devices. By hand, run this once on the Mac:
