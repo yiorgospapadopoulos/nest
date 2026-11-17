@@ -122,6 +122,8 @@ html {
   -webkit-text-size-adjust: 100%;
   height: 100%;
   font-size: 17px;
+  /* No pinch or double-tap zoom, as in a native app. */
+  touch-action: pan-x pan-y;
 }
 @supports (font: -apple-system-body) {
   html {
