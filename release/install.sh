@@ -1,18 +1,26 @@
 #!/bin/sh
-# Installs Nest: curl -fsSL https://yiorgospapadopoulos.github.io/nest/install.sh | sh
+# Installs Nest: curl -fsSL https://nestcode.app/install | sh
 # A release served elsewhere: curl -fsSL <address>/install.sh | NEST_RELEASE_URL=<address> sh
 # Run it again to repair an install. Everything is checked before anything changes, and the
-# whole script sits in `main`, so a cut-off download runs nothing.
+# whole script sits in `main`, so a cut-off download runs nothing. The Mac app's Set up Nest
+# runs this same file from inside the app, with NEST_SETUP_BY_APP=1: the app is already in
+# place and running, so it is neither replaced nor opened.
 set -eu
 
 RELEASE_URL="${NEST_RELEASE_URL:-https://github.com/yiorgospapadopoulos/nest/releases/latest/download}"
 MAC_APP="${NEST_MAC_APP:-/Applications/Nest.app}"
+BY_APP="${NEST_SETUP_BY_APP:-}"
 MACOS_MINIMUM=15
 # Nest's release keys, the daemon's RELEASE_KEYS: ECDSA P-256 public keys, base64 DER. The
 # release list must be signed by one of them before anything in it is trusted.
 RELEASE_KEYS="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEX8L6xEBnbhVD+ecB8PGYh6R8R3AwUAiH0NieeALPmlMt6oqrzgx0nR7ga/1DV974RmbmikaPw1Rj3/VbT5T9Rw=="
 
 say() { printf '%s\n' "$*"; }
+# For the app's checklist: a line of its own when a step starts, and the download's percent.
+step() {
+    [ "$BY_APP" != 1 ] || printf '@step %s\n' "$1"
+    say "$2"
+}
 stop() {
     printf 'Nest: %s\n' "$*" >&2
     exit 1
@@ -34,7 +42,7 @@ check_machine() {
         major="$(sw_vers -productVersion | cut -d. -f1)"
         [ "$major" -ge "$MACOS_MINIMUM" ] ||
             stop "Nest needs macOS $MACOS_MINIMUM or later. This Mac has $(sw_vers -productVersion)."
-        [ -w "$(dirname "$MAC_APP")" ] ||
+        [ "$BY_APP" = 1 ] || [ -w "$(dirname "$MAC_APP")" ] ||
             stop "This account can't write to $(dirname "$MAC_APP"). Run this from an administrator account."
         platform=macos-arm64
         data="${NEST_DATA_DIR:-$HOME/Library/Application Support/nest}"
@@ -83,15 +91,58 @@ field() {
     printf '%s\n' "$1" | sed -n "s/.*\"$2\": \"\([^\"]*\)\".*/\1/p"
 }
 
-fetch() { # kind platform destination
-    line="$(entry "$1" "$2")"
-    name="$(field "$line" name)"
-    [ -n "$name" ] || stop "This release has no $1 for $2."
+address_of() { # kind platform
+    name="$(field "$(entry "$1" "$2")" name)"
     case "$name" in
-    http://* | https://*) address="$name" ;;
-    *) address="$RELEASE_URL/$name" ;;
+    "") ;;
+    http://* | https://*) printf '%s\n' "$name" ;;
+    *) printf '%s\n' "$RELEASE_URL/$name" ;;
     esac
-    curl -fsSL --retry 2 -o "$3" "$address" || stop "Could not download $name."
+}
+
+remote_size() {
+    size="$(curl -fsSIL "$1" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *//p' | tail -n 1)"
+    case "$size" in "" | *[!0-9]*) echo 0 ;; *) echo "$size" ;; esac
+}
+
+# The app's download percent: the files' sizes up front, then how much of them is here.
+measure_downloads() {
+    [ "$BY_APP" = 1 ] || return 0
+    dl_total=0
+    for pair in "$@"; do
+        address="$(address_of "${pair%% *}" "${pair#* }")"
+        [ -z "$address" ] || dl_total=$((dl_total + $(remote_size "$address")))
+    done
+}
+
+download() { # address destination
+    if [ "$BY_APP" != 1 ] || [ "${dl_total:-0}" -le 0 ]; then
+        curl -fsSL --retry 2 -o "$2" "$1"
+        return
+    fi
+    curl -fsSL --retry 2 -o "$2" "$1" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        here=0
+        [ ! -f "$2" ] || here=$(wc -c <"$2")
+        percent=$(((dl_done + here) * 100 / dl_total))
+        [ "$percent" -le 100 ] || percent=100
+        printf '@progress %s\n' "$percent"
+        sleep 1
+    done
+    wait "$pid" || return 1
+    dl_done=$((dl_done + $(wc -c <"$2")))
+    percent=$((dl_done * 100 / dl_total))
+    [ "$percent" -le 100 ] || percent=100
+    printf '@progress %s\n' "$percent"
+}
+
+fetch() { # kind platform destination
+    address="$(address_of "$1" "$2")"
+    [ -n "$address" ] || stop "This release has no $1 for $2."
+    name="${address##*/}"
+    download "$address" "$3" || stop "Could not download $name."
+    line="$(entry "$1" "$2")"
     [ "$(sha256_of "$3")" = "$(field "$line" sha256)" ] ||
         stop "$name didn't match its checksum, so nothing was installed. Try again."
 }
@@ -147,10 +198,20 @@ fetch_release() {
     # Before anything here changes: only a computer with no Nest yet gets the newest engines.
     first_install=1
     [ ! -e "$data/daemon/current" ] && [ ! -L "$data/daemon/current" ] || first_install=0
-    say "Installing Nest $version"
+    step download "Installing Nest $version"
+    dl_done=0
+    if needs_uv; then
+        measure_downloads "app $platform" "wheel any" "requirements any" "uv $platform"
+    else
+        measure_downloads "app $platform" "wheel any" "requirements any"
+    fi
     fetch app "$platform" "$work/app"
     fetch wheel any "$work/nestd.whl"
     fetch requirements any "$work/requirements.txt"
+}
+
+needs_uv() {
+    ! command -v uv >/dev/null 2>&1 && [ ! -x "$data/bin/uv" ]
 }
 
 find_uv() {
@@ -224,13 +285,13 @@ newest_engines() {
     [ "$first_install" = 1 ] || return 1
     "$partial/bin/python" -m nestd.updates.first_install "$work/requirements.txt" \
         "$work/requirements-rest.txt" >"$work/newest-engines.txt" 2>/dev/null || return 1
-    say "Getting the newest engines"
+    step engines "Getting the newest engines"
     run_uv pip install --quiet --python "$partial/bin/python" --require-hashes \
         -r "$work/requirements-rest.txt" || return 1
     # Built wheels only, as engine updates take them.
     run_uv pip install --quiet --python "$partial/bin/python" --only-binary :all: \
         -r "$work/newest-engines.txt" || return 1
-    say "Checking them"
+    step check "Checking them"
     mkdir -p "$work/selfcheck-engines"
     "$partial/bin/python" -m nestd engines selfcheck --engines-dir "$work/selfcheck-engines" \
         >/dev/null 2>&1 && return 0
@@ -240,7 +301,7 @@ newest_engines() {
 
 # The daemon in a folder of its own, made beside the others and renamed once it runs.
 build_daemon() {
-    say "Setting up the background service"
+    step service "Setting up the background service"
     folder="$data/daemon/$version"
     partial="$folder.partial"
     mkdir -p "$data/daemon"
@@ -268,6 +329,8 @@ build_daemon() {
 }
 
 install_mac_app() {
+    opener=""
+    [ "$BY_APP" != 1 ] || return 0
     mkdir "$work/app-new"
     ditto -x -k "$work/app" "$work/app-new"
     rm -rf "$MAC_APP.old"
@@ -330,6 +393,7 @@ check_secret_service() {
 }
 
 start_service() {
+    step start "Starting Nest"
     "$python" -m nestd service install >/dev/null
     "$python" -m nestd service wait ||
         stop "The background service didn't start. See $data/logs/daemon.log."
@@ -338,12 +402,13 @@ start_service() {
 open_app() {
     if [ "$opener" = open ]; then
         open "$app_path"
-    elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+    elif [ "$opener" = linux ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
         nohup "$app_path" >/dev/null 2>&1 &
     fi
 }
 
 show_path_line() {
+    [ "$BY_APP" != 1 ] || return 0
     case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;
     *)
