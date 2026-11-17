@@ -41,11 +41,20 @@ struct ShellView: View {
     @State private var fullScreen = false
     @State private var windowSize = CGSize.zero
 
+    /// This Mac's daemon down: once the app's own start of it did not help, or at once on a
+    /// Mac with no Nest yet, which gets Set up Nest rather than a banner, and keeps it through
+    /// the retries until the service it sets up answers.
+    private var daemonDown: Bool {
+        shell.daemonDown.isDown
+            || (controller.setup.isOffered && !shell.isRemote
+                && shell.app.connection != .connected)
+    }
+
     /// The guide or the projects, never the projects for a moment before the guide.
     private var content: WindowContent {
         let firstRun = shell.model.local.firstRun
         return WindowContent(
-            daemonDown: shell.daemonDown.isDown, guideOpen: shell.guide != nil,
+            daemonDown: daemonDown, guideOpen: shell.guide != nil,
             // A snapshot shows what it set up, read or not.
             firstRun: snapshot ? firstRun ?? false : firstRun)
     }
@@ -84,7 +93,7 @@ struct ShellView: View {
             }
             .accessibilityHidden(covered)
             VStack(spacing: 8) {
-                if !shell.daemonDown.isDown {
+                if !daemonDown {
                     ConnectionBanner()
                 }
                 UsageWarningBanner()
@@ -138,6 +147,7 @@ struct ShellView: View {
             controller.noteConnection(connection)
             if connection == .connected {
                 controller.service.reset()
+                controller.setup.reset()
             }
         }
         .onChange(of: shell.model.local.isFirstRun, initial: true) { shell.startGuideIfFirstRun() }
