@@ -108,6 +108,13 @@ public struct ReleasedInstall: Sendable {
         return url
     }
 
+    /// Whether a released Nest is installed here: `<data>/daemon/current`, as install.sh
+    /// checks for a first install, even as a link to nothing.
+    public var hasDaemon: Bool {
+        (try? FileManager.default.attributesOfItem(
+            atPath: daemons.appending(path: "current").path)) != nil
+    }
+
     /// `<data>/daemon/current/bin/nest`, with its links resolved, only while it stays inside
     /// the data folder's `daemon`: a checkout has none.
     public var nestCommand: String? {
