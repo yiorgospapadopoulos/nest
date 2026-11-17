@@ -56,8 +56,9 @@ public struct UpdateUnderWay: Codable, Sendable, Equatable {
 public struct ReleasedInstall: Sendable {
     public static let defaultReleaseURL =
         "https://github.com/yiorgospapadopoulos/nest/releases/latest/download"
-    /// The latest release's install.sh on the project's GitHub Pages, for a short line (B162).
-    public static let installScriptURL = "https://yiorgospapadopoulos.github.io/nest/install.sh"
+    /// The short line's address: Nest's domain forwards it to the latest release's install.sh
+    /// on the project's GitHub Pages (B162, B167).
+    public static let installScriptURL = "https://nestcode.app/install"
 
     public let dataFolder: URL
     let environment: [String: String]

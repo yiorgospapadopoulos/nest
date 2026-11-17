@@ -10,8 +10,9 @@ DEFAULT_RELEASE_URL = "https://github.com/yiorgospapadopoulos/nest/releases/late
 # it came from, even where the daemon is down and no environment says so.
 RELEASE_URL_FILE = "release-url"
 ISSUES_URL = "https://github.com/yiorgospapadopoulos/nest/issues/new"
-# The latest release's `install.sh` on the project's GitHub Pages, for a short line (B162).
-INSTALL_SCRIPT_URL = "https://yiorgospapadopoulos.github.io/nest/install.sh"
+# The short line's address: Nest's domain forwards it to the latest release's `install.sh` on
+# the project's GitHub Pages (B162, B167).
+INSTALL_SCRIPT_URL = "https://nestcode.app/install"
 
 
 def release_url(env: Mapping[str, str], data_dir: Path | None = None) -> str:
