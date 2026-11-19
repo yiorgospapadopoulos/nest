@@ -31,9 +31,14 @@ NOT_FOUND_AFTER_INSTALL = "the installer finished but Claude Code was not found"
 
 
 class ClaudeCliError(NestError):
-    """A `claude` command failed; its message is the CLI's own."""
+    """A `claude` command failed; its message is the CLI's own, and `output` what it
+    printed before failing."""
 
     status_code = 502
+
+    def __init__(self, message: str, output: str = "") -> None:
+        super().__init__(message)
+        self.output = output
 
 
 class InstallRunningError(ConflictError):
@@ -121,7 +126,7 @@ class ClaudeCli:
             raise ClaudeCliError(f"Claude Code could not be started: {error}") from error
         except CommandError as error:
             message = error.stderr.strip() or f"claude {' '.join(args)} failed"
-            raise ClaudeCliError(message) from error
+            raise ClaudeCliError(message, error.stdout) from error
 
     async def status(self) -> ClaudeCodeStatus:
         path = self.locations.standalone()

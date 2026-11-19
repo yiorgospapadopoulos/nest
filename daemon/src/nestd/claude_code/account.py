@@ -43,6 +43,13 @@ class _AuthStatus(BaseModel):
     authMethod: str | None = None  # noqa: N815
 
 
+def _read(output: str) -> _AuthStatus | None:
+    try:
+        return _AuthStatus.model_validate(json.loads(output))
+    except (ValueError, ValidationError):
+        return None
+
+
 # Hears each sign in's outcome and each sign out, with the error a sign in ended with.
 type Announce = Callable[[ClaudeAccountStatus, str | None], Awaitable[None]]
 
@@ -82,12 +89,20 @@ class ClaudeAccount:
         return self._opening or self._login is not None
 
     async def status(self) -> ClaudeAccountStatus:
-        output = await self._cli.run(["auth", "status", "--json"], env=self._env)
         try:
-            raw = _AuthStatus.model_validate(json.loads(output))
-        except (ValueError, ValidationError) as error:
-            msg = "claude auth status gave unexpected output"
-            raise ClaudeCliError(msg) from error
+            output = await self._cli.run(["auth", "status", "--json"], env=self._env)
+        except ClaudeCliError as error:
+            # Signed out, Claude Code prints the same status and exits with an error (B168).
+            signed_out = _read(error.output)
+            if signed_out is None or signed_out.loggedIn:
+                raise
+            raw = signed_out
+        else:
+            answered = _read(output)
+            if answered is None:
+                msg = "claude auth status gave unexpected output"
+                raise ClaudeCliError(msg)
+            raw = answered
         return ClaudeAccountStatus(
             signed_in=raw.loggedIn,
             email=raw.email,
@@ -135,7 +150,7 @@ class ClaudeAccount:
 
     async def _waiting(self) -> None:
         """Ask Claude Code until it says signed in, up to SIGN_IN_WAIT_SECONDS. A failing
-        ask means not yet: a signed-out `claude auth status` exits with an error.
+        ask means not yet.
         """
         try:
             error: str | None = NOT_FINISHED

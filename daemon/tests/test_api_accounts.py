@@ -252,6 +252,21 @@ async def test_an_engine_that_cannot_be_asked_says_why_and_keeps_who_it_was(
     assert (codex["signed_in"], codex["error"]) == (None, "OSError")
 
 
+async def test_a_signed_out_claude_is_not_signed_in_rather_than_failed(
+    api: Api, clock: FakeClock
+) -> None:
+    """Signed out, the real `claude auth status --json` prints its status and exits 1; a
+    fresh install showed that as a failed sign in (B168)."""
+    await accounts(api)
+    api.claude.replies.clear()
+    api.claude.script(*STATUS, reply=CommandError(["claude"], 1, "", claude_status(None)))
+    clock.advance(timedelta(minutes=2))
+
+    claude, _ = await accounts(api)
+
+    assert (claude["signed_in"], claude["error"]) == (False, None)
+
+
 async def test_an_added_claude_account_signs_in_on_its_own_profile(api: Api) -> None:
     api.probes.replies.append(answer(0.3, 0.1))
 

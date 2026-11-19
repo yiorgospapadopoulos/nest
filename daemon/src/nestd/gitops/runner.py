@@ -48,12 +48,17 @@ def output_tail() -> int | None:
 class CommandError(Exception):
     """A command exited with a non-zero status, or never started (returncode None)."""
 
-    def __init__(self, argv: Sequence[str], returncode: int | None, stderr: str) -> None:
+    def __init__(
+        self, argv: Sequence[str], returncode: int | None, stderr: str, stdout: str = ""
+    ) -> None:
         status = "" if returncode is None else f" ({returncode})"
         super().__init__(f"{' '.join(argv)} failed{status}: {stderr.strip()}")
         self.argv = tuple(argv)
         self.returncode = returncode
         self.stderr = stderr
+        # Some tools answer on stdout and still exit non-zero, as a signed-out
+        # `claude auth status` does.
+        self.stdout = stdout
 
 
 class GitError(CommandError):
@@ -94,7 +99,9 @@ async def run_command(
         await asyncio.gather(running, return_exceptions=True)
         raise
     if returncode:
-        raise CommandError(argv, returncode, stderr.decode(errors="replace"))
+        raise CommandError(
+            argv, returncode, stderr.decode(errors="replace"), stdout.decode(errors="replace")
+        )
     return stdout.decode(errors="replace")
 
 
