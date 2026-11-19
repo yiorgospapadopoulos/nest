@@ -5,7 +5,7 @@ Nest is the best open-source app for running many coding agents at once. Start a
 The agents are the real ones (Claude Code, Codex, a few others, or a model on your own computer), running on your own plan and your own setup: your CLAUDE.md, skills, plugins, MCP servers and hooks all load as they do in the terminal. It runs on your machine, with a Mac app, a Linux app and an iPhone app.
 
 <p align="center">
-  <img src="docs/images/busy.png" alt="Three chats running side by side in Nest" width="860">
+  <img src="docs/images/workspace.png" alt="Four chats running side by side in Nest" width="860">
 </p>
 
 ## Install
@@ -61,7 +61,7 @@ The left bar lists the project's chats, newest activity first, with a coloured d
 Open up to four chats side by side, each in its own pane, and drag a pane to split the space another way. Every pane shows what its agent is doing live: what it thought about, which files it read, what it ran, and how long it has been working. The usage meter at the top right shows how much of your plan's 5-hour and weekly limits is used.
 
 <p align="center">
-  <img src="docs/images/busy.png" alt="Three chats running side by side" width="860">
+  <img src="docs/images/workspace.png" alt="Four chats running side by side" width="860">
 </p>
 
 ### Pixies
