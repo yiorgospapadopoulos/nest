@@ -81,8 +81,6 @@ class AcpEngine:
     args: tuple[str, ...]
     delivery: Delivery
     sign_in: SignIn
-    # Live-tested by Nest; False shows "untested" in Settings.
-    tested: bool
     git_guard: bool
     # Environment every run of the engine gets, whatever the user's own settings say.
     env: Mapping[str, str] = field(default_factory=dict[str, str])
@@ -254,7 +252,6 @@ OPENCODE = AcpEngine(
     args=("acp",),
     delivery="bundled",
     sign_in="terminal",
-    tested=True,
     git_guard=True,
     env={
         "OPENCODE_PERMISSION": json.dumps(_OPENCODE_RULES),
@@ -283,7 +280,6 @@ GEMINI = AcpEngine(
     args=("--acp", "--approval-mode", "default"),
     delivery="bundled",
     sign_in="api_key",
-    tested=True,
     git_guard=True,
     registry_id="gemini",
     home_env={"GEMINI_CLI_HOME": ""},
@@ -302,7 +298,6 @@ CURSOR = AcpEngine(
     args=("--disable-project-configs", "acp"),
     delivery="user_install",
     sign_in="terminal",
-    tested=False,
     git_guard=True,
     login_command="agent login",
     registry_id="cursor",
@@ -330,7 +325,6 @@ COPILOT = AcpEngine(
     args=("--acp", "--stdio", "--no-auto-update", "--disable-client-telemetry"),
     delivery="bundled",
     sign_in="terminal",
-    tested=False,
     git_guard=True,
     env={
         # Over the user's own, which would run everything unasked.
@@ -367,7 +361,6 @@ ANTIGRAVITY = AcpEngine(
     args=(),
     delivery="download",
     sign_in="terminal",
-    tested=False,
     git_guard=True,
     # Its login in a file, never the Keychain, which could ask again when a version moves.
     env={"AGY_ACP_FORCE_FILE_STORAGE": "1"},
@@ -421,7 +414,6 @@ GROK = AcpEngine(
     args=("agent", "--no-leader", "stdio"),
     delivery="bundled",
     sign_in="terminal",
-    tested=False,
     git_guard=True,
     env={
         "GROK_DISABLE_AUTOUPDATER": "1",

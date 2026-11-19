@@ -44,7 +44,6 @@ SHIPPED = AcpEngine(
     args=(),
     delivery="download",
     sign_in="terminal",
-    tested=True,
     git_guard=True,
     registry_id="shipped",
     downloads={"darwin-aarch64": Download("https://example.com/shipped-1.0.0.zip", "a" * 64, "x")},

@@ -68,20 +68,15 @@ async def test_the_engines_are_listed_in_order_with_their_install_and_sign_in(ap
     assert listed["fake"]["state"] == "ready"
     assert listed["fake"]["sign_in"] == "browser"
     opencode = listed["opencode"]
-    assert {key: opencode[key] for key in ("state", "tested", "git_guard", "sign_in")} == {
+    assert {key: opencode[key] for key in ("state", "git_guard", "sign_in")} == {
         "state": "not_installed",
-        "tested": True,
         "git_guard": True,
         "sign_in": "terminal",
     }
     # B145: ACP chats rewind, fork, review plans and save memories too.
     assert opencode["unsupported"] == ["compact_window", "review_guide", "withdraw"]
     cursor = listed["cursor"]
-    assert (cursor["tested"], cursor["git_guard"], cursor["sign_in"]) == (
-        False,
-        True,
-        "terminal",
-    )
+    assert (cursor["git_guard"], cursor["sign_in"]) == (True, "terminal")
     assert "pixies" not in cursor["unsupported"]
     assert listed["gemini"]["signed_in"] is False
 

@@ -49,8 +49,6 @@ class ProviderInfo(BaseModel):
     memory_file: str = CLAUDE_MD
     # The installed engine's version (B107); None for Claude and Codex, or when not known.
     version: str | None = None
-    # False: Nest has not tried it live, shown as "untested".
-    tested: bool = True
     # False: Nest cannot block its git commands, so Settings warns and pixies refuse it.
     git_guard: bool = True
     # Only a `ready` engine that is not signed out is offered for new chats.
@@ -146,7 +144,6 @@ async def _info(ctx: Context, engine: Engine, refresh: bool) -> ProviderInfo:
         acp = await service.status(refresh=refresh)
         info.signed_in = acp.signed_in
         info.version = acp.version
-        info.tested = service.engine.tested
         info.git_guard = service.engine.git_guard or engine.can_push()
         info.state = acp.state
         info.state_detail = acp.state_detail
