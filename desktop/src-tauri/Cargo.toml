@@ -1,6 +1,6 @@
 [package]
 name = "nest-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Nest for the Linux desktop"
 license = "MIT"
 edition = "2021"
