@@ -15,7 +15,7 @@ dependencies = [
     "httpx>=0.28.1",
     "keyring>=25.7.0",
     "mcp>=2.3.0",
-    "openai-codex-cli-bin==0.163.0",
+    "openai-codex-cli-bin==0.170.0",
     "pydantic>=2.13.5",
     "python-multipart>=0.0.32",
     "pywebpush>=2.5.0",

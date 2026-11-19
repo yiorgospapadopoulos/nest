@@ -125,7 +125,8 @@ def subagent_hook_args(bin_dir: Path) -> tuple[str, ...]:
 def codex_hook_hash(command: str, timeout: int) -> str:
     """The hash by which Codex trusts a PreToolUse command hook with no matcher: sha256 of
     its definition as JSON with sorted keys (Codex 0.163.0's `version_for_toml`, checked
-    against its `hooks/list`). A wrong one leaves the hook untrusted, so it never runs.
+    against its `hooks/list`, and again on 0.170.0). A wrong one leaves the hook untrusted,
+    so it never runs.
     """
     handler = {"type": "command", "command": command, "timeout": timeout, "async": False}
     identity = {"event_name": "pre_tool_use", "hooks": [handler]}
