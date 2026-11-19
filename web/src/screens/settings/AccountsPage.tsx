@@ -94,7 +94,6 @@ function Engine({ engine }: { engine: ProviderInfo }) {
           <>
             <span className="eng-name">
               <span>{engine.display_name}</span>
-              {!engine.tested && <span className="eng-chip">untested</span>}
               {!engine.git_guard && (
                 <span className="eng-warn" role="img" aria-label={GIT_WARNING} title={GIT_WARNING}>
                   ⚠

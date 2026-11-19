@@ -1128,7 +1128,6 @@ export function claudeProvider(overrides: Partial<ProviderInfo> = {}): ProviderI
 // What Claude and Codex send of B107's engine fields.
 const browserEngine = {
   version: null,
-  tested: true,
   git_guard: true,
   state: "ready",
   state_detail: null,
@@ -1167,7 +1166,6 @@ export function acpProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo
     unsupported: ["withdraw", "compact_window"],
     memory_file: "AGENTS.md",
     version: "1.19.4",
-    tested: true,
     git_guard: true,
     state: "ready",
     state_detail: null,

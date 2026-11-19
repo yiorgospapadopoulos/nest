@@ -90,8 +90,6 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
     public var unsupported: Set<ProviderFeature>
     /// The installed engine's version, when known (B107).
     public var version: String?
-    /// False labels the engine "untested".
-    public var tested: Bool
     /// False: Nest cannot block the engine's git commands.
     public var gitGuard: Bool
     public var state: EngineState
@@ -109,7 +107,7 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
     public init(
         name: String, displayName: String, signedIn: Bool? = nil, signInHint: String? = nil,
         account: ClaudeAccount? = nil, unsupported: Set<ProviderFeature> = [],
-        version: String? = nil, tested: Bool = true, gitGuard: Bool = true,
+        version: String? = nil, gitGuard: Bool = true,
         state: EngineState = .ready, installable: Bool = false, stateDetail: String? = nil,
         signIn: EngineSignIn = .browser, loginCommand: String? = nil
     ) {
@@ -120,7 +118,6 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
         self.account = account
         self.unsupported = unsupported
         self.version = version
-        self.tested = tested
         self.gitGuard = gitGuard
         self.state = state
         self.installable = installable
@@ -141,7 +138,6 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
                 .filter { $0 != .unknown })
         // A daemon before B107 sends none of these: Claude and Codex as they were.
         version = try container.decodeIfPresent(String.self, forKey: .version)
-        tested = try container.decodeIfPresent(Bool.self, forKey: .tested) ?? true
         gitGuard = try container.decodeIfPresent(Bool.self, forKey: .gitGuard) ?? true
         state = try container.decodeIfPresent(EngineState.self, forKey: .state) ?? .ready
         installable = try container.decodeIfPresent(Bool.self, forKey: .installable) ?? false
@@ -164,7 +160,7 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, account, unsupported, version, tested, state, installable
+        case name, account, unsupported, version, state, installable
         case displayName = "display_name"
         case signedIn = "signed_in"
         case signInHint = "sign_in_hint"

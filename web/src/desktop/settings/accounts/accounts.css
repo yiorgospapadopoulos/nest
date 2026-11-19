@@ -180,14 +180,6 @@
 .dka-engine-n b {
   font-weight: 500;
 }
-.dka-label {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--soft);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--t2);
-}
 .dka-warnmark {
   position: relative;
   display: inline-grid;

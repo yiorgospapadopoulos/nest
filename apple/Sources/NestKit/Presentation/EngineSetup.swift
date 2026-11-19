@@ -1,7 +1,7 @@
 import Foundation
 
 /// One row of More engines in Settings > Accounts (B107): an engine past Claude and Codex,
-/// its labels, its state in a word and its one action.
+/// its state in a word and its one action.
 public struct EngineSetup: Sendable, Equatable {
     /// What the row's button does.
     public enum Action: Sendable, Equatable {
@@ -24,8 +24,6 @@ public struct EngineSetup: Sendable, Equatable {
     public let name: String
     public let title: String
     public let version: String?
-    /// "untested".
-    public let labels: [String]
     /// "Ready", "Signed out", "Not checked", "No key", "Not installed", "Installing" or
     /// "Install failed".
     public let state: String
@@ -41,7 +39,6 @@ public struct EngineSetup: Sendable, Equatable {
         name = provider.name
         title = provider.displayName
         version = provider.version
-        labels = provider.tested ? [] : ["untested"]
         gitWarning = provider.gitGuard ? nil : Self.gitWarningText
         installing = provider.state == .installing
         failure = provider.state == .installFailed ? provider.stateDetail : nil

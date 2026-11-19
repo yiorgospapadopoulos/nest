@@ -78,18 +78,11 @@
   font: 600 var(--fs-micro) var(--mono);
   color: var(--t2);
 }
-/* More engines: a row's name with its labels on one line, the version under it. */
+/* More engines: a row's name with its git warning on one line, the version under it. */
 .set .eng-name {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.set .eng-chip {
-  padding: 0 5px;
-  border-radius: 4px;
-  background: var(--soft);
-  font-size: var(--fs-micro);
-  color: var(--t2);
 }
 .set .eng-warn {
   color: var(--wait);

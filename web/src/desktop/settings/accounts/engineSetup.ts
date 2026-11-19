@@ -1,7 +1,7 @@
 import type { ProviderInfo } from "../../../api/types.ts";
 
 // One row of More engines in Settings > Accounts (B107), as NestKit's EngineSetup: an
-// engine past Claude and Codex, its labels, its state in a word and its one action.
+// engine past Claude and Codex, its state in a word and its one action.
 
 export type EngineAction =
   | { kind: "none" }
@@ -21,7 +21,6 @@ export interface EngineSetup {
   name: string;
   title: string;
   version: string | null;
-  labels: string[];
   state: string;
   ready: boolean;
   installing: boolean;
@@ -65,7 +64,6 @@ export function engineSetup(provider: ProviderInfo): EngineSetup {
     name: provider.name,
     title: provider.display_name,
     version: provider.version,
-    labels: provider.tested ? [] : ["untested"],
     state,
     ready: state === "Ready",
     installing: provider.state === "installing",

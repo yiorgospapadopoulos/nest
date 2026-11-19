@@ -367,7 +367,6 @@ describe("more engines (B107)", () => {
         name: "cursor",
         display_name: "Cursor agent",
         version: null,
-        tested: false,
         git_guard: false,
         signed_in: null,
         state: "not_installed",
@@ -410,7 +409,6 @@ describe("more engines (B107)", () => {
 
     // Not installed, which the user does themselves: no action, no explanation.
     const cursor = row("Cursor agent");
-    expect(within(cursor).getByText("untested")).toBeInTheDocument();
     expect(within(cursor).getByRole("img", { name: GIT_WARNING })).toBeInTheDocument();
     expect(within(cursor).getByText("Not on PATH: install it yourself")).toBeInTheDocument();
     expect(within(cursor).queryByRole("button")).toBeNull();

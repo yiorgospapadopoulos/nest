@@ -996,8 +996,6 @@ export interface ProviderInfo {
   memory_file: string;
   // The installed engine's version, such as "1.19.4"; null when unknown.
   version: string | null;
-  // False for an engine Nest has not tried itself: it is labelled "untested".
-  tested: boolean;
   // False when Nest cannot block the engine's git commands (B107).
   git_guard: boolean;
   state: EngineState;

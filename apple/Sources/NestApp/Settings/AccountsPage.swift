@@ -537,14 +537,6 @@ private struct MoreEngineRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(setup.title).font(.ui(TypeSize.ui, .medium)).lineLimit(1)
-                    ForEach(setup.labels, id: \.self) { label in
-                        Text(label)
-                            .font(.ui(10, .medium))
-                            .foregroundStyle(Palette.t2)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Palette.soft, in: .rounded(4))
-                    }
                     if let warning = setup.gitWarning {
                         Image(systemName: Icon.warning)
                             .font(.system(size: 11, weight: .medium))

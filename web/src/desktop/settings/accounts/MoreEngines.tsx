@@ -42,7 +42,7 @@ export function MoreEngineRows({ setups }: { setups: EngineSetup[] }) {
 }
 
 /**
- * An engine's name with its version under it, its labels and the git warning mark, then
+ * An engine's name with its version under it and the git warning mark, then
  * its state and its one action.
  */
 function MoreEngineRow({ setup }: { setup: EngineSetup }) {
@@ -74,11 +74,6 @@ function MoreEngineRow({ setup }: { setup: EngineSetup }) {
       <span className="dka-engine-t">
         <span className="dka-engine-n">
           <b>{setup.title}</b>
-          {setup.labels.map((label) => (
-            <span key={label} className="dka-label">
-              {label}
-            </span>
-          ))}
           {setup.gitWarning !== null && (
             <span
               className="dka-warnmark"

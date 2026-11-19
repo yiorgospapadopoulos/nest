@@ -527,7 +527,6 @@ export function engineList(state: State): ProviderInfo[] {
         unsupported: [],
         memory_file: "CLAUDE.md",
         version: null,
-        tested: true,
         git_guard: true,
         state: "ready",
         state_detail: null,

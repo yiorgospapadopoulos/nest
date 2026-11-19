@@ -9,18 +9,18 @@ import Testing
     static let json = """
         {"providers": [
           {"name": "claude", "display_name": "Claude", "signed_in": null, "sign_in_hint": null,
-           "account": null, "unsupported": [], "version": null, "tested": true,
-           "git_guard": true, "state": "ready", "state_detail": null, "sign_in": "browser",
+           "account": null, "unsupported": [], "version": null, "git_guard": true,
+           "state": "ready", "state_detail": null, "sign_in": "browser",
            "login_command": null},
           {"name": "opencode", "display_name": "OpenCode", "signed_in": true,
-           "unsupported": ["rewind"], "version": "1.19.4", "tested": true, "git_guard": true,
+           "unsupported": ["rewind"], "version": "1.19.4", "git_guard": true,
            "state": "ready", "installable": true, "sign_in": "terminal",
            "login_command": "opencode auth login"},
           {"name": "gemini", "display_name": "Gemini CLI", "signed_in": false,
            "unsupported": [], "version": "0.65.0", "state": "ready", "installable": true,
            "sign_in": "api_key"},
           {"name": "cursor", "display_name": "Cursor agent", "signed_in": null,
-           "unsupported": [], "tested": false, "git_guard": false, "state": "not_installed",
+           "unsupported": [], "git_guard": false, "state": "not_installed",
            "state_detail": "Install Cursor's CLI first.", "sign_in": "terminal",
            "login_command": "agent login"},
           {"name": "later", "display_name": "Later", "unsupported": [], "state": "warming",
@@ -51,7 +51,6 @@ import Testing
         let list = Fixture.decode(ProviderList.self, json: Self.json)
         let cursor = list.providers[3]
         #expect(cursor.state == .notInstalled)
-        #expect(!cursor.tested)
         #expect(!cursor.gitGuard)
         #expect(cursor.signIn == .terminal)
         #expect(cursor.loginCommand == "agent login")
@@ -71,7 +70,6 @@ import Testing
             .providers[1]
         #expect(codex.state == .ready)
         #expect(codex.signIn == .browser)
-        #expect(codex.tested)
         #expect(codex.gitGuard)
         #expect(codex.version == nil)
         #expect(codex.loginCommand == nil)
@@ -93,7 +91,6 @@ import Testing
         #expect((opencode.state, opencode.action) == ("Ready", .none))
         #expect(opencode.ready)
         #expect(opencode.gitWarning == nil)
-        #expect(opencode.labels.isEmpty)
         // Signed out, it signs in with its own command.
         var signedOut = providers[1]
         signedOut.signedIn = false
@@ -113,7 +110,6 @@ import Testing
         let cursor = byName["cursor"]!
         #expect((cursor.state, cursor.action) == (EngineSetup.notOnPath, .none))
         #expect(cursor.failure == nil)
-        #expect(cursor.labels == ["untested"])
         #expect(cursor.gitWarning == EngineSetup.gitWarningText)
         var ready = providers[3]
         ready.state = .ready

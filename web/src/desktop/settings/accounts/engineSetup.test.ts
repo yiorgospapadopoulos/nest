@@ -17,7 +17,6 @@ describe("More engines", () => {
     display_name: "Cursor agent",
     state: "not_installed",
     installable: false,
-    tested: false,
     git_guard: false,
     login_command: "agent login",
     state_detail: "Install Cursor's CLI first.",
@@ -33,7 +32,6 @@ describe("More engines", () => {
     expect([opencode.state, opencode.action]).toEqual(["Ready", { kind: "none" }]);
     expect(opencode.ready).toBe(true);
     expect(opencode.gitWarning).toBeNull();
-    expect(opencode.labels).toEqual([]);
 
     const out = engineSetup(acpProvider({ signed_in: false }));
     expect([out.state, out.action]).toEqual([
@@ -52,7 +50,6 @@ describe("More engines", () => {
     const mine = engineSetup(cursor);
     expect([mine.state, mine.action]).toEqual([NOT_ON_PATH, { kind: "none" }]);
     expect(mine.failure).toBeNull();
-    expect(mine.labels).toEqual(["untested"]);
     expect(mine.gitWarning).toBe(GIT_WARNING);
     expect(engineSetup({ ...cursor, state: "ready", signed_in: false }).action).toEqual({
       kind: "signIn",
